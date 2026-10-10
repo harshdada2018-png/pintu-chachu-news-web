@@ -230,6 +230,69 @@ src/services/
 
 ---
 
+### 4.5 Site Settings & Social Channels Endpoints
+
+#### 1. GET `/api/settings/social`
+- **Method**: `GET`
+- **Description**: Retrieves backend-persisted social channel links (WhatsApp, Instagram, Facebook, X / Twitter) from `server/data/settings.json`.
+- **Response**:
+  ```json
+  {
+    "whatsapp": "https://wa.me/919876543210",
+    "instagram": "https://instagram.com/publicspark",
+    "facebook": "https://facebook.com/publicspark",
+    "twitter": "https://x.com/publicspark"
+  }
+  ```
+
+#### 2. POST `/api/settings/social`
+- **Method**: `POST`
+- **Description**: Updates and saves social channel links to disk on the backend server (`server/data/settings.json`).
+- **Request Body**:
+  ```json
+  {
+    "whatsapp": "+919876543210",
+    "instagram": "@publicspark",
+    "facebook": "publicspark",
+    "twitter": "@publicspark"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "socialLinks": {
+      "whatsapp": "+919876543210",
+      "instagram": "@publicspark",
+      "facebook": "publicspark",
+      "twitter": "@publicspark"
+    }
+  }
+  ```
+
+---
+
+### 4.6 Category Taxonomy Endpoints
+
+#### 1. GET `/api/categories`
+- **Method**: `GET`
+- **Description**: Retrieves backend-persisted newsroom category taxonomy list from `server/data/categories.json`.
+- **Response**: Array of category objects `[ { id, name, slug } ]`.
+
+#### 2. POST `/api/categories`
+- **Method**: `POST`
+- **Description**: Saves updated category taxonomy list to disk on the backend server (`server/data/categories.json`).
+- **Request Body**: Array of categories `[ { id, name, slug } ]`.
+- **Response**:
+  ```json
+  {
+    "success": true,
+    "categories": [ ... ]
+  }
+  ```
+
+---
+
 ## 🗄️ 5. PostgreSQL Production Schema & Data Models
 
 Below is the complete production PostgreSQL DDL schema definition (used in Supabase cloud database):

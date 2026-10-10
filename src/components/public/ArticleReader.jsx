@@ -1,17 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Eye, Share2, Bookmark, ArrowLeft, ShieldCheck, Flame, Radio, Languages, Loader2 } from 'lucide-react';
+import { Clock, Eye, Share2, Bookmark, ArrowLeft, ShieldCheck, Flame, Radio, Languages, Loader2, Heart, Copy, Check, Send, X, ExternalLink } from 'lucide-react';
 import TextToSpeech from './TextToSpeech';
 import VideoEmbedPlayer from './VideoEmbedPlayer';
 import MarkdownRenderer from '../../utils/markdownRenderer';
 import { MOCK_LIVE_UPDATES } from '../../services/mockData';
-import { startViewSession, sendHeartbeat, endViewSession } from '../../services/analyticsService';
+import { startViewSession, sendHeartbeat, endViewSession, toggleArticleLike, fetchArticleLikes } from '../../services/analyticsService';
 import { translateArticle } from '../../services/translationService';
 import { stopAudioSpeech, clearArticleAudioCache } from '../../services/speechEngine';
 
-export default function ArticleReader({ article, onBack, onSelectArticle, currentLanguage = 'en' }) {
+export default function ArticleReader({ article, onBack, onSelectArticle, currentLanguage = 'en', onShowToast }) {
   const [displayArticle, setDisplayArticle] = useState(article);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [likesCount, setLikesCount] = useState(article?.likes_count || 184);
+  const [isLiked, setIsLiked] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [viewsCount, setViewsCount] = useState(article?.views_count || 1240);
   const sessionIdRef = useRef(null);
   const startTimeRef = useRef(Date.now());
   const maxScrollRef = useRef(0);
@@ -106,6 +112,83 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
     };
   }, [article?.id]);
 
+  // Fetch Likes status for Article
+  useEffect(() => {
+    if (!article || !article.id) return;
+    const localLiked = localStorage.getItem(`ps_like_${article.id}`) === 'true';
+    setIsLiked(localLiked);
+
+    fetchArticleLikes(article.id, sessionIdRef.current).then(data => {
+      if (data && typeof data.totalLikes === 'number') {
+        setLikesCount(data.totalLikes);
+        if (typeof data.isLiked === 'boolean') {
+          setIsLiked(data.isLiked || localLiked);
+        }
+      }
+    });
+  }, [article?.id]);
+
+  // Fetch Bookmark status for Article
+  useEffect(() => {
+    if (!article || !article.id) return;
+    const localBookmarked = localStorage.getItem(`ps_bookmark_${article.id}`) === 'true';
+    setIsBookmarked(localBookmarked);
+  }, [article?.id]);
+
+  const handleBookmarkToggle = () => {
+    if (!article || !article.id) return;
+    const nextState = !isBookmarked;
+    setIsBookmarked(nextState);
+    localStorage.setItem(`ps_bookmark_${article.id}`, String(nextState));
+    if (onShowToast) {
+      onShowToast(nextState ? 'Article saved to your Bookmarks! 🔖' : 'Article removed from Bookmarks.');
+    }
+  };
+
+  const handleShareClick = async () => {
+    const shareData = {
+      title: (displayArticle || article)?.title || 'PublicSpark News',
+      text: (displayArticle || article)?.excerpt || article?.title,
+      url: window.location.href,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setIsShareModalOpen(true);
+        }
+        return;
+      }
+    }
+
+    setIsShareModalOpen(true);
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopiedLink(true);
+      if (onShowToast) onShowToast('Article link copied to clipboard! 📋');
+      setTimeout(() => setCopiedLink(false), 2500);
+    }).catch(() => {
+      if (onShowToast) onShowToast('Failed to copy link.');
+    });
+  };
+
+  const handleLikeToggle = async () => {
+    const nextState = !isLiked;
+    setIsLiked(nextState);
+    setLikesCount(prev => nextState ? prev + 1 : Math.max(0, prev - 1));
+    localStorage.setItem(`ps_like_${article.id}`, String(nextState));
+
+    const result = await toggleArticleLike(article.id, sessionIdRef.current);
+    if (result && typeof result.totalLikes === 'number') {
+      setLikesCount(result.totalLikes);
+    }
+  };
+
   const handleBackNavigation = () => {
     stopAudioSpeech();
     if (article?.id) {
@@ -131,24 +214,58 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
           <ArrowLeft size={15} /> Back to Top Stories
         </button>
 
-        {currentLanguage !== 'en' && !isTranslating && (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {currentLanguage !== 'en' && !isTranslating && (
+            <button
+              onClick={() => setShowOriginal(!showOriginal)}
+              className="btn btn-outline"
+              style={{ 
+                padding: '0.4rem 0.8rem', 
+                fontSize: '0.825rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                borderColor: showOriginal ? 'var(--accent-crimson)' : 'var(--border-medium)',
+                color: showOriginal ? 'var(--accent-crimson)' : 'var(--text-main)'
+              }}
+            >
+              <Languages size={15} />
+              {showOriginal ? 'Switch to Translated Text' : 'View Original (English)'}
+            </button>
+          )}
+
           <button
-            onClick={() => setShowOriginal(!showOriginal)}
+            onClick={handleShareClick}
             className="btn btn-outline"
+            style={{ padding: '0.4rem 0.75rem', fontSize: '0.825rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}
+            title="Share Article"
+          >
+            <Share2 size={15} /> Share
+          </button>
+
+          <button
+            onClick={handleBookmarkToggle}
+            className="btn"
             style={{ 
-              padding: '0.4rem 0.8rem', 
-              fontSize: '0.825rem',
+              padding: '0.4rem 0.75rem', 
+              fontSize: '0.825rem', 
+              borderRadius: 'var(--radius-md)',
+              border: isBookmarked ? '1px solid #f59e0b' : '1px solid var(--border-medium)',
+              background: isBookmarked ? '#f59e0b' : 'var(--bg-surface)',
+              color: isBookmarked ? '#ffffff' : 'var(--text-main)',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.4rem',
-              borderColor: showOriginal ? 'var(--accent-crimson)' : 'var(--border-medium)',
-              color: showOriginal ? 'var(--accent-crimson)' : 'var(--text-main)'
+              gap: '0.35rem',
+              cursor: 'pointer',
+              fontWeight: '700',
+              transition: 'all 0.2s ease'
             }}
+            title={isBookmarked ? 'Bookmarked' : 'Bookmark Article'}
           >
-            <Languages size={15} />
-            {showOriginal ? 'Switch to Translated Text' : 'View Original (English)'}
+            <Bookmark size={15} fill={isBookmarked ? '#ffffff' : 'none'} color={isBookmarked ? '#ffffff' : 'currentColor'} />
+            {isBookmarked ? 'Saved' : 'Bookmark'}
           </button>
-        )}
+        </div>
       </div>
 
       {/* Glassmorphic Skeleton Shimmer Loader during Translation */}
@@ -231,13 +348,34 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '1.25rem', fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
+            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-subtle)', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                 <Clock size={14} /> {activeArticle.published_at} ({activeArticle.reading_time_mins} min read)
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                <Eye size={14} /> {activeArticle.views_count ? activeArticle.views_count.toLocaleString() : '1,240'} views
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: '600', color: 'var(--text-main)' }}>
+                <Eye size={14} color="var(--accent-crimson)" /> {(viewsCount || 1240).toLocaleString()} views
               </span>
+              <button
+                onClick={handleLikeToggle}
+                className="btn"
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.8rem',
+                  borderRadius: '20px',
+                  border: isLiked ? '1px solid #ef4444' : '1px solid var(--border-medium)',
+                  background: isLiked ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-surface)',
+                  color: isLiked ? '#ef4444' : 'var(--text-main)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Heart size={15} fill={isLiked ? '#ef4444' : 'none'} color={isLiked ? '#ef4444' : 'currentColor'} />
+                <span>{likesCount.toLocaleString()} {likesCount === 1 ? 'Like' : 'Likes'}</span>
+              </button>
             </div>
           </div>
 
@@ -306,18 +444,196 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
         borderTop: '1px solid var(--border-medium)',
         marginTop: '2rem'
       }}>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn btn-outline" style={{ padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <button
+            onClick={handleLikeToggle}
+            className="btn"
+            style={{
+              padding: '0.45rem 1rem',
+              fontSize: '0.85rem',
+              borderRadius: '20px',
+              border: isLiked ? '1px solid #ef4444' : '1px solid var(--border-medium)',
+              background: isLiked ? '#ef4444' : 'var(--bg-surface)',
+              color: isLiked ? '#ffffff' : 'var(--text-main)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              fontWeight: '700',
+              cursor: 'pointer',
+              boxShadow: isLiked ? '0 4px 12px rgba(239, 68, 68, 0.3)' : 'none',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Heart size={16} fill={isLiked ? '#ffffff' : 'none'} color={isLiked ? '#ffffff' : 'currentColor'} />
+            <span>{isLiked ? 'Liked' : 'Like'} ({likesCount.toLocaleString()})</span>
+          </button>
+          <button
+            onClick={handleShareClick}
+            className="btn btn-outline"
+            style={{
+              padding: '0.45rem 1rem',
+              fontSize: '0.85rem',
+              borderRadius: '20px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              fontWeight: '700',
+              cursor: 'pointer'
+            }}
+          >
             <Share2 size={15} /> Share Article
           </button>
-          <button className="btn btn-outline" style={{ padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}>
-            <Bookmark size={15} /> Bookmark
+          <button
+            onClick={handleBookmarkToggle}
+            className="btn"
+            style={{
+              padding: '0.45rem 1rem',
+              fontSize: '0.85rem',
+              borderRadius: '20px',
+              border: isBookmarked ? '1px solid #f59e0b' : '1px solid var(--border-medium)',
+              background: isBookmarked ? '#f59e0b' : 'var(--bg-surface)',
+              color: isBookmarked ? '#ffffff' : 'var(--text-main)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              fontWeight: '700',
+              cursor: 'pointer',
+              boxShadow: isBookmarked ? '0 4px 12px rgba(245, 158, 11, 0.3)' : 'none',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <Bookmark size={16} fill={isBookmarked ? '#ffffff' : 'none'} color={isBookmarked ? '#ffffff' : 'currentColor'} />
+            <span>{isBookmarked ? 'Bookmarked' : 'Bookmark'}</span>
           </button>
         </div>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
           PublicSpark Verified News Engine
         </span>
       </div>
+
+      {/* Interactive Share Modal Dialog */}
+      {isShareModalOpen && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem'
+          }}
+          onClick={() => setIsShareModalOpen(false)}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-surface)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+              padding: '1.75rem',
+              maxWidth: '480px',
+              width: '100%',
+              border: '1px solid var(--border-medium)',
+              color: 'var(--text-main)',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                <Share2 size={18} color="var(--accent-crimson)" /> Share Article
+              </h3>
+              <button 
+                onClick={() => setIsShareModalOpen(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.25rem', lineHeight: '1.4' }}>
+              "{activeArticle.title}"
+            </p>
+
+            {/* Copy Link Bar */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+              <input 
+                type="text" 
+                readOnly 
+                value={window.location.href}
+                style={{
+                  flex: 1,
+                  padding: '0.5rem 0.75rem',
+                  fontSize: '0.8rem',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-medium)',
+                  background: 'var(--bg-main)',
+                  color: 'var(--text-main)',
+                  outline: 'none'
+                }}
+              />
+              <button 
+                onClick={handleCopyLink}
+                className="btn btn-primary"
+                style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}
+              >
+                {copiedLink ? <Check size={15} /> : <Copy size={15} />}
+                {copiedLink ? 'Copied!' : 'Copy Link'}
+              </button>
+            </div>
+
+            {/* Social Share Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', textAlign: 'center' }}>
+              <a 
+                href={`https://api.whatsapp.com/send?text=${encodeURIComponent(activeArticle.title + ' - ' + window.location.href)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-outline"
+                style={{ padding: '0.6rem 0.4rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', textDecoration: 'none' }}
+              >
+                <Send size={18} color="#25D366" />
+                WhatsApp
+              </a>
+
+              <a 
+                href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(activeArticle.title)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-outline"
+                style={{ padding: '0.6rem 0.4rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', textDecoration: 'none' }}
+              >
+                <Share2 size={18} color="#1DA1F2" />
+                Twitter / X
+              </a>
+
+              <a 
+                href={`https://t.me/share/url?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(activeArticle.title)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-outline"
+                style={{ padding: '0.6rem 0.4rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', textDecoration: 'none' }}
+              >
+                <Send size={18} color="#0088cc" />
+                Telegram
+              </a>
+
+              <a 
+                href={`mailto:?subject=${encodeURIComponent(activeArticle.title)}&body=${encodeURIComponent(activeArticle.title + '\n\nRead full story: ' + window.location.href)}`}
+                className="btn btn-outline"
+                style={{ padding: '0.6rem 0.4rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', textDecoration: 'none' }}
+              >
+                <ExternalLink size={18} color="var(--accent-crimson)" />
+                Email
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 }

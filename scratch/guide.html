@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PublicSpark Deployment & Multi-DB Guide</title>
+  <style>
+    @page {
+      margin: 1.5cm;
+      size: A4;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      color: #1f2937;
+      background-color: #ffffff;
+      padding: 2rem;
+      font-size: 14px;
+    }
+    h1 {
+      color: #991b1b;
+      border-bottom: 3px solid #dc2626;
+      padding-bottom: 0.5rem;
+      font-size: 24px;
+      margin-top: 0;
+    }
+    h2 {
+      color: #1e3a8a;
+      border-bottom: 2px solid #e5e7eb;
+      padding-bottom: 0.3rem;
+      margin-top: 1.8rem;
+      font-size: 18px;
+    }
+    h3 {
+      color: #065f46;
+      font-size: 15px;
+      margin-top: 1.2rem;
+    }
+    code {
+      font-family: "JetBrains Mono", Consolas, Monaco, monospace;
+      background-color: #f3f4f6;
+      color: #991b1b;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    pre {
+      background-color: #0f172a;
+      color: #f8fafc;
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 12px;
+    }
+    pre code {
+      background-color: transparent;
+      color: #f8fafc;
+      padding: 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+    }
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 0.6rem 0.8rem;
+      text-align: left;
+      font-size: 13px;
+    }
+    th {
+      background-color: #f3f4f6;
+      font-weight: 700;
+      color: #111827;
+    }
+    tr:nth-child(even) {
+      background-color: #f9fafb;
+    }
+    blockquote {
+      border-left: 4px solid #3b82f6;
+      background-color: #eff6ff;
+      margin: 1rem 0;
+      padding: 0.5rem 1rem;
+      color: #1e40af;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 2rem 0;
+    }
+    ul, ol {
+      padding-left: 1.5rem;
+    }
+    li {
+      margin-bottom: 0.4rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>🚀 PublicSpark — Full-Stack Deployment, Code Separation & Multi-DB Architecture Guide</h1>
+<p><strong>Project:</strong> PublicSpark Digital Newsroom Platform  
+<strong>Target Environment:</strong> Production Hosting (Vercel/Netlify for Frontend, Render/Railway/VPS for Backend)  
+<strong>Database Engines:</strong> Supabase PostgreSQL + Turso Edge SQLite + Cloudflare R2  
+<strong>Document Date:</strong> October 10, 2026  </p>
+<hr/>
+<h2>📑 Table of Contents</h2>
+1. [Executive Summary](#1-executive-summary)
+2. [Frontend vs. Backend Code Separation](#2-frontend-vs-backend-code-separation)
+3. [Frontend Deployment Procedure](#3-frontend-deployment-procedure)
+4. [Backend Deployment Procedure](#4-backend-deployment-procedure)
+5. [Connecting Frontend to Production Backend URL](#5-connecting-frontend-to-production-backend-url)
+6. [Multi-DB Connection & Architecture Procedure](#6-multi-db-connection--architecture-procedure)
+7. [Environment Variables (<code>.env</code>) Master Template](#7-environment-variables-env-master-template)
+8. [End-to-End Code Examples](#8-end-to-end-code-examples)
+<hr/>
+<h2>1. Executive Summary</h2>
+<p>PublicSpark is architected as a <strong>decoupled full-stack web platform</strong>.
+<ul><li><strong>Frontend (Client-Side)</strong>: Handles user interaction, responsive newsroom UI, client caching, theme switching, 1-click share modals, and bookmarks.</li><li><strong>Backend (Server-Side)</strong>: Handles Text-to-Speech synthesis (Google Cloud TTS & Sarvam AI), 18-language multi-tier translation API proxy, analytics view tracking, and server database persistence.</li><li><strong>Multi-DB Layer</strong>: Employs a zero-cost hybrid database strategy splitting Master relational data (Supabase PostgreSQL), fast edge caches (Turso SQLite), and media storage (Cloudflare R2).</li></ul></p>
+<hr/>
+<h2>2. Frontend vs. Backend Code Separation</h2>
+<h3>🌐 Frontend (Client-Side App)</h3>
+These files execute strictly inside the user's browser.
+<p>| File / Folder Path | Purpose |
+| :--- | :--- |
+| <code>src/App.jsx</code> | Main application shell, state router, view switcher, footer social icons. |
+| <code>src/components/common/</code> | Header with 4s ticker, loading splash, toast notices. |
+| <code>src/components/public/</code> | ArticleReader, SearchPage, Share modal popup. |
+| <code>src/components/admin/</code> | AdminWorkspace, Analytics dashboard, Storage settings, Social links desk. |
+| <code>src/components/reporter/</code> | ReporterWorkspace, WebP image compressor form. |
+| <code>src/components/editor/</code> | EditorWorkspace, story approval & rejection desk. |
+| <code>src/services/</code> | <code>cacheService.js</code>, <code>translationService.js</code>, <code>speechEngine.js</code>, <code>mediaService.js</code>. |
+| <code>public/</code> | Static branding assets (<code>logo.png</code>). |
+| <code>index.html</code> | Base HTML document, Google Fonts preloader. |
+| <code>vite.config.js</code> | Vite build tool configuration. |</p>
+<h3>⚙️ Backend (Server-Side App)</h3>
+These files execute strictly on your Node.js cloud server.
+<p>| File / Folder Path | Purpose |
+| :--- | :--- |
+| <code>server/server.js</code> | Native Node.js HTTP Proxy Server, API routes, TTS, analytics, CORS, storage endpoints. |
+| <code>server/data/settings.json</code> | Server-persisted social channels configuration file. |
+| <code>server/data/categories.json</code> | Server-persisted news category taxonomy file. |
+| <code>.env</code> | Secret API keys (Google Cloud TTS, Sarvam AI, Supabase, Turso, Cloudflare R2). |</p>
+<hr/>
+<h2>3. Frontend Deployment Procedure</h2>
+<h3>Option A: Vercel (Recommended)</h3>
+1. Push your repository to GitHub.
+2. Sign in to [Vercel](https://vercel.com) and click <strong>"New Project"</strong>.
+3. Import your GitHub repository <code>pintu-chachu-news-web</code>.
+4. Vercel automatically detects Vite:
+   - <strong>Framework Preset</strong>: Vite
+   - <strong>Build Command</strong>: <code>npm run build</code>
+   - <strong>Output Directory</strong>: <code>dist</code>
+5. Click <strong>Deploy</strong>. Vercel will give you a domain like <code>https://publicspark.vercel.app</code>.
+<h3>Option B: Netlify</h3>
+1. Log in to [Netlify](https://netlify.com) and select <strong>"Add new site"</strong> -> <strong>"Import an existing project"</strong>.
+2. Select GitHub and pick the repository.
+3. Configure settings:
+   - <strong>Build command</strong>: <code>npm run build</code>
+   - <strong>Publish directory</strong>: <code>dist</code>
+4. Click <strong>Deploy site</strong>.
+<hr/>
+<h2>4. Backend Deployment Procedure</h2>
+<h3>Option A: Render.com (Recommended Free Tier)</h3>
+1. Sign in to [Render](https://render.com) and select <strong>"New Web Service"</strong>.
+2. Connect your GitHub repository.
+3. Configure settings:
+   - <strong>Environment</strong>: Node
+   - <strong>Build Command</strong>: <code>npm install</code>
+   - <strong>Start Command</strong>: <code>node server/server.js</code>
+4. In <strong>Environment Variables</strong>, add:
+   - <code>PORT</code> = <code>5000</code>
+   - <code>GOOGLE_CLOUD_TTS_API_KEY</code> = <em>your_key</em>
+   - <code>SARVAM_AI_API_KEY</code> = <em>your_key</em>
+   - <code>SUPABASE_URL</code> = <em>your_url</em>
+   - <code>SUPABASE_SERVICE_ROLE_KEY</code> = <em>your_key</em>
+5. Click <strong>Create Web Service</strong>. Render will give you a backend URL like <code>https://publicspark-api.onrender.com</code>.
+<hr/>
+<h2>5. Connecting Frontend to Production Backend URL</h2>
+<p>In development, the frontend calls <code>http://localhost:5000</code>. In production, update the API base URL in your frontend config:</p>
+<p>Create or update <code>src/config.js</code>:
+``<code>javascript
+export const API_BASE_URL = process.env.NODE_ENV === 'production'
+  ? 'https://publicspark-api.onrender.com'
+  : 'http://localhost:5000';
+</code>`<code></p>
+<p>Then in </code>src/App.jsx<code> and services:
+</code>`<code>javascript
+import { API_BASE_URL } from './config';</p>
+<p>// Example Backend Call:
+fetch(</code>${API_BASE_URL}/api/settings/social<code>)
+  .then(res => res.json())
+  .then(data => setSocialLinks(data));
+</code>`<code></p>
+<hr/>
+<h2>6. Multi-DB Connection & Architecture Procedure</h2>
+<p>Our hybrid database strategy splits tasks across 3 dedicated services to achieve <strong>₹0 direct cost</strong>:</p>
+<p></code>`<code>
+ ┌────────────────────────────────────────────────────────────────────────┐
+ │                      PUBLICSPARK HYBRID DB LAYER                       │
+ ├──────────────────────────┬──────────────────────────┬──────────────────┤
+ │    Supabase (PostgreSQL) │    Turso (Edge SQLite)   │ Cloudflare R2    │
+ ├──────────────────────────┼──────────────────────────┼──────────────────┤
+ │ Master Relational Data   │ 18-Language Fast Cache   │ Media Storage    │
+ │ Articles, Categories,    │ Translation hashes &     │ Generated MP3 &  │
+ │ Profiles, RLS Auth       │ text cache               │ WebP Images      │
+ └──────────────────────────┴──────────────────────────┴──────────────────┘
+</code>`<code></p>
+<h3>Step 1: Install Database SDK Dependencies</h3>
+</code>`<code>bash
+npm install @supabase/supabase-js @libsql/client @aws-sdk/client-s3
+</code>`<code>
+<h3>Step 2: Create Multi-DB Connector (</code>server/db.js<code>)</h3>
+</code>`<code>javascript
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createClient as createTursoClient } from '@libsql/client';
+import { S3Client } from '@aws-sdk/client-s3';
+<p>// 1. Supabase Master PostgreSQL Client
+export const supabase = createSupabaseClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);</p>
+<p>// 2. Turso Edge SQLite Translation Cache Client
+export const turso = createTursoClient({
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN
+});</p>
+<p>// 3. Cloudflare R2 Storage S3-Compatible Client
+export const r2 = new S3Client({
+  region: 'auto',
+  endpoint: </code>https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com<code>,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+  }
+});
+</code>`<code></p>
+<h3>Step 3: DB Usage Patterns in Backend Server</h3>
+</code>`<code>javascript
+// 1. Supabase Query Example (Master DB)
+const { data: articles, error } = await supabase
+  .from('articles')
+  .select('*')
+  .eq('status', 'published');
+<p>// 2. Turso Query Example (Translation Edge Cache)
+const result = await turso.execute({
+  sql: 'SELECT translated_text FROM translation_cache WHERE text_hash = ? AND lang = ?',
+  args: [textHash, langCode]
+});</p>
+<p>// 3. Cloudflare R2 Upload Example (MP3 Audio)
+await r2.send(new PutObjectCommand({
+  Bucket: process.env.R2_BUCKET_NAME,
+  Key: </code>audio/article_${articleId}_${langCode}.mp3<code>,
+  Body: audioBuffer,
+  ContentType: 'audio/mpeg'
+}));
+</code>`<code></p>
+<hr/>
+<h2>7. Environment Variables (</code>.env<code>) Master Template</h2>
+<p>Save this template in </code>.env<code> at the root of your project:</p>
+<p></code>`<code>env
+<h1>Node Backend Port</h1>
+PORT=5000</p>
+<h1>Text-to-Speech & Translation API Keys</h1>
+GOOGLE_CLOUD_TTS_API_KEY=AIzaSy...
+SARVAM_AI_API_KEY=sarvam_...
+<h1>1. Supabase Master Database</h1>
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...
+<h1>2. Turso Edge SQLite Database</h1>
+TURSO_DATABASE_URL=libsql://your-db.turso.io
+TURSO_AUTH_TOKEN=ey...
+<h1>3. Cloudflare R2 Media Storage</h1>
+R2_ACCOUNT_ID=your_account_id
+R2_ACCESS_KEY_ID=your_access_key
+R2_SECRET_ACCESS_KEY=your_secret_key
+R2_BUCKET_NAME=publicspark-media
+</code>`<code>
+<hr/>
+<h2>8. Summary Checklist Before Launch</h2>
+<ul><li>[x] Separate Frontend React code (</code>src/<code>) from Backend server code (</code>server/<code>).</li><li>[x] Configure backend endpoints for </code>settings.json<code> and </code>categories.json<code> server persistence.</li><li>[x] Test production build using </code>npm run build`.</li><li>[x] Set up environment variables in production cloud host (Render / Vercel).</li><li>[x] Update API base URL in frontend to point to live backend domain.</li></ul>
+
+</body>
+</html>

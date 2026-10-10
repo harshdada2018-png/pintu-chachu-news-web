@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Sun, Moon, Search, UserCheck, Flame, Newspaper, 
-  ShieldCheck, PenTool, CheckCircle, Settings, Languages 
+  ShieldCheck, PenTool, CheckCircle, Settings, Languages, Bookmark 
 } from 'lucide-react';
 import { MOCK_CATEGORIES, MOCK_BREAKING_NEWS } from '../../services/mockData';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
@@ -21,6 +21,23 @@ export default function Header({
   categories = MOCK_CATEGORIES
 }) {
   const [tickerIndex, setTickerIndex] = useState(0);
+  const [isFading, setIsFading] = useState(false);
+
+  const handleNextTicker = useCallback(() => {
+    setIsFading(true);
+    setTimeout(() => {
+      setTickerIndex((prev) => (prev + 1) % MOCK_BREAKING_NEWS.length);
+      setIsFading(false);
+    }, 350);
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      handleNextTicker();
+    }, 4000);
+
+    return () => clearInterval(timer);
+  }, [handleNextTicker]);
   const currentDate = new Date().toLocaleDateString('en-IN', {
     weekday: 'long',
     year: 'numeric',
@@ -200,12 +217,12 @@ export default function Header({
           <Flame size={13} color="var(--accent-crimson)" />
           BREAKING
         </div>
-        <div style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div className={`ticker-content ${isFading ? 'fade-out' : ''}`}>
           {MOCK_BREAKING_NEWS[tickerIndex]}
         </div>
         <button 
-          onClick={() => setTickerIndex((prev) => (prev + 1) % MOCK_BREAKING_NEWS.length)}
-          style={{ background: 'rgba(255,255,255,0.2)', color: 'white', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700' }}
+          onClick={handleNextTicker}
+          style={{ background: 'rgba(255,255,255,0.2)', color: 'white', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' }}
         >
           Next ❯
         </button>
@@ -213,25 +230,51 @@ export default function Header({
 
       {/* Category Sticky Navigation */}
       <nav className="category-nav">
-        <div className="container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="category-list">
-            <a 
-              href="#" 
-              onClick={(e) => { e.preventDefault(); onSelectCategory('all'); onNavigate('home'); }}
-              className={`category-link ${activeCategory === 'all' ? 'active' : ''}`}
+        <div className="container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden', flex: 1 }}>
+            {/* Dedicated Bookmark Button directly under Breaking News bar */}
+            <button 
+              onClick={() => { onSelectCategory('bookmarks'); onNavigate('home'); }}
+              title="Saved Bookmarks"
+              style={{
+                background: activeCategory === 'bookmarks' ? '#f59e0b' : 'rgba(245, 158, 11, 0.15)',
+                color: activeCategory === 'bookmarks' ? '#ffffff' : '#d97706',
+                border: '1.5px solid #f59e0b',
+                borderRadius: '8px',
+                padding: '0.4rem 0.65rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: activeCategory === 'bookmarks' ? '0 2px 8px rgba(245, 158, 11, 0.4)' : 'none',
+                transition: 'all 0.2s ease',
+                flexShrink: 0
+              }}
             >
-              Top Stories
-            </a>
-            {(categories || MOCK_CATEGORIES).map((cat) => (
+              <Bookmark size={16} fill={activeCategory === 'bookmarks' ? '#ffffff' : 'none'} color={activeCategory === 'bookmarks' ? '#ffffff' : '#f59e0b'} />
+            </button>
+
+            <div style={{ width: '1px', height: '22px', backgroundColor: 'var(--border-medium)', opacity: 0.6, flexShrink: 0 }} />
+
+            <div className="category-list" style={{ flex: 1 }}>
               <a 
-                key={cat.id} 
-                href="#"
-                onClick={(e) => { e.preventDefault(); onSelectCategory(cat.slug); onNavigate('home'); }}
-                className={`category-link ${activeCategory === cat.slug ? 'active' : ''}`}
+                href="#" 
+                onClick={(e) => { e.preventDefault(); onSelectCategory('all'); onNavigate('home'); }}
+                className={`category-link ${activeCategory === 'all' ? 'active' : ''}`}
               >
-                {cat.name}
+                Top Stories
               </a>
-            ))}
+              {(categories || MOCK_CATEGORIES).map((cat) => (
+                <a 
+                  key={cat.id} 
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); onSelectCategory(cat.slug); onNavigate('home'); }}
+                  className={`category-link ${activeCategory === cat.slug ? 'active' : ''}`}
+                >
+                  {cat.name}
+                </a>
+              ))}
+            </div>
           </div>
 
           <button 

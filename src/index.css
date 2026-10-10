@@ -177,6 +177,21 @@ button {
   box-shadow: 0 2px 10px rgba(220, 38, 38, 0.2);
 }
 
+.ticker-content {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.35s ease-in-out, transform 0.35s ease-in-out;
+}
+
+.ticker-content.fade-out {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
 .ticker-badge {
   background-color: #FFFFFF;
   color: var(--accent-crimson);

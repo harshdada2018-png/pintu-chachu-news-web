@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, Users, Clock, Globe, TrendingUp, RefreshCw, BarChart2, PieChart, ShieldCheck, Activity } from 'lucide-react';
-import { fetchAnalyticsOverview, fetchTrendingArticles } from '../../services/analyticsService';
+import { Eye, Users, Clock, Globe, TrendingUp, RefreshCw, BarChart2, PieChart, ShieldCheck, Activity, Heart } from 'lucide-react';
+import { fetchAnalyticsOverview, fetchTrendingArticles, fetchCountryBreakdown } from '../../services/analyticsService';
 import { MOCK_ARTICLES } from '../../services/mockData';
 
 const COUNTRY_NAMES = {
-  IN: { name: 'India', code: 'IN', color: '#3B82F6' },
-  US: { name: 'United States', code: 'US', color: '#10B981' },
-  GB: { name: 'United Kingdom', code: 'GB', color: '#8B5CF6' },
-  CA: { name: 'Canada', code: 'CA', color: '#F59E0B' },
-  BD: { name: 'Bangladesh', code: 'BD', color: '#EF4444' },
-  AE: { name: 'United Arab Emirates', code: 'AE', color: '#06B6D4' },
-  DE: { name: 'Germany', code: 'DE', color: '#EC4899' }
+  IN: { name: 'India', flag: '🇮🇳', code: 'IN', color: '#3B82F6' },
+  US: { name: 'United States', flag: '🇺🇸', code: 'US', color: '#10B981' },
+  GB: { name: 'United Kingdom', flag: '🇬🇧', code: 'GB', color: '#8B5CF6' },
+  CA: { name: 'Canada', flag: '🇨🇦', code: 'CA', color: '#F59E0B' },
+  BD: { name: 'Bangladesh', flag: '🇧🇩', code: 'BD', color: '#EF4444' },
+  AE: { name: 'United Arab Emirates', flag: '🇦🇪', code: 'AE', color: '#06B6D4' },
+  DE: { name: 'Germany', flag: '🇩🇪', code: 'DE', color: '#EC4899' }
 };
 
 const HOURLY_PEAK_DATA = [
@@ -31,14 +31,18 @@ export default function AnalyticsDashboard() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState('');
 
+  const [countryDetailed, setCountryDetailed] = useState([]);
+
   const loadData = async () => {
     setLoading(true);
-    const [ov, tr] = await Promise.all([
+    const [ov, tr, cb] = await Promise.all([
       fetchAnalyticsOverview(),
-      fetchTrendingArticles(period)
+      fetchTrendingArticles(period),
+      fetchCountryBreakdown()
     ]);
     setOverview(ov);
     setTrending(tr.trending || []);
+    setCountryDetailed(cb || ov?.countryDetailed || []);
     setLoading(false);
     setLastUpdated(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
   };
@@ -56,12 +60,12 @@ export default function AnalyticsDashboard() {
         code,
         count,
         percentage: parseFloat(((count / total) * 100).toFixed(1)),
-        meta: COUNTRY_NAMES[code] || { name: code, code, color: '#6B7280' }
+        meta: COUNTRY_NAMES[code] || { name: code, flag: '🌐', code, color: '#6B7280' }
       }))
       .sort((a, b) => b.count - a.count);
   }, [overview]);
 
-  const topCountry = countryList[0] || { meta: { name: 'India', code: 'IN' }, percentage: 65.2 };
+  const topCountry = countryList[0] || { meta: { name: 'India', flag: '🇮🇳', code: 'IN' }, percentage: 65.2 };
 
   const trendPoints = overview?.recentTrend || [];
   const maxViews = Math.max(...trendPoints.map(p => p.views), 100);
@@ -135,7 +139,7 @@ export default function AnalyticsDashboard() {
       </div>
 
       {/* KPI Cards Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
         {/* Total Views */}
         <div style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -149,6 +153,22 @@ export default function AnalyticsDashboard() {
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', marginTop: '0.3rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
             <TrendingUp size={12} /> +18.4% volume increase
+          </div>
+        </div>
+
+        {/* Total Likes */}
+        <div style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Article Likes</span>
+            <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.4rem', borderRadius: '50%' }}>
+              <Heart size={18} fill="#ef4444" />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.85rem', fontWeight: '800', color: 'var(--text-main)' }}>
+            {overview?.totalLikes ? overview.totalLikes.toLocaleString() : '1,420'}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#ef4444', marginTop: '0.3rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+            <TrendingUp size={12} /> Active Reader Engagement
           </div>
         </div>
 
@@ -473,6 +493,72 @@ export default function AnalyticsDashboard() {
                       <span className="badge badge-verified" style={{ fontSize: '0.75rem' }}>
                         <ShieldCheck size={12} /> Verified
                       </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Country-Wise Breakdown Table: Views & Likes per Country */}
+      <div style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.85rem' }}>
+          <div>
+            <h4 style={{ fontSize: '1.05rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0, color: 'var(--text-main)' }}>
+              <Globe size={18} color="var(--accent-blue)" /> Country-Wise Demographics: Views & Likes
+            </h4>
+            <p style={{ fontSize: '0.775rem', color: 'var(--text-subtle)', margin: '0.2rem 0 0 0' }}>
+              Real-time geographic audience breakdown detailing article views, reader likes, and engagement rates by country.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.875rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border-medium)', background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}>
+                <th style={{ padding: '0.75rem 1rem' }}>Country Territory</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Total Views 👁️</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Total Likes ❤️</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Engagement Rate %</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Volume Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {countryDetailed.map((c) => {
+                const meta = COUNTRY_NAMES[c.country] || { name: c.country, flag: '🌐', code: c.country, color: '#3B82F6' };
+                const totalViewsAll = countryDetailed.reduce((acc, item) => acc + item.views, 0) || 1;
+                const viewSharePct = parseFloat(((c.views / totalViewsAll) * 100).toFixed(1));
+
+                return (
+                  <tr key={c.country} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                    <td style={{ padding: '0.75rem 1rem', fontWeight: '700' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <span style={{ fontSize: '1.4rem' }}>{meta.flag || '🌐'}</span>
+                        <div>
+                          <div style={{ color: 'var(--text-main)', fontSize: '0.9rem' }}>{meta.name} ({c.country})</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Geo IP Resolved</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', fontWeight: '800', color: 'var(--accent-blue)' }}>
+                      {c.views.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', fontWeight: '800', color: '#ef4444' }}>
+                      {c.likes.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', fontWeight: '700', color: 'var(--accent-emerald)' }}>
+                      {c.engagementRate}%
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', width: '220px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ flex: 1, height: '8px', background: 'var(--border-light)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${viewSharePct}%`, background: meta.color || 'var(--accent-blue)', borderRadius: '4px' }} />
+                        </div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>{viewSharePct}%</span>
+                      </div>
                     </td>
                   </tr>
                 );

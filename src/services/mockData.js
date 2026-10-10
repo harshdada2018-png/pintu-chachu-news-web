@@ -48,6 +48,7 @@ The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cl
     status: 'published',
     is_breaking: true,
     views_count: 14200,
+    likes_count: 1840,
     reading_time_mins: 4,
     published_at: '10 mins ago',
     seo_title: 'ISRO Earth Observation Satellite Launch 2026',
@@ -74,6 +75,7 @@ The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cl
     status: 'published',
     is_breaking: false,
     views_count: 8900,
+    likes_count: 950,
     reading_time_mins: 5,
     published_at: '45 mins ago'
   },
@@ -98,6 +100,7 @@ The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cl
     status: 'published',
     is_breaking: false,
     views_count: 6300,
+    likes_count: 720,
     reading_time_mins: 3,
     published_at: '2 hours ago'
   },
@@ -122,6 +125,7 @@ The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cl
     status: 'published',
     is_breaking: false,
     views_count: 11200,
+    likes_count: 1410,
     reading_time_mins: 6,
     published_at: '3 hours ago'
   }

@@ -71,3 +71,83 @@ export function saveCategoriesToCache(categories) {
   }
 }
 
+/**
+ * Calculates current client-side storage usage (localStorage + sessionStorage) in KB & MB.
+ */
+export function getClientStorageStats() {
+  let localBytes = 0;
+  let sessionBytes = 0;
+  let localKeysCount = 0;
+  let sessionKeysCount = 0;
+
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        localKeysCount++;
+        const val = localStorage.getItem(key) || '';
+        localBytes += key.length + val.length;
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading localStorage size:', e);
+  }
+
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key) {
+        sessionKeysCount++;
+        const val = sessionStorage.getItem(key) || '';
+        sessionBytes += key.length + val.length;
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading sessionStorage size:', e);
+  }
+
+  const totalBytes = localBytes + sessionBytes;
+  return {
+    localKb: (localBytes / 1024).toFixed(2),
+    sessionKb: (sessionBytes / 1024).toFixed(2),
+    totalMb: (totalBytes / (1024 * 1024)).toFixed(3),
+    totalKb: (totalBytes / 1024).toFixed(2),
+    localKeysCount,
+    sessionKeysCount,
+    // 5MB is typical browser origin limit for localStorage
+    usagePercent: Math.min(100, parseFloat(((totalBytes / (5 * 1024 * 1024)) * 100).toFixed(1)))
+  };
+}
+
+/**
+ * Purges all publicspark cached news, translations, and audio entries from localStorage & sessionStorage.
+ */
+export function purgeClientCache() {
+  try {
+    // Keys matching prefix ps_
+    const localKeysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('ps_') || key.includes('cache') || key.includes('trans'))) {
+        localKeysToRemove.push(key);
+      }
+    }
+    localKeysToRemove.forEach(k => localStorage.removeItem(k));
+
+    const sessionKeysToRemove = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && (key.startsWith('ps_') || key.includes('cache') || key.includes('audio'))) {
+        sessionKeysToRemove.push(key);
+      }
+    }
+    sessionKeysToRemove.forEach(k => sessionStorage.removeItem(k));
+
+    return { success: true, removedCount: localKeysToRemove.length + sessionKeysToRemove.length };
+  } catch (err) {
+    console.error('Client cache purge error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+

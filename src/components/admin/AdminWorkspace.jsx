@@ -1,16 +1,51 @@
 import React, { useState } from 'react';
-import { Settings, Users, FolderTree, DollarSign, Plus, Trash2, CheckCircle2, BarChart2 } from 'lucide-react';
+import { Settings, Users, FolderTree, DollarSign, Plus, Trash2, CheckCircle2, BarChart2, HardDrive, Share2, Send } from 'lucide-react';
+
+const WhatsAppIcon = ({ size = 16, color = '#25D366' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+  </svg>
+);
+
+const InstagramIcon = ({ size = 16, color = '#dc2743' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+  </svg>
+);
+
+const FacebookIcon = ({ size = 16, color = '#1877F2' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+  </svg>
+);
+
+const XTwitterIcon = ({ size = 16, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+  </svg>
+);
 import { MOCK_CATEGORIES } from '../../services/mockData';
 import { getCachedCategories, saveCategoriesToCache } from '../../services/cacheService';
 import AnalyticsDashboard from './AnalyticsDashboard';
+import StorageSettings from './StorageSettings';
 
-export default function AdminWorkspace({ categories: propCategories, onUpdateCategories }) {
+export default function AdminWorkspace({ categories: propCategories, onUpdateCategories, socialLinks, onUpdateSocialLinks }) {
   const [activeTab, setActiveTab] = useState('analytics');
   const [categories, setCategories] = useState(() => {
     return propCategories || getCachedCategories() || MOCK_CATEGORIES;
   });
   const [newCatName, setNewCatName] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState('');
+  const [localSocialLinks, setLocalSocialLinks] = useState(() => {
+    return socialLinks || {
+      whatsapp: 'https://whatsapp.com',
+      instagram: 'https://instagram.com',
+      facebook: 'https://facebook.com',
+      twitter: 'https://x.com'
+    };
+  });
 
   // User List
   const [usersList, setUsersList] = useState([
@@ -90,7 +125,7 @@ export default function AdminWorkspace({ categories: propCategories, onUpdateCat
               <Settings color="var(--accent-blue)" /> Newsroom Management Desk
             </h2>
             <p style={{ color: 'var(--text-subtle)', fontSize: '0.875rem', marginTop: '0.2rem' }}>
-              Manage team access permissions, news category taxonomy, and advertisement placement slots.
+              Manage team access permissions, news category taxonomy, advertisement slots, and storage quotas.
             </p>
           </div>
           <div style={{ background: '#ECFDF5', color: 'var(--accent-emerald)', padding: '0.4rem 0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -131,11 +166,27 @@ export default function AdminWorkspace({ categories: propCategories, onUpdateCat
           >
             <DollarSign size={16} /> Ad Slot Placements
           </button>
+          <button 
+            onClick={() => setActiveTab('storage')} 
+            className={`sidebar-nav-link ${activeTab === 'storage' ? 'active' : ''}`}
+            style={{ width: '100%' }}
+          >
+            <HardDrive size={16} /> Storage & Cache
+          </button>
+          <button 
+            onClick={() => setActiveTab('social')} 
+            className={`sidebar-nav-link ${activeTab === 'social' ? 'active' : ''}`}
+            style={{ width: '100%' }}
+          >
+            <Share2 size={16} /> Social Channels Links
+          </button>
         </div>
 
         {/* Tab Content */}
         <div>
           {activeTab === 'analytics' && <AnalyticsDashboard />}
+          {activeTab === 'storage' && <StorageSettings />}
+
           {activeTab === 'users' && (
             <div className="data-table-container">
               <div style={{ padding: '1rem', fontWeight: '800', borderBottom: '1px solid var(--border-light)' }}>
@@ -276,6 +327,101 @@ export default function AdminWorkspace({ categories: propCategories, onUpdateCat
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {activeTab === 'social' && (
+            <div style={{ background: 'var(--bg-surface)', padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+                    <Share2 color="var(--accent-crimson)" size={20} /> Social Channels Links Settings
+                  </h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
+                    Configure WhatsApp, Instagram, Facebook, and X (Twitter) URLs displayed in the website footer.
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={(e) => { e.preventDefault(); if (onUpdateSocialLinks) onUpdateSocialLinks(localSocialLinks); setFeedbackMsg('Social channel links updated successfully!'); setTimeout(() => setFeedbackMsg(''), 3000); }} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {feedbackMsg && (
+                  <div style={{ padding: '0.65rem 1rem', background: '#ECFDF5', color: 'var(--accent-emerald)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <CheckCircle2 size={16} /> {feedbackMsg}
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '700', marginBottom: '0.4rem', color: '#25D366' }}>
+                    <WhatsAppIcon size={16} /> WhatsApp Channel URL or Mobile Number
+                  </label>
+                  <input 
+                    type="text" 
+                    value={localSocialLinks.whatsapp}
+                    onChange={(e) => setLocalSocialLinks({ ...localSocialLinks, whatsapp: e.target.value })}
+                    placeholder="Enter Phone Number (e.g. +919876543210) or Group/Channel URL"
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', background: 'var(--bg-main)', color: 'var(--text-main)', fontSize: '0.875rem' }}
+                  />
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
+                    Supports full URLs (e.g. https://whatsapp.com/channel/...) or direct phone numbers (e.g. +919876543210 / 9876543210).
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '700', marginBottom: '0.4rem', color: '#dc2743' }}>
+                    <InstagramIcon size={16} /> Instagram Page URL or Username
+                  </label>
+                  <input 
+                    type="text" 
+                    value={localSocialLinks.instagram}
+                    onChange={(e) => setLocalSocialLinks({ ...localSocialLinks, instagram: e.target.value })}
+                    placeholder="Enter Username (e.g. @publicspark) or full Page URL"
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', background: 'var(--bg-main)', color: 'var(--text-main)', fontSize: '0.875rem' }}
+                  />
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
+                    Supports handle/username (e.g. @publicspark / publicspark) or full URL.
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '700', marginBottom: '0.4rem', color: '#1877F2' }}>
+                    <FacebookIcon size={16} /> Facebook Page URL, Phone Number or Handle
+                  </label>
+                  <input 
+                    type="text" 
+                    value={localSocialLinks.facebook}
+                    onChange={(e) => setLocalSocialLinks({ ...localSocialLinks, facebook: e.target.value })}
+                    placeholder="Enter Phone Number (e.g. +919876543210), Handle (e.g. @publicspark) or full Page URL"
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', background: 'var(--bg-main)', color: 'var(--text-main)', fontSize: '0.875rem' }}
+                  />
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
+                    Supports mobile numbers (e.g. +919876543210), page/profile handles (e.g. @publicspark), or full URLs.
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '700', marginBottom: '0.4rem', color: 'var(--text-main)' }}>
+                    <XTwitterIcon size={16} /> X (Twitter) Handle or Page URL
+                  </label>
+                  <input 
+                    type="text" 
+                    value={localSocialLinks.twitter}
+                    onChange={(e) => setLocalSocialLinks({ ...localSocialLinks, twitter: e.target.value })}
+                    placeholder="Enter Handle (e.g. @publicspark) or full URL"
+                    style={{ width: '100%', padding: '0.6rem 0.8rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', background: 'var(--bg-main)', color: 'var(--text-main)', fontSize: '0.875rem' }}
+                  />
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
+                    Supports handle/username (e.g. @publicspark / publicspark) or full URL.
+                  </div>
+                </div>
+
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  style={{ padding: '0.65rem 1.25rem', fontSize: '0.875rem', fontWeight: '700', alignSelf: 'flex-start', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                >
+                  <CheckCircle2 size={16} /> Save Social Channel URLs
+                </button>
+              </form>
             </div>
           )}
         </div>

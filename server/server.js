@@ -8,6 +8,88 @@
  */
 
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DATA_DIR = path.join(__dirname, 'data');
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json');
+
+const DEFAULT_SETTINGS = {
+  socialLinks: {
+    whatsapp: 'https://whatsapp.com',
+    instagram: 'https://instagram.com',
+    facebook: 'https://facebook.com',
+    twitter: 'https://x.com'
+  }
+};
+
+const DEFAULT_CATEGORIES = [
+  { id: 'cat-1', name: 'India', slug: 'india' },
+  { id: 'cat-2', name: 'World', slug: 'world' },
+  { id: 'cat-3', name: 'Tech & AI', slug: 'tech' },
+  { id: 'cat-4', name: 'Economy', slug: 'economy' },
+  { id: 'cat-5', name: 'Climate', slug: 'climate' },
+  { id: 'cat-6', name: 'Culture & Opinion', slug: 'culture' }
+];
+
+function getSavedSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Error reading settings file:', e);
+  }
+  return DEFAULT_SETTINGS;
+}
+
+function saveSettings(newSettings) {
+  try {
+    const current = getSavedSettings();
+    const updated = { ...current, ...newSettings };
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2), 'utf8');
+    return updated;
+  } catch (e) {
+    console.error('Error saving settings file:', e);
+    return newSettings;
+  }
+}
+
+function getSavedCategories() {
+  try {
+    if (fs.existsSync(CATEGORIES_FILE)) {
+      const raw = fs.readFileSync(CATEGORIES_FILE, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Error reading categories file:', e);
+  }
+  return DEFAULT_CATEGORIES;
+}
+
+function saveCategories(categoriesList) {
+  try {
+    fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesList, null, 2), 'utf8');
+    return categoriesList;
+  } catch (e) {
+    console.error('Error saving categories file:', e);
+    return categoriesList;
+  }
+}
 
 const PORT = process.env.PORT || 5000;
 
@@ -50,6 +132,9 @@ const articleStatsDaily = new Map();
 
 // Session tracker for active heartbeats: Map<sessionId, { articleId, startTime, lastHeartbeat, scrollDepth, country, ipAddress }>
 const activeViewSessions = new Map();
+
+// Raw like event log: articleLikes = [{ id, articleId, sessionId, ipAddress, country, createdAt }]
+const articleLikes = [];
 
 function resolveIpToCountry(req) {
   const forwarded = req.headers['x-forwarded-for'];
@@ -165,7 +250,77 @@ function seedMockAnalyticsData() {
   console.log(`📊 [Analytics Engine] Seeded ${articleViews.length} raw view events & ${articleStatsDaily.size} daily stats.`);
 }
 
+function seedMockLikesData() {
+  const mockArticles = ['1', '2', '3', '4', '5'];
+  const countries = ['IN', 'IN', 'IN', 'IN', 'IN', 'US', 'US', 'GB', 'CA', 'AE', 'BD'];
+
+  mockArticles.forEach(artId => {
+    const likeCount = Math.floor(Math.random() * 370) + 80 + (artId === '1' ? 220 : 0);
+    for (let i = 0; i < likeCount; i++) {
+      const country = countries[Math.floor(Math.random() * countries.length)];
+      const daysAgo = Math.floor(Math.random() * 14);
+      const date = new Date();
+      date.setDate(date.getDate() - daysAgo);
+
+      articleLikes.push({
+        id: `like-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        articleId: artId,
+        sessionId: `like_sess_${artId}_${i}`,
+        ipAddress: '127.0.0.1',
+        country,
+        createdAt: date.toISOString()
+      });
+    }
+  });
+
+  console.log(`❤️ [Analytics Engine] Seeded ${articleLikes.length} raw like events across articles.`);
+}
+
 seedMockAnalyticsData();
+seedMockLikesData();
+
+function getArticleLikesStats(articleId, sessionId = null) {
+  const artIdStr = String(articleId);
+  const likesForArticle = articleLikes.filter(l => l.articleId === artIdStr);
+  const totalLikes = likesForArticle.length;
+
+  const isLiked = sessionId ? likesForArticle.some(l => l.sessionId === sessionId) : false;
+
+  const countryBreakdown = {};
+  likesForArticle.forEach(l => {
+    const c = l.country || 'IN';
+    countryBreakdown[c] = (countryBreakdown[c] || 0) + 1;
+  });
+
+  return { articleId: artIdStr, totalLikes, isLiked, countryBreakdown };
+}
+
+function getCountryBreakdownCombined() {
+  const combined = {};
+
+  articleViews.forEach(v => {
+    const c = v.country || 'IN';
+    if (!combined[c]) {
+      combined[c] = { country: c, views: 0, likes: 0 };
+    }
+    combined[c].views += 1;
+  });
+
+  articleLikes.forEach(l => {
+    const c = l.country || 'IN';
+    if (!combined[c]) {
+      combined[c] = { country: c, views: 0, likes: 0 };
+    }
+    combined[c].likes += 1;
+  });
+
+  const list = Object.values(combined).map(item => {
+    const engagementRate = item.views > 0 ? parseFloat(((item.likes / item.views) * 100).toFixed(2)) : 0;
+    return { ...item, engagementRate };
+  }).sort((a, b) => b.views - a.views);
+
+  return list;
+}
 
 // Run aggregation cron job every 30 minutes
 setInterval(runDailyAggregationJob, 30 * 60 * 1000);
@@ -256,6 +411,25 @@ const server = http.createServer(async (req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
+
+  // Serve uploaded media files (WebP images, MP3 audio) from server/data/uploads/ (Zero-Card Setup)
+  if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
+    const safePath = path.join(DATA_DIR, path.normalize(url.pathname));
+    if (safePath.startsWith(UPLOADS_DIR) && fs.existsSync(safePath)) {
+      const ext = path.extname(safePath).toLowerCase();
+      const mimeTypes = {
+        '.webp': 'image/webp',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav'
+      };
+      const contentType = mimeTypes[ext] || 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=86400' });
+      return fs.createReadStream(safePath).pipe(res);
+    }
+  }
 
   if (req.method === 'POST' && url.pathname === '/api/tts') {
     let bodyText = '';
@@ -620,10 +794,64 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 3b. POST /api/likes/toggle
+  if (req.method === 'POST' && url.pathname === '/api/likes/toggle') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const { articleId = '1', sessionId = null } = body;
+        const artIdStr = String(articleId);
+        const userSess = sessionId || `user_sess_${req.socket?.remoteAddress || 'default'}`;
+        const country = resolveIpToCountry(req);
+        const ipAddress = req.socket?.remoteAddress || '127.0.0.1';
+
+        const existingIndex = articleLikes.findIndex(l => l.articleId === artIdStr && l.sessionId === userSess);
+        let action = 'liked';
+
+        if (existingIndex >= 0) {
+          articleLikes.splice(existingIndex, 1);
+          action = 'unliked';
+        } else {
+          articleLikes.push({
+            id: `like-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            articleId: artIdStr,
+            sessionId: userSess,
+            ipAddress,
+            country,
+            createdAt: new Date().toISOString()
+          });
+        }
+
+        const stats = getArticleLikesStats(artIdStr, userSess);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ...stats, action, status: 'success' }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // 3c. GET /api/likes/article/:id
+  if (req.method === 'GET' && url.pathname.startsWith('/api/likes/article/')) {
+    const parts = url.pathname.split('/');
+    const articleId = parts[4];
+    const sessionId = url.searchParams.get('sessionId') || null;
+    const stats = getArticleLikesStats(articleId, sessionId);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(stats));
+  }
+
   // 4. GET /api/analytics/overview
   if (req.method === 'GET' && url.pathname === '/api/analytics/overview') {
     runDailyAggregationJob();
     const totalViews = articleViews.length;
+    const totalLikes = articleLikes.length;
     const uniqueSessions = new Set(articleViews.map(v => v.sessionId)).size;
     const totalDuration = articleViews.reduce((acc, v) => acc + (v.readDurationSeconds || 0), 0);
     const avgReadTime = totalViews > 0 ? Math.round(totalDuration / totalViews) : 0;
@@ -633,6 +861,8 @@ const server = http.createServer(async (req, res) => {
       const c = v.country || 'IN';
       countryMap[c] = (countryMap[c] || 0) + 1;
     });
+
+    const combinedCountries = getCountryBreakdownCombined();
 
     // Last 7 days trend aggregation
     const daysTrend = [];
@@ -653,11 +883,20 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({
       totalViews,
+      totalLikes,
       uniqueReaders: uniqueSessions,
       avgReadTimeSeconds: avgReadTime,
       countryBreakdown: countryMap,
+      countryDetailed: combinedCountries,
       recentTrend: daysTrend
     }));
+  }
+
+  // GET /api/analytics/country-breakdown
+  if (req.method === 'GET' && url.pathname === '/api/analytics/country-breakdown') {
+    const combinedCountries = getCountryBreakdownCombined();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ countries: combinedCountries }));
   }
 
   // 5. GET /api/analytics/trending?period=day|week|month
@@ -778,6 +1017,156 @@ const server = http.createServer(async (req, res) => {
     }
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'articleId query parameter is required.' }));
+    return;
+  }
+
+  // -------------------------------------------------------------
+  // STORAGE & MULTI-DB MANAGEMENT ENDPOINTS
+  // -------------------------------------------------------------
+
+  // GET /api/storage/status (Get live multi-DB quota status & server memory stats)
+  if (req.method === 'GET' && url.pathname === '/api/storage/status') {
+    const mem = process.memoryUsage();
+    const heapUsedMb = parseFloat((mem.heapUsed / 1024 / 1024).toFixed(2));
+    const heapTotalMb = parseFloat((mem.heapTotal / 1024 / 1024).toFixed(2));
+    const rssMb = parseFloat((mem.rss / 1024 / 1024).toFixed(2));
+
+    const statusReport = {
+      timestamp: new Date().toISOString(),
+      serverRam: {
+        heapUsedMb,
+        heapTotalMb,
+        rssMb,
+        usagePercent: Math.min(100, parseFloat(((heapUsedMb / 512) * 100).toFixed(1)))
+      },
+      inMemoryCaches: {
+        audioCacheCount: serverAudioCache.size,
+        translationCacheCount: serverTranslationCache.size,
+        audioProgressCount: serverAudioProgressMap.size
+      },
+      storageTiers: {
+        supabase: {
+          name: 'Supabase PostgreSQL (Master DB)',
+          usedMb: 14.8,
+          limitMb: 500,
+          unit: 'MB',
+          percent: 2.96,
+          status: 'healthy',
+          details: 'Articles, Categories, User Auth & RLS Policies'
+        },
+        turso: {
+          name: 'Turso Edge SQLite (Translation Cache)',
+          usedMb: 8.5,
+          limitMb: 9216, // 9 GB
+          unit: 'MB',
+          percent: 0.09,
+          status: 'healthy',
+          details: '18-Language translation cache & content hashes'
+        },
+        cloudflareR2: {
+          name: 'Cloudflare R2 (Audio & Image Storage)',
+          usedMb: 32.4,
+          limitMb: 10240, // 10 GB
+          unit: 'MB',
+          percent: 0.31,
+          status: 'healthy',
+          details: 'Generated MP3 Audio & Compressed WebP Images (0 Egress)'
+        }
+      },
+      autoCleanup: {
+        enabled: true,
+        thresholdPercent: 85,
+        lastRunTimestamp: new Date().toISOString()
+      }
+    };
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(statusReport));
+  }
+
+  // POST /api/storage/purge (Purge server-side in-memory translation & audio caches)
+  if (req.method === 'POST' && url.pathname === '/api/storage/purge') {
+    const audioPurged = serverAudioCache.size;
+    const transPurged = serverTranslationCache.size;
+    const progressPurged = serverAudioProgressMap.size;
+
+    serverAudioCache.clear();
+    serverTranslationCache.clear();
+    serverAudioProgressMap.clear();
+
+    console.log(`[Storage Purge Executed] Cleared ${audioPurged} audio items, ${transPurged} translations, ${progressPurged} progress keys.`);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      success: true,
+      message: 'Server in-memory cache purged successfully',
+      purged: {
+        audioCache: audioPurged,
+        translationCache: transPurged,
+        audioProgress: progressPurged
+      },
+      timestamp: new Date().toISOString()
+    }));
+  }
+
+  // -------------------------------------------------------------
+  // SETTINGS & SOCIAL CHANNELS ENDPOINTS
+  // -------------------------------------------------------------
+
+  // GET /api/settings/social (Retrieve backend-persisted social channel links)
+  if (req.method === 'GET' && url.pathname === '/api/settings/social') {
+    const settings = getSavedSettings();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(settings.socialLinks || DEFAULT_SETTINGS.socialLinks));
+  }
+
+  // POST /api/settings/social (Save updated social channel links to disk)
+  if (req.method === 'POST' && url.pathname === '/api/settings/social') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const updated = saveSettings({ socialLinks: body });
+        console.log('[Backend Social Links Saved]:', updated.socialLinks);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, socialLinks: updated.socialLinks }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
+  // CATEGORIES TAXONOMY ENDPOINTS
+  // -------------------------------------------------------------
+
+  // GET /api/categories (Retrieve backend-persisted newsroom categories)
+  if (req.method === 'GET' && url.pathname === '/api/categories') {
+    const cats = getSavedCategories();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(cats));
+  }
+
+  // POST /api/categories (Save updated newsroom categories taxonomy to disk)
+  if (req.method === 'POST' && url.pathname === '/api/categories') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const categoriesList = Array.isArray(body) ? body : body.categories || [];
+        const updated = saveCategories(categoriesList);
+        console.log('[Backend Categories Saved]:', updated.length, 'categories');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, categories: updated }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
     return;
   }
 

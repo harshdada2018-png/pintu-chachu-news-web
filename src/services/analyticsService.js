@@ -132,3 +132,69 @@ export async function fetchTrendingArticles(period = 'week') {
     ]
   };
 }
+
+/**
+ * Toggle like state for an article (Like / Unlike).
+ * @param {string|number} articleId 
+ * @param {string} sessionId 
+ */
+export async function toggleArticleLike(articleId, sessionId = null) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/likes/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ articleId: String(articleId), sessionId })
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[AnalyticsService] toggleArticleLike fallback:', err.message);
+  }
+
+  // Local fallback
+  return { articleId: String(articleId), totalLikes: 1, isLiked: true, status: 'fallback' };
+}
+
+/**
+ * Fetch like count and status for an article.
+ * @param {string|number} articleId 
+ * @param {string} sessionId 
+ */
+export async function fetchArticleLikes(articleId, sessionId = null) {
+  try {
+    const url = `${API_BASE_URL}/api/likes/article/${articleId}${sessionId ? `?sessionId=${sessionId}` : ''}`;
+    const res = await fetch(url);
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('[AnalyticsService] fetchArticleLikes fallback:', err.message);
+  }
+
+  return { articleId: String(articleId), totalLikes: 0, isLiked: false };
+}
+
+/**
+ * Fetch country breakdown stats (Views, Likes & Engagement Rate per country).
+ */
+export async function fetchCountryBreakdown() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/analytics/country-breakdown`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.countries || [];
+    }
+  } catch (err) {
+    console.warn('[AnalyticsService] fetchCountryBreakdown fallback:', err.message);
+  }
+
+  return [
+    { country: 'IN', views: 2450, likes: 320, engagementRate: 13.06 },
+    { country: 'US', views: 820, likes: 115, engagementRate: 14.02 },
+    { country: 'GB', views: 340, likes: 48, engagementRate: 14.12 },
+    { country: 'CA', views: 210, likes: 29, engagementRate: 13.81 },
+    { country: 'AE', views: 180, likes: 24, engagementRate: 13.33 },
+    { country: 'BD', views: 120, likes: 15, engagementRate: 12.50 }
+  ];
+}
