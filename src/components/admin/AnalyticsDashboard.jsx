@@ -23,7 +23,7 @@ const HOURLY_PEAK_DATA = [
   { hour: '23:00', pct: 40, label: 'Late Night' }
 ];
 
-export default function AnalyticsDashboard() {
+export default function AnalyticsDashboard({ articles }) {
   const [period, setPeriod] = useState('week');
   const [chartType, setChartType] = useState('line'); // 'line', 'bar', 'donut', 'hourly'
   const [overview, setOverview] = useState(null);
@@ -465,7 +465,8 @@ export default function AnalyticsDashboard() {
             </thead>
             <tbody>
               {trending.map((item, idx) => {
-                const article = MOCK_ARTICLES.find(a => String(a.id) === String(item.articleId)) || {
+                const articlePool = (articles && articles.length > 0) ? articles : MOCK_ARTICLES;
+                const article = articlePool.find(a => String(a.id) === String(item.articleId)) || {
                   title: `Editorial Article #${item.articleId}`,
                   category: 'General'
                 };

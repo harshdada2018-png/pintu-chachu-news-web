@@ -1,17 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { Volume2, Pause, Play, Loader2, Gauge, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Volume2, Pause, Play, Loader2, Gauge, RotateCcw, Sparkles, Bell } from 'lucide-react';
+import { t } from '../../services/uiTranslations';
+import { 
+  playTwoStageAudio, 
+  pauseTwoStageAudio, 
+  resumeTwoStageAudio, 
+  stopTwoStageAudio, 
+  seekTwoStageAudio, 
+  setTwoStagePlaybackRate, 
+  getTwoStagePlaybackRate 
+} from '../../services/geminiAudioEngine';
 import { 
   speakTextWithNaturalVoice, 
-  pauseAudioSpeech,
-  resumeAudioSpeech,
+  pauseAudioSpeech, 
+  resumeAudioSpeech, 
   stopAudioSpeech, 
-  setAudioPlaybackRate, 
-  getAudioPlaybackRate, 
-  seekActiveAudio, 
-  getSavedAudioPosition, 
-  fetchBackendAudioPosition,
-  saveAudioPosition,
-  clearSavedAudioPosition 
+  hasBrowserVoiceForLanguage 
 } from '../../services/speechEngine';
 
 const AVAILABLE_SPEEDS = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
@@ -23,70 +27,91 @@ function formatTime(seconds) {
   return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
-export default function TextToSpeech({ textToRead, title, currentLanguage = 'en', articleId = null }) {
+export default function TextToSpeech({ 
+  textToRead = '', 
+  title = '', 
+  highlights = [], 
+  currentLanguage = 'en', 
+  articleId = null 
+}) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentSpeed, setCurrentSpeed] = useState(getAudioPlaybackRate() || 1.0);
+  const [currentSpeed, setCurrentSpeed] = useState(getTwoStagePlaybackRate() || 1.0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [clipStatus, setClipStatus] = useState('idle'); // 'clip_1' | 'chime' | 'clip_2' | 'browser'
+  const isUsingBrowserFallback = useRef(false);
 
-  // Sync saved position and stop old language stream on language or article change
+  // Strict Rule: Hide Listen button completely in Assamese ('as')
+  if (currentLanguage === 'as') {
+    return null;
+  }
+
+  // Stop audio on language change or unmount
   useEffect(() => {
-    let isSubscribed = true;
+    stopTwoStageAudio();
     stopAudioSpeech();
     setIsPlaying(false);
     setIsLoading(false);
     setCurrentTime(0);
     setDuration(0);
-
-    if (articleId && currentLanguage) {
-      const syncPosition = async () => {
-        const savedPos = await fetchBackendAudioPosition(articleId, currentLanguage);
-        if (isSubscribed && savedPos > 0) {
-          setCurrentTime(savedPos);
-        }
-      };
-      syncPosition();
-    }
+    setClipStatus('idle');
+    isUsingBrowserFallback.current = false;
 
     return () => {
-      isSubscribed = false;
+      stopTwoStageAudio();
+      stopAudioSpeech();
     };
   }, [articleId, currentLanguage]);
 
-  const handleToggleSpeech = (e) => {
+  const handleToggleSpeech = async (e) => {
     if (e) e.stopPropagation();
 
     if (isPlaying) {
-      pauseAudioSpeech();
-      setIsPlaying(false);
-      setIsLoading(false);
-      if (articleId && currentLanguage && currentTime > 0) {
-        saveAudioPosition(articleId, currentLanguage, currentTime);
+      if (isUsingBrowserFallback.current) {
+        pauseAudioSpeech();
+      } else {
+        pauseTwoStageAudio();
       }
-    } else if (isLoading) {
+      setIsPlaying(false);
+      return;
+    }
+
+    if (isLoading) {
+      stopTwoStageAudio();
       stopAudioSpeech();
       setIsPlaying(false);
       setIsLoading(false);
+      return;
+    }
+
+    // Try resuming active paused stream
+    if (!isUsingBrowserFallback.current) {
+      const resumed = resumeTwoStageAudio();
+      if (resumed) {
+        setIsPlaying(true);
+        return;
+      }
     } else {
-      // Check if we can resume an existing loaded audio element in memory
       const resumed = resumeAudioSpeech();
       if (resumed) {
         setIsPlaying(true);
         return;
       }
+    }
 
-      // Otherwise start/fetch audio stream
-      const fullText = `${title}. ${textToRead}`;
-      setIsLoading(true);
+    // Begin fresh 2-stage audio stream
+    setIsLoading(true);
 
-      const savedPos = getSavedAudioPosition(articleId, currentLanguage) || currentTime;
+    const triggerBrowserFallback = (textToSpeak) => {
+      console.log('[TTS] Smoothly falling back to native browser speech...');
+      isUsingBrowserFallback.current = true;
+      setClipStatus('browser');
 
       speakTextWithNaturalVoice({
-        text: fullText,
+        text: textToSpeak,
         langCode: currentLanguage,
         articleId,
-        startPosition: savedPos,
         onStart: () => setIsLoading(true),
         onPlay: () => {
           setIsLoading(false);
@@ -94,19 +119,58 @@ export default function TextToSpeech({ textToRead, title, currentLanguage = 'en'
         },
         onTimeUpdate: (cur, dur) => {
           setCurrentTime(cur);
-          if (dur && !isNaN(dur) && dur > 0) {
-            setDuration(dur);
-          }
+          if (dur > 0) setDuration(dur);
         },
         onEnd: () => {
           setIsLoading(false);
           setIsPlaying(false);
           setCurrentTime(0);
-          if (articleId && currentLanguage) {
-            clearSavedAudioPosition(articleId, currentLanguage);
-          }
+          setClipStatus('idle');
         }
       });
+    };
+
+    const fullArticleText = highlights && highlights.length 
+      ? `${title}. ${highlights.join('. ')}. ${textToRead}`
+      : `${title}. ${textToRead}`;
+
+    const result = await playTwoStageAudio({
+      articleId: articleId || 'general',
+      lang: currentLanguage,
+      title,
+      highlights: Array.isArray(highlights) ? highlights : [],
+      body: textToRead,
+      onStart: () => {
+        setIsLoading(true);
+      },
+      onPlay: () => {
+        setIsLoading(false);
+        setIsPlaying(true);
+      },
+      onClipChange: (stage) => {
+        setClipStatus(stage);
+      },
+      onTimeUpdate: (cur, dur, stage) => {
+        setCurrentTime(cur);
+        if (dur > 0) setDuration(dur);
+      },
+      onEnd: () => {
+        setIsPlaying(false);
+        setIsLoading(false);
+        setCurrentTime(0);
+        setClipStatus('idle');
+      },
+      onError: () => {
+        triggerBrowserFallback(fullArticleText);
+      },
+      onFallbackToBrowser: (stage) => {
+        triggerBrowserFallback(textToRead);
+      }
+    });
+
+    // If quota exhausted or TTS initial call failed, fall back immediately
+    if (result && result.fallback) {
+      triggerBrowserFallback(fullArticleText);
     }
   };
 
@@ -114,21 +178,19 @@ export default function TextToSpeech({ textToRead, title, currentLanguage = 'en'
     if (e) e.stopPropagation();
     const newTime = parseFloat(e.target.value);
     setCurrentTime(newTime);
-    seekActiveAudio(newTime);
-    if (articleId && currentLanguage) {
-      saveAudioPosition(articleId, currentLanguage, newTime);
+    if (!isUsingBrowserFallback.current) {
+      seekTwoStageAudio(newTime);
     }
   };
 
   const handleRestart = (e) => {
     if (e) e.stopPropagation();
+    stopTwoStageAudio();
     stopAudioSpeech();
     setIsPlaying(false);
     setIsLoading(false);
     setCurrentTime(0);
-    if (articleId && currentLanguage) {
-      clearSavedAudioPosition(articleId, currentLanguage);
-    }
+    setClipStatus('idle');
   };
 
   const handleCycleSpeed = (e) => {
@@ -137,7 +199,7 @@ export default function TextToSpeech({ textToRead, title, currentLanguage = 'en'
     const nextIndex = (currentIndex + 1) % AVAILABLE_SPEEDS.length;
     const nextSpeed = AVAILABLE_SPEEDS[nextIndex];
     setCurrentSpeed(nextSpeed);
-    setAudioPlaybackRate(nextSpeed);
+    setTwoStagePlaybackRate(nextSpeed);
   };
 
   const isExpanded = isPlaying || isLoading || currentTime > 0;
@@ -146,12 +208,12 @@ export default function TextToSpeech({ textToRead, title, currentLanguage = 'en'
     <div 
       className={`audio-player-bar ${isExpanded ? 'expanded' : ''}`} 
       onClick={handleToggleSpeech} 
-      title={isPlaying ? "Click to Pause Audio" : "Click to Play/Resume Audio"}
+      title={isPlaying ? t('clickToPauseAudio', currentLanguage) : t('clickToPlayAudio', currentLanguage)}
     >
       {/* Round Play/Pause Button */}
       <button 
         className="audio-btn" 
-        aria-label={isPlaying ? "Pause Audio Reader" : "Play/Resume Audio Reader"}
+        aria-label={isPlaying ? "Pause Audio Reader" : "Play Story Audio Reader"}
       >
         {isLoading ? (
           <Loader2 size={18} className="spin-animation" />
@@ -162,27 +224,43 @@ export default function TextToSpeech({ textToRead, title, currentLanguage = 'en'
         )}
       </button>
 
-      {/* Collapsed State Label when no audio active and 0 progress */}
+      {/* Collapsed State Label */}
       {!isExpanded ? (
         <div style={{ fontSize: '0.875rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
-          <span>Listen to Story</span>
+          <span>{t('listenToStory', currentLanguage)}</span>
           <Volume2 size={15} color="var(--accent-indigo)" />
         </div>
       ) : (
-        /* Rollout Expanded Interactive Audio Scrubber Timeline Bar */
+        /* Rollout Expanded Interactive Audio Timeline Bar */
         <div className="audio-player-content" style={{ flex: 1, gap: '0.85rem' }} onClick={(e) => e.stopPropagation()}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1, minWidth: '180px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-main)' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <Volume2 size={14} color="var(--accent-indigo)" />
-                {isLoading ? 'Preparing Audio...' : isPlaying ? 'Playing Audio' : 'Audio Paused'}
+                {isLoading ? (
+                  t('generatingVoice', currentLanguage)
+                ) : clipStatus === 'chime' ? (
+                  <span style={{ color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                    <Bell size={12} /> {t('upNextBody', currentLanguage)}
+                  </span>
+                ) : clipStatus === 'clip_1' ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                    <Sparkles size={12} color="var(--accent-indigo)" /> {t('part1Audio', currentLanguage)}
+                  </span>
+                ) : clipStatus === 'clip_2' ? (
+                  t('part2Audio', currentLanguage)
+                ) : isPlaying ? (
+                  t('playingAudio', currentLanguage)
+                ) : (
+                  t('audioPaused', currentLanguage)
+                )}
               </span>
               <span style={{ color: 'var(--text-subtle)', fontFamily: 'monospace' }}>
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
             </div>
 
-            {/* Interactive Progress Bar Scrubber Slider */}
+            {/* Interactive Progress Bar Scrubber */}
             <input 
               type="range"
               min="0"
@@ -199,7 +277,7 @@ export default function TextToSpeech({ textToRead, title, currentLanguage = 'en'
                 cursor: 'pointer',
                 background: 'var(--border-medium)'
               }}
-              title="Drag or click to seek forward/backward"
+              title="Seek playback"
             />
           </div>
 
@@ -217,7 +295,7 @@ export default function TextToSpeech({ textToRead, title, currentLanguage = 'en'
           {currentTime > 0 && (
             <button
               onClick={handleRestart}
-              title="Restart Audio from Beginning"
+              title="Restart Audio"
               style={{
                 background: 'none',
                 border: 'none',
@@ -232,10 +310,10 @@ export default function TextToSpeech({ textToRead, title, currentLanguage = 'en'
             </button>
           )}
 
-          {/* Reading Speed Controller Button */}
+          {/* Speed Selector */}
           <button
             onClick={handleCycleSpeed}
-            title="Click to Change Reading Speed (0.75x, 1.0x, 1.25x, 1.5x, 1.75x, 2.0x)"
+            title="Reading Speed"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -248,21 +326,11 @@ export default function TextToSpeech({ textToRead, title, currentLanguage = 'en'
               fontSize: '0.775rem',
               fontWeight: '700',
               cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              whiteSpace: 'nowrap',
-              boxShadow: 'var(--shadow-sm)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'var(--accent-indigo)';
-              e.currentTarget.style.transform = 'scale(1.04)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'var(--border-medium)';
-              e.currentTarget.style.transform = 'scale(1)';
+              whiteSpace: 'nowrap'
             }}
           >
             <Gauge size={13} color="var(--accent-indigo)" />
-            <span>{currentSpeed}x Speed</span>
+            <span>{currentSpeed}x {t('speed', currentLanguage)}</span>
           </button>
         </div>
       )}

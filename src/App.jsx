@@ -11,7 +11,10 @@ import { MOCK_ARTICLES, MOCK_CATEGORIES } from './services/mockData';
 import { getCachedNews, saveNewsToCache, getCachedCategories, saveCategoriesToCache } from './services/cacheService';
 import { translateArticle, translateHeadlinesOnly, SUPPORTED_LANGUAGES } from './services/translationService';
 import { speakTextWithNaturalVoice, stopAudioSpeech } from './services/speechEngine';
-import { Clock, Eye, Sparkles, TrendingUp, Flame, ShieldCheck, Volume2, Pause, Play, Heart, Bookmark, Send, Share2 } from 'lucide-react';
+import { DEFAULT_REGIONAL_FONTS } from './components/admin/VisualFontPicker';
+import { DEFAULT_THEME_PALETTE } from './components/admin/ColorPaletteCustomizer';
+import { t, translateCategoryName } from './services/uiTranslations';
+import { Clock, Eye, Sparkles, TrendingUp, Flame, ShieldCheck, Volume2, Pause, Play, Heart, Bookmark, Send, Share2, BarChart3, Vote, X, VolumeX, ThumbsUp, ThumbsDown, HelpCircle } from 'lucide-react';
 
 const WhatsAppIcon = ({ size = 18, color = '#ffffff' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -47,6 +50,34 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [selectedArticle, setSelectedArticle] = useState(null);
 
+  // Multi-Language State (Default: Hindi 'hi')
+  const [currentLanguage, setCurrentLanguage] = useState('hi');
+  const [isTranslating, setIsTranslating] = useState(false);
+
+  // Floating Audio Player State
+  const [playingArticleId, setPlayingArticleId] = useState(null);
+  const [playingArticle, setPlayingArticle] = useState(null);
+
+  // Daily News Opinion Poll State
+  const [pollState, setPollState] = useState(() => {
+    try {
+      const local = localStorage.getItem('ps_news_poll_vote');
+      return local ? JSON.parse(local) : { voted: false, choice: null, counts: { yes: 1420, no: 410, undecided: 120 } };
+    } catch (e) {
+      return { voted: false, choice: null, counts: { yes: 1420, no: 410, undecided: 120 } };
+    }
+  });
+
+  const handlePollVote = (choice) => {
+    if (pollState.voted) return;
+    const nextCounts = { ...pollState.counts, [choice]: pollState.counts[choice] + 1 };
+    const newState = { voted: true, choice, counts: nextCounts };
+    setPollState(newState);
+    localStorage.setItem('ps_news_poll_vote', JSON.stringify(newState));
+    setToastMessage(`${t('voteRecorded', currentLanguage)} - ${t('dailyReaderPoll', currentLanguage)}`);
+    setIsToastOpen(true);
+  };
+
   // Toast & Bookmark State
   const [toastMessage, setToastMessage] = useState('');
   const [isToastOpen, setIsToastOpen] = useState(false);
@@ -60,6 +91,16 @@ export default function App() {
     twitter: 'https://x.com'
   };
 
+  const DEFAULT_TYPOGRAPHY = {
+    headingFont: 'Playfair Display',
+    bodyFont: 'Plus Jakarta Sans',
+    headingScale: 100,
+    headingWeight: 700,
+    bodySize: 16,
+    bodyWeight: 400,
+    regionalFonts: DEFAULT_REGIONAL_FONTS
+  };
+
   const [socialLinks, setSocialLinks] = useState(() => {
     try {
       const cached = localStorage.getItem('ps_social_links');
@@ -69,11 +110,140 @@ export default function App() {
     }
   });
 
+  const [typography, setTypography] = useState(() => {
+    try {
+      const cached = localStorage.getItem('ps_typography_settings');
+      return cached ? JSON.parse(cached) : DEFAULT_TYPOGRAPHY;
+    } catch (e) {
+      return DEFAULT_TYPOGRAPHY;
+    }
+  });
+
+  // Apply typography live to document root CSS variables (Seamless per-language font switching)
+  useEffect(() => {
+    const root = document.documentElement;
+    const regional = typography.regionalFonts?.[currentLanguage];
+    const hFont = (regional && regional.headingFont) ? regional.headingFont : (typography.headingFont || 'Playfair Display');
+    const isSerif = [
+      'Playfair Display', 'Rozha One', 'Noto Serif Devanagari', 'Merriweather',
+      'Cinzel', 'DM Serif Display', 'Prata', 'PT Serif', 'Crimson Pro', 'Yatra One',
+      'Noto Serif Bengali', 'Noto Serif Tamil', 'Noto Serif Telugu', 'Noto Serif Gujarati',
+      'Noto Serif Kannada', 'Noto Serif Malayalam', 'Noto Serif Gurmukhi', 'Noto Nastaliq Urdu'
+    ].includes(hFont);
+    root.style.setProperty('--font-serif', `'${hFont}', ${isSerif ? 'Georgia, serif' : 'sans-serif'}`);
+
+    const bFont = (regional && regional.bodyFont) ? regional.bodyFont : (typography.bodyFont || 'Plus Jakarta Sans');
+    const isBodySerif = [
+      'Merriweather', 'Lora', 'PT Serif', 'Crimson Pro', 'Noto Serif Devanagari',
+      'Prata', 'Noto Serif Bengali', 'Noto Serif Tamil', 'Noto Serif Telugu',
+      'Noto Serif Gujarati', 'Noto Serif Kannada', 'Noto Serif Malayalam', 'Noto Serif Gurmukhi'
+    ].includes(bFont);
+    root.style.setProperty('--font-sans', `'${bFont}', ${isBodySerif ? 'Georgia, serif' : "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"}`);
+
+    root.style.setProperty('--font-size-base', `${typography.bodySize || 16}px`);
+    root.style.setProperty('--font-scale-heading', `${(typography.headingScale || 100) / 100}`);
+    root.style.setProperty('--font-weight-heading', `${typography.headingWeight || 700}`);
+    root.style.setProperty('--font-weight-body', `${typography.bodyWeight || 400}`);
+  }, [typography, currentLanguage]);
+
+  const [themePalette, setThemePalette] = useState(() => {
+    try {
+      const cached = localStorage.getItem('ps_theme_palette');
+      return cached ? JSON.parse(cached) : DEFAULT_THEME_PALETTE;
+    } catch (e) {
+      return DEFAULT_THEME_PALETTE;
+    }
+  });
+
+  // Apply dynamic color palette live to document root CSS variables and body element
+  useEffect(() => {
+    if (!themePalette) return;
+    const root = document.documentElement;
+    if (themePalette.primary) {
+      root.style.setProperty('--accent-indigo', themePalette.primary);
+      root.style.setProperty('--gradient-accent', themePalette.primary);
+    }
+    if (themePalette.bgPrimary) {
+      root.style.setProperty('--bg-primary', themePalette.bgPrimary);
+      document.body.style.backgroundColor = themePalette.bgPrimary;
+    }
+    if (themePalette.bgSurface) {
+      root.style.setProperty('--bg-surface', themePalette.bgSurface);
+      root.style.setProperty('--glass-bg', themePalette.bgSurface);
+    }
+    if (themePalette.bgSecondary) {
+      root.style.setProperty('--bg-secondary', themePalette.bgSecondary);
+      root.style.setProperty('--gradient-bento-hero', `linear-gradient(135deg, ${themePalette.bgSecondary} 0%, ${themePalette.bgSurface || '#FFFFFF'} 100%)`);
+    }
+    if (themePalette.textMain) {
+      root.style.setProperty('--text-main', themePalette.textMain);
+      root.style.setProperty('--border-dark', themePalette.textMain);
+      document.body.style.color = themePalette.textMain;
+    }
+    if (themePalette.textMuted) root.style.setProperty('--text-muted', themePalette.textMuted);
+    if (themePalette.textSubtle) root.style.setProperty('--text-subtle', themePalette.textSubtle);
+    if (themePalette.accentCrimson) {
+      root.style.setProperty('--accent-crimson', themePalette.accentCrimson);
+      root.style.setProperty('--accent-crimson-hover', themePalette.accentCrimson);
+      root.style.setProperty('--accent-crimson-bg', `${themePalette.accentCrimson}18`);
+    }
+    if (themePalette.accentBlue) root.style.setProperty('--accent-blue', themePalette.accentBlue);
+    if (themePalette.borderLight) {
+      root.style.setProperty('--border-light', themePalette.borderLight);
+      root.style.setProperty('--glass-border', themePalette.borderLight);
+    }
+    if (themePalette.borderMedium) root.style.setProperty('--border-medium', themePalette.borderMedium);
+  }, [themePalette]);
+
+  const handleUpdateTheme = (updatedTheme) => {
+    setThemePalette(updatedTheme);
+    localStorage.setItem('ps_theme_palette', JSON.stringify(updatedTheme));
+
+    fetch('/api/settings/theme', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-admin-key': 'publicspark-admin-secret-key-2026'
+      },
+      body: JSON.stringify(updatedTheme)
+    })
+    .then(res => res.json())
+    .then(data => {
+      console.log('Backend Theme Palette persisted:', data);
+    })
+    .catch(err => console.error('Error persisting theme palette to backend:', err));
+
+    setToastMessage('Color theme settings applied across platform.');
+    setIsToastOpen(true);
+  };
+
+  const handleUpdateTypography = (updatedTypography) => {
+    setTypography(updatedTypography);
+    localStorage.setItem('ps_typography_settings', JSON.stringify(updatedTypography));
+
+    fetch('/api/settings/typography', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-admin-key': 'publicspark-admin-secret-key-2026'
+      },
+      body: JSON.stringify(updatedTypography)
+    })
+    .then(res => res.json())
+    .then(data => {
+      console.log('Backend Typography persisted:', data);
+    })
+    .catch(err => console.error('Error persisting typography to backend:', err));
+
+    setToastMessage('Typography & Font settings updated across platform.');
+    setIsToastOpen(true);
+  };
+
   const handleUpdateSocialLinks = (updatedLinks) => {
     setSocialLinks(updatedLinks);
     localStorage.setItem('ps_social_links', JSON.stringify(updatedLinks));
 
-    fetch('http://localhost:5000/api/settings/social', {
+    fetch('/api/settings/social', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedLinks)
@@ -84,7 +254,7 @@ export default function App() {
     })
     .catch(err => console.error('Error persisting social links to backend:', err));
 
-    setToastMessage('Social Media Channel URLs saved to Backend Server! 🚀');
+    setToastMessage('Social Media Channel URLs saved to Backend Server!');
     setIsToastOpen(true);
   };
 
@@ -92,7 +262,7 @@ export default function App() {
     setCategories(updatedCategories);
     saveCategoriesToCache(updatedCategories);
 
-    fetch('http://localhost:5000/api/categories', {
+    fetch('/api/categories', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedCategories)
@@ -106,7 +276,7 @@ export default function App() {
 
   // Initial sync from backend server for social links & categories
   useEffect(() => {
-    fetch('http://localhost:5000/api/settings/social')
+    fetch('/api/settings/social')
       .then(res => res.json())
       .then(data => {
         if (data && typeof data === 'object' && Object.keys(data).length > 0) {
@@ -116,7 +286,27 @@ export default function App() {
       })
       .catch(err => console.warn('[Backend Sync] Social links offline fallback:', err.message));
 
-    fetch('http://localhost:5000/api/categories')
+    fetch('/api/settings/typography')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+          setTypography(data);
+          localStorage.setItem('ps_typography_settings', JSON.stringify(data));
+        }
+      })
+      .catch(err => console.warn('[Backend Sync] Typography offline fallback:', err.message));
+
+    fetch('/api/settings/theme')
+      .then(res => res.json())
+      .then(data => {
+        if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+          setThemePalette(data);
+          localStorage.setItem('ps_theme_palette', JSON.stringify(data));
+        }
+      })
+      .catch(err => console.warn('[Backend Sync] Theme offline fallback:', err.message));
+
+    fetch('/api/categories')
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
@@ -125,6 +315,34 @@ export default function App() {
         }
       })
       .catch(err => console.warn('[Backend Sync] Categories offline fallback:', err.message));
+
+    fetch('/api/articles')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setBaseArticles(prev => {
+            const serverIds = new Set(data.map(a => String(a.id)));
+            // Retain any articles created by reporter locally that server hasn't persisted yet
+            const localOnly = prev.filter(p => !serverIds.has(String(p.id)) && p.id && String(p.id).startsWith('art-'));
+            
+            // Sync any local-only articles to backend in background
+            if (localOnly.length > 0) {
+              localOnly.forEach(art => {
+                fetch('/api/articles/update', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(art)
+                }).catch(() => {});
+              });
+            }
+
+            const merged = [...localOnly, ...data];
+            saveNewsToCache(merged);
+            return merged;
+          });
+        }
+      })
+      .catch(err => console.warn('[Backend Sync] Articles offline fallback:', err.message));
   }, []);
 
   const getFormattedWhatsAppLink = (input) => {
@@ -177,20 +395,26 @@ export default function App() {
     saveCategoriesToCache(categories);
   }, [categories]);
 
-  // Multi-Language State (Default: English 'en')
-  const [currentLanguage, setCurrentLanguage] = useState('en');
-  const [isTranslating, setIsTranslating] = useState(false);
-
-  // Quick 1-Click Audio Playing Card ID State
-  const [playingArticleId, setPlayingArticleId] = useState(null);
-
   // Raw & Translated Articles State Management
   const [baseArticles, setBaseArticles] = useState(() => {
     const cached = getCachedNews();
     return cached?.articles || MOCK_ARTICLES;
   });
   const [publishedArticles, setPublishedArticles] = useState(baseArticles);
-  const [pendingArticles, setPendingArticles] = useState([]);
+  const [pendingArticles, setPendingArticles] = useState(() => {
+    try {
+      const raw = localStorage.getItem('ps_pending_articles_v1');
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('ps_pending_articles_v1', JSON.stringify(pendingArticles));
+    } catch (e) {}
+  }, [pendingArticles]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -206,7 +430,7 @@ export default function App() {
     let isSubscribed = true;
 
     async function applyHeadlineTranslation() {
-      if (currentLanguage === 'en') {
+      if (currentLanguage === 'hi') {
         setPublishedArticles(baseArticles);
         return;
       }
@@ -253,34 +477,59 @@ export default function App() {
     if (playingArticleId === article.id) {
       stopAudioSpeech();
       setPlayingArticleId(null);
+      setPlayingArticle(null);
     } else {
       stopAudioSpeech();
       const textToRead = `${article.title}. ${article.summary || article.content}`;
       setPlayingArticleId(article.id);
+      setPlayingArticle(article);
 
       speakTextWithNaturalVoice({
         text: textToRead,
         langCode: currentLanguage,
         articleId: article.id,
-        onStart: () => setPlayingArticleId(article.id),
-        onPlay: () => setPlayingArticleId(article.id),
-        onEnd: () => setPlayingArticleId(null)
+        onStart: () => { setPlayingArticleId(article.id); setPlayingArticle(article); },
+        onPlay: () => { setPlayingArticleId(article.id); setPlayingArticle(article); },
+        onEnd: () => { setPlayingArticleId(null); setPlayingArticle(null); }
       });
     }
   };
 
-  // Reporter submits a new draft
+  // Reporter publishes or submits an article (Publish dabate hi Hindi live)
   const handleAddNewArticle = (newArticle) => {
-    setPendingArticles([newArticle, ...pendingArticles]);
+    if (newArticle.status === 'published') {
+      const updated = [newArticle, ...baseArticles];
+      setBaseArticles(updated);
+      saveNewsToCache(updated);
+
+      // Persist permanently to backend database (server/data/articles.json)
+      fetch('/api/articles/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newArticle)
+      })
+      .then(res => res.json())
+      .then(data => {
+        console.log('[Backend Article Persisted]:', newArticle.id);
+      })
+      .catch(err => {
+        console.warn('[Backend Article Persist Warning, cached in browser]:', err.message);
+      });
+    } else {
+      setPendingArticles([newArticle, ...pendingArticles]);
+      setToastMessage('समाचार Editor Desk पर समीक्षा के लिए भेज दिया गया है!');
+      setIsToastOpen(true);
+    }
   };
 
   // Editor approves story
-  const handleApproveArticle = (articleId, updatedTitle, isBreaking) => {
+  const handleApproveArticle = (articleId, updatedTitle, isBreaking, updatedLanguage) => {
     const target = pendingArticles.find(a => a.id === articleId);
     if (target) {
       const approvedStory = {
         ...target,
         title: updatedTitle || target.title,
+        originalLanguage: updatedLanguage || target.originalLanguage || 'hi',
         status: 'published',
         is_breaking: isBreaking,
         published_at: 'Just now'
@@ -288,13 +537,26 @@ export default function App() {
 
       const updatedBase = [approvedStory, ...baseArticles];
       setBaseArticles(updatedBase);
+      saveNewsToCache(updatedBase);
       setPendingArticles(pendingArticles.filter(a => a.id !== articleId));
+
+      // Persist permanently to backend database
+      fetch('/api/articles/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(approvedStory)
+      }).catch(err => console.warn('[Backend Story Persist Warning]:', err.message));
+
+      setToastMessage(`Story approved & published live: "${approvedStory.title}"`);
+      setIsToastOpen(true);
     }
   };
 
   // Editor rejects story
   const handleRejectArticle = (articleId) => {
     setPendingArticles(pendingArticles.filter(a => a.id !== articleId));
+    setToastMessage('Story rejected/removed from editorial queue.');
+    setIsToastOpen(true);
   };
 
   const handleRemoveBookmark = (e, art) => {
@@ -340,6 +602,7 @@ export default function App() {
         onLanguageChange={setCurrentLanguage}
         isTranslating={isTranslating}
         categories={categories}
+        articles={baseArticles}
       />
 
       {/* Main Content Area */}
@@ -353,10 +616,10 @@ export default function App() {
               <div style={{ padding: '1rem 0 3rem 0' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem', borderBottom: '2px solid #f59e0b', paddingBottom: '0.75rem' }}>
                   <h2 style={{ fontSize: '1.5rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-main)', margin: 0 }}>
-                    <Bookmark size={24} color="#f59e0b" fill="#f59e0b" /> Your Saved Bookmarks ({displayedArticles.length})
+                    <Bookmark size={24} color="#f59e0b" fill="#f59e0b" /> {t('savedBookmarks', currentLanguage)} ({displayedArticles.length})
                   </h2>
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    Saved locally in your browser
+                    {t('savedBookmarks', currentLanguage)}
                   </span>
                 </div>
 
@@ -368,23 +631,23 @@ export default function App() {
                           <img src={art.featured_image} alt={art.title} />
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0.6rem 0' }}>
-                          <span className="story-category-tag">{art.category}</span>
+                          <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                             <button 
                               onClick={(e) => handleQuickAudioRead(e, art)}
                               className="btn btn-outline"
-                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px' }}
+                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                             >
                               {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                              {playingArticleId === art.id ? 'Playing' : 'Listen 🔊'}
+                              {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
                             </button>
                             <button 
                               onClick={(e) => handleRemoveBookmark(e, art)}
                               className="btn"
-                              style={{ padding: '0.2rem 0.65rem', fontSize: '0.7rem', borderRadius: '20px', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: '700' }}
-                              title="Remove from Bookmarks"
+                              style={{ padding: '0.2rem 0.65rem', fontSize: '0.7rem', borderRadius: '20px', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                              title={t('remove', currentLanguage)}
                             >
-                              Remove ✖
+                              <X size={11} /> {t('remove', currentLanguage)}
                             </button>
                           </div>
                         </div>
@@ -392,10 +655,11 @@ export default function App() {
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', marginBottom: '0.75rem' }}>
                           {art.excerpt}
                         </p>
-                        <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                          <span>By {art.author?.name || 'Editorial Desk'}</span>
-                          <span>• <Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '6.3K'}</span>
-                          <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '720'}</span>
+                        <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-subtle)', flexWrap: 'wrap' }}>
+                          <span>{t('byAuthor', currentLanguage)} {art.author?.name || 'Editorial Desk'}</span>
+                          <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                          <span>• <Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '6.3K'} {t('views', currentLanguage)}</span>
+                          <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '720'} {t('likes', currentLanguage)}</span>
                         </div>
                       </div>
                     ))}
@@ -404,10 +668,10 @@ export default function App() {
                   <div style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--text-subtle)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', border: '1px dashed #f59e0b', margin: '1rem 0' }}>
                     <Bookmark size={48} color="#f59e0b" style={{ marginBottom: '0.75rem' }} />
                     <h3 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
-                      No Saved Bookmarks Yet
+                      {t('noSavedBookmarks', currentLanguage)}
                     </h3>
                     <p style={{ fontSize: '0.9rem', maxWidth: '440px', margin: '0 auto', lineHeight: '1.5' }}>
-                      Open any news story and click the <strong>"Bookmark"</strong> button to save it here for quick access anytime!
+                      {t('noSavedBookmarksDesc', currentLanguage)}
                     </p>
                   </div>
                 )}
@@ -422,33 +686,34 @@ export default function App() {
                       <div className="img-container">
                         <img src={heroArticle.featured_image} alt={heroArticle.title} />
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <span className="story-category-tag">{heroArticle.category}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span className="story-category-tag">{translateCategoryName(heroArticle.category, currentLanguage)}</span>
                           {heroArticle.is_breaking && (
-                            <span className="badge badge-live"><Flame size={12} /> Breaking Lead</span>
+                            <span className="badge badge-live"><Flame size={12} /> {t('breaking', currentLanguage)}</span>
                           )}
-                          <span className="badge badge-verified"><ShieldCheck size={12} /> Verified</span>
+                          <span className="badge badge-verified"><ShieldCheck size={12} /> {t('factChecked', currentLanguage)}</span>
                         </div>
 
                         {/* 1-Click Audio Reader Trigger */}
                         <button 
                           onClick={(e) => handleQuickAudioRead(e, heroArticle)}
                           className="btn btn-outline"
-                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', borderRadius: '20px' }}
-                          title="1-Click Listen to Story"
+                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                          title={t('listenToStory', currentLanguage)}
                         >
                           {playingArticleId === heroArticle.id ? <Pause size={13} color="var(--accent-crimson)" /> : <Volume2 size={13} color="var(--accent-crimson)" />}
-                          {playingArticleId === heroArticle.id ? 'Playing' : 'Listen 🔊'}
+                          {playingArticleId === heroArticle.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
                         </button>
                       </div>
 
                       <h2 className="story-card-title">{heroArticle.title}</h2>
                       <div className="story-meta" style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span>By {heroArticle.author?.name}</span>
+                        <span>{t('byAuthor', currentLanguage)} {heroArticle.author?.name}</span>
                         <span>• {heroArticle.published_at}</span>
-                        <span style={{ color: 'var(--accent-crimson)', fontWeight: '600' }}>• <Eye size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> {heroArticle.views_count ? heroArticle.views_count.toLocaleString() : '14.2K'} views</span>
-                        <span style={{ color: '#ef4444', fontWeight: '600' }}>• <Heart size={12} style={{ display: 'inline', verticalAlign: 'middle' }} fill="#ef4444" /> {heroArticle.likes_count ? heroArticle.likes_count.toLocaleString() : '1.8K'} likes</span>
+                        <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((heroArticle.content?.split(/\s+/).length || 320) / 180))} {t('minsRead', currentLanguage)}</span>
+                        <span style={{ color: 'var(--accent-crimson)', fontWeight: '600' }}>• <Eye size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> {heroArticle.views_count ? heroArticle.views_count.toLocaleString() : '14.2K'} {t('views', currentLanguage)}</span>
+                        <span style={{ color: '#ef4444', fontWeight: '600' }}>• <Heart size={12} style={{ display: 'inline', verticalAlign: 'middle' }} fill="#ef4444" /> {heroArticle.likes_count ? heroArticle.likes_count.toLocaleString() : '1.8K'} {t('likes', currentLanguage)}</span>
                       </div>
                     </div>
 
@@ -460,21 +725,22 @@ export default function App() {
                             <img src={art.featured_image} alt={art.title} />
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span className="story-category-tag">{art.category}</span>
+                            <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
                             <button 
                               onClick={(e) => handleQuickAudioRead(e, art)}
                               className="btn btn-outline"
-                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px' }}
+                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                             >
                               {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                              {playingArticleId === art.id ? 'Playing' : 'Listen 🔊'}
+                              {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
                             </button>
                           </div>
                           <h3 className="story-card-title">{art.title}</h3>
-                          <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                          <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
                             <span>{art.published_at}</span>
-                            <span>• <Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '8.9K'}</span>
-                            <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '950'}</span>
+                            <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                            <span>• <Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '8.9K'} {t('views', currentLanguage)}</span>
+                            <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '950'} {t('likes', currentLanguage)}</span>
                           </div>
                         </div>
                       ))}
@@ -484,29 +750,29 @@ export default function App() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                       <div className="opinion-box">
                         <div className="opinion-header">
-                          <Sparkles size={15} /> Editor's Spotlight
+                          <Sparkles size={15} /> {t('editorsSpotlight', currentLanguage)}
                         </div>
-                        <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', fontWeight: '800', lineHeight: '1.35', cursor: 'pointer', marginBottom: '0.75rem' }} onClick={() => handleSelectArticle(publishedArticles[3] || heroArticle)}>
+                        <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.35', cursor: 'pointer', marginBottom: '0.75rem' }} onClick={() => handleSelectArticle(publishedArticles[3] || heroArticle)}>
                           {(publishedArticles[3] || heroArticle)?.title}
                         </h3>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', fontWeight: '600' }}>
-                          By {(publishedArticles[3] || heroArticle)?.author?.name || 'Kabir Roy, Editor-in-Chief'}
+                          {t('byAuthor', currentLanguage)} {(publishedArticles[3] || heroArticle)?.author?.name || 'Kabir Roy, Editor-in-Chief'}
                         </div>
                       </div>
 
                       <div className="trending-widget">
                         <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-crimson)', letterSpacing: '0.08em' }}>
-                          <TrendingUp size={16} /> Top Trending Stories
+                          <TrendingUp size={16} /> {t('topTrendingStories', currentLanguage)}
                         </h4>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           {publishedArticles.slice(1, 4).map((art, idx) => (
                             <div key={art.id} className="trending-item" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
                               <span className="trending-rank">0{idx + 1}</span>
                               <div>
-                                <div style={{ fontSize: '0.875rem', fontWeight: '800', lineHeight: '1.3' }}>{art.title}</div>
+                                <div style={{ fontSize: '0.875rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.3' }}>{art.title}</div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.2rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                  <span><Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '8.9K'}</span>
-                                  <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '950'}</span>
+                                  <span><Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '8.9K'} {t('views', currentLanguage)}</span>
+                                  <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '950'} {t('likes', currentLanguage)}</span>
                                   <span>• {art.published_at}</span>
                                 </div>
                               </div>
@@ -514,15 +780,103 @@ export default function App() {
                           ))}
                         </div>
                       </div>
+
+                      {/* Interactive Daily Public Voice Poll Widget */}
+                      <div style={{ 
+                        background: 'var(--gradient-bento-hero)', 
+                        border: '1px solid var(--glass-border)', 
+                        borderRadius: 'var(--radius-bento)', 
+                        padding: '1.25rem',
+                        boxShadow: 'var(--shadow-sm)'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-indigo)', fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', marginBottom: '0.6rem', letterSpacing: '0.05em' }}>
+                          <BarChart3 size={15} /> {t('dailyReaderPoll', currentLanguage)}
+                        </div>
+                        <h4 style={{ fontSize: '0.95rem', fontWeight: '800', lineHeight: '1.35', marginBottom: '1rem', color: 'var(--text-main)' }}>
+                          "{t('pollQuestion', currentLanguage)}"
+                        </h4>
+
+                        {!pollState.voted ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <button
+                              onClick={() => handlePollVote('yes')}
+                              className="btn btn-outline"
+                              style={{ width: '100%', justifyContent: 'flex-start', padding: '0.45rem 0.85rem', fontSize: '0.85rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                            >
+                              <ThumbsUp size={14} color="var(--accent-indigo)" /> {t('pollYes', currentLanguage)}
+                            </button>
+                            <button
+                              onClick={() => handlePollVote('no')}
+                              className="btn btn-outline"
+                              style={{ width: '100%', justifyContent: 'flex-start', padding: '0.45rem 0.85rem', fontSize: '0.85rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                            >
+                              <ThumbsDown size={14} color="var(--accent-crimson)" /> {t('pollNo', currentLanguage)}
+                            </button>
+                            <button
+                              onClick={() => handlePollVote('undecided')}
+                              className="btn btn-outline"
+                              style={{ width: '100%', justifyContent: 'flex-start', padding: '0.45rem 0.85rem', fontSize: '0.85rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                            >
+                              <HelpCircle size={14} color="var(--text-subtle)" /> {t('pollNeutral', currentLanguage)}
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            {(() => {
+                              const totalVotes = pollState.counts.yes + pollState.counts.no + pollState.counts.undecided;
+                              const yesPct = Math.round((pollState.counts.yes / totalVotes) * 100);
+                              const noPct = Math.round((pollState.counts.no / totalVotes) * 100);
+                              const undecidedPct = 100 - (yesPct + noPct);
+                              return (
+                                <>
+                                  <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '0.2rem' }}>
+                                      <span>{t('pollYes', currentLanguage)} ({pollState.counts.yes})</span>
+                                      <span>{yesPct}%</span>
+                                    </div>
+                                    <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
+                                      <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--accent-indigo)', transition: 'width 0.5s ease' }}></div>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '0.2rem' }}>
+                                      <span>{t('pollNo', currentLanguage)} ({pollState.counts.no})</span>
+                                      <span>{noPct}%</span>
+                                    </div>
+                                    <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
+                                      <div style={{ width: `${noPct}%`, height: '100%', background: 'var(--accent-crimson)', transition: 'width 0.5s ease' }}></div>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '0.2rem' }}>
+                                      <span>{t('pollNeutral', currentLanguage)} ({pollState.counts.undecided})</span>
+                                      <span>{undecidedPct}%</span>
+                                    </div>
+                                    <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
+                                      <div style={{ width: `${undecidedPct}%`, height: '100%', background: 'var(--accent-amber)', transition: 'width 0.5s ease' }}></div>
+                                    </div>
+                                  </div>
+
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', fontWeight: '700', marginTop: '0.4rem', textAlign: 'center' }}>
+                                    ✓ {t('voteRecorded', currentLanguage)} ({totalVotes.toLocaleString()} {t('readersVoted', currentLanguage)})
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ) : (
                   <div style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--text-subtle)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--border-medium)', margin: '2rem 0' }}>
                     <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
-                      No Stories Found
+                      {t('noStoriesFound', currentLanguage)}
                     </h3>
                     <p style={{ fontSize: '0.9rem', maxWidth: '440px', margin: '0 auto', lineHeight: '1.5' }}>
-                      No stories published in this category yet.
+                      {t('noStoriesCategory', currentLanguage)}
                     </p>
                   </div>
                 )}
@@ -531,7 +885,7 @@ export default function App() {
                 {remainingArticles.length > 0 && (
                   <div style={{ padding: '2.5rem 0' }}>
                     <h3 className="headline" style={{ fontSize: '1.75rem', fontWeight: '900', marginBottom: '1.75rem', borderBottom: '2px solid var(--border-dark)', paddingBottom: '0.6rem' }}>
-                      Verified Editorial Stream
+                      {t('verifiedEditorialStream', currentLanguage)}
                     </h3>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '2rem' }}>
                       {remainingArticles.map((art) => (
@@ -540,20 +894,21 @@ export default function App() {
                             <img src={art.featured_image} alt={art.title} />
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span className="story-category-tag">{art.category}</span>
+                            <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
                             <button 
                               onClick={(e) => handleQuickAudioRead(e, art)}
                               className="btn btn-outline"
-                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px' }}
+                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                             >
                               {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                              {playingArticleId === art.id ? 'Playing' : 'Listen 🔊'}
+                              {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
                             </button>
                           </div>
                           <h3 className="story-card-title">{art.title}</h3>
-                          <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.4rem' }}>
-                            <span><Eye size={12} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '6.3K'} views</span>
-                            <span>• <Heart size={12} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '720'} likes</span>
+                          <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.4rem', flexWrap: 'wrap' }}>
+                            <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                            <span>• <Eye size={12} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '6.3K'} {t('views', currentLanguage)}</span>
+                            <span>• <Heart size={12} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '720'} {t('likes', currentLanguage)}</span>
                           </div>
                         </div>
                       ))}
@@ -580,14 +935,19 @@ export default function App() {
         {activeView === 'search' && (
           <SearchPage 
             articles={publishedArticles}
+            categories={categories}
             onSelectArticle={handleSelectArticle}
             onBack={() => setActiveView('home')}
+            currentLanguage={currentLanguage}
           />
         )}
 
         {/* WORKSPACE DESKS */}
         {activeView === 'reporter' && (
-          <ReporterWorkspace onAddNewArticle={handleAddNewArticle} />
+          <ReporterWorkspace 
+            categories={categories}
+            onAddNewArticle={handleAddNewArticle} 
+          />
         )}
 
         {activeView === 'editor' && (
@@ -600,10 +960,18 @@ export default function App() {
 
         {activeView === 'admin' && (
           <AdminWorkspace 
+            articles={baseArticles}
+            onUpdateArticles={(updated) => { setBaseArticles(updated); saveNewsToCache(updated); }}
             categories={categories}
             onUpdateCategories={handleUpdateCategories}
             socialLinks={socialLinks}
             onUpdateSocialLinks={handleUpdateSocialLinks}
+            typography={typography}
+            onUpdateTypography={handleUpdateTypography}
+            themePalette={themePalette}
+            onUpdateTheme={handleUpdateTheme}
+            onShowToast={(msg) => { setToastMessage(msg); setIsToastOpen(true); }}
+            onSelectArticle={handleSelectArticle}
           />
         )}
       </main>
@@ -618,7 +986,7 @@ export default function App() {
       {/* Footer */}
       <footer style={{ background: 'var(--bg-surface)', borderTop: '3px double var(--border-dark)', padding: '3rem 0 1.5rem 0', marginTop: '4rem' }}>
         <div className="container">
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+          <div className="footer-grid">
             <div>
               <img src="/logo.png" alt="PUBLIC SPARK Logo" style={{ height: '60px', width: 'auto', objectFit: 'contain', marginBottom: '0.75rem' }} />
               <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: '420px', lineHeight: '1.6', marginBottom: '1.25rem' }}>
@@ -756,6 +1124,76 @@ export default function App() {
             © 2026 PublicSpark Newsroom Platform. All rights reserved. Built with precision for human journalism.
           </div>
         </div>
+      {/* Floating Glassmorphic Audio Mini-Player Bar */}
+      {playingArticleId && (
+        <div 
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '92%',
+            maxWidth: '680px',
+            zIndex: 99999,
+            background: 'var(--glass-bg)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid var(--accent-indigo)',
+            borderRadius: 'var(--radius-bento)',
+            padding: '0.85rem 1.25rem',
+            boxShadow: 'var(--shadow-glow), 0 12px 36px rgba(0,0,0,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', overflow: 'hidden', flex: 1 }}>
+            {/* Audio Equalizer animation bars */}
+            <div className="equalizer-container" style={{ flexShrink: 0 }}>
+              <div className="equalizer-bar"></div>
+              <div className="equalizer-bar"></div>
+              <div className="equalizer-bar"></div>
+              <div className="equalizer-bar"></div>
+            </div>
+
+            <div style={{ overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7rem', fontWeight: '800', color: 'var(--accent-indigo)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <Volume2 size={12} /> {t('nowReadingAudio', currentLanguage)}
+              </div>
+              <div style={{ fontSize: '0.875rem', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-main)' }}>
+                {playingArticle?.title || 'Playing News Article...'}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+            <button
+              onClick={() => {
+                stopAudioSpeech();
+                setPlayingArticleId(null);
+                setPlayingArticle(null);
+              }}
+              className="btn btn-primary"
+              style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem', borderRadius: '20px' }}
+            >
+              {t('stopAudio', currentLanguage)}
+            </button>
+            <button
+              onClick={() => {
+                stopAudioSpeech();
+                setPlayingArticleId(null);
+                setPlayingArticle(null);
+              }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '0.2rem' }}
+              title="Close Audio Bar"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
       </footer>
     </div>
   );

@@ -3,7 +3,7 @@
  * Real-time view logging, heartbeat monitoring, and analytics reporting APIs.
  */
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = '';
 
 /**
  * Start a new reading view session when user opens an article card/reader.

@@ -11,10 +11,10 @@ export const MOCK_CATEGORIES = [
 ];
 
 export const MOCK_BREAKING_NEWS = [
-  "🔥 BREAKING: ISRO successfully launches Next-Gen Earth Observation Satellite from Sriharikota.",
-  "⚡ Sensex crosses historical 85,000 mark in morning trade driven by tech & banking rally.",
-  "🌧️ Heavy rainfall alert issued for coastal Maharashtra and Goa over the next 48 hours.",
-  "🚀 Quantum Computing Breakthrough: Researchers achieve room-temperature semiconductor stability."
+  "BREAKING: ISRO successfully launches Next-Gen Earth Observation Satellite from Sriharikota.",
+  "Sensex crosses historical 85,000 mark in morning trade driven by tech & banking rally.",
+  "Heavy rainfall alert issued for coastal Maharashtra and Goa over the next 48 hours.",
+  "Quantum Computing Breakthrough: Researchers achieve room-temperature semiconductor stability."
 ];
 
 export const MOCK_ARTICLES = [

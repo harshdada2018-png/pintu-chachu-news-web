@@ -1,0 +1,146 @@
+{
+  "art-1:hi:clip_1_intro": {
+    "article_id": "art-1",
+    "lang": "hi",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1_hi_clip_1_intro.wav",
+    "size_bytes": 382436,
+    "status": "done",
+    "created_at": "2026-10-18T11:45:41.694Z"
+  },
+  "art-2:en:clip_1_intro": {
+    "article_id": "art-2",
+    "lang": "en",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-2_en_clip_1_intro.wav",
+    "size_bytes": 288356,
+    "status": "done",
+    "created_at": "2026-10-18T11:48:57.939Z"
+  },
+  "art-2:hi:clip_1_intro": {
+    "article_id": "art-2",
+    "lang": "hi",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-2_hi_clip_1_intro.wav",
+    "size_bytes": 332516,
+    "status": "done",
+    "created_at": "2026-10-18T11:49:47.047Z"
+  },
+  "art-2:bn:clip_1_intro": {
+    "article_id": "art-2",
+    "lang": "bn",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-2_bn_clip_1_intro.wav",
+    "size_bytes": 720356,
+    "status": "done",
+    "created_at": "2026-10-18T11:50:18.295Z"
+  },
+  "art-3:gu:clip_1_intro": {
+    "article_id": "art-3",
+    "lang": "gu",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-3_gu_clip_1_intro.wav",
+    "size_bytes": 319076,
+    "status": "done",
+    "created_at": "2026-10-18T11:57:21.124Z"
+  },
+  "art-1:hi:clip_2_body": {
+    "article_id": "art-1",
+    "lang": "hi",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-1_hi_clip_2_body.wav",
+    "size_bytes": 553316,
+    "status": "done",
+    "created_at": "2026-10-18T12:13:52.712Z"
+  },
+  "art-1792326765287:hi:clip_1_intro": {
+    "article_id": "art-1792326765287",
+    "lang": "hi",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1792326765287_hi_clip_1_intro.wav",
+    "size_bytes": 367076,
+    "status": "done",
+    "created_at": "2026-10-18T12:47:43.619Z"
+  },
+  "art-1792326765287:hi:clip_2_body": {
+    "article_id": "art-1792326765287",
+    "lang": "hi",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-1792326765287_hi_clip_2_body.wav",
+    "size_bytes": 539876,
+    "status": "done",
+    "created_at": "2026-10-18T12:48:31.925Z"
+  },
+  "art-1792328144536:or:clip_1_intro": {
+    "article_id": "art-1792328144536",
+    "lang": "or",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1792328144536_or_clip_1_intro.wav",
+    "size_bytes": 1044836,
+    "status": "done",
+    "created_at": "2026-10-18T12:56:56.448Z"
+  },
+  "art-1792328144536:or:clip_2_body": {
+    "article_id": "art-1792328144536",
+    "lang": "or",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-1792328144536_or_clip_2_body.wav",
+    "size_bytes": 8072036,
+    "status": "done",
+    "created_at": "2026-10-18T12:57:28.177Z"
+  },
+  "art-1792336931463:en:clip_1_intro": {
+    "article_id": "art-1792336931463",
+    "lang": "en",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1792336931463_en_clip_1_intro.wav",
+    "size_bytes": 1094756,
+    "status": "done",
+    "created_at": "2026-10-18T15:24:23.450Z"
+  },
+  "art-1792336931463:en:clip_2_body": {
+    "article_id": "art-1792336931463",
+    "lang": "en",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-1792336931463_en_clip_2_body.wav",
+    "size_bytes": 7428836,
+    "status": "done",
+    "created_at": "2026-10-18T15:24:53.262Z"
+  },
+  "art-1792336931463:te:clip_1_intro": {
+    "article_id": "art-1792336931463",
+    "lang": "te",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1792336931463_te_clip_1_intro.wav",
+    "size_bytes": 1305956,
+    "status": "done",
+    "created_at": "2026-10-18T15:24:53.666Z"
+  },
+  "art-1792336931463:te:clip_2_body": {
+    "article_id": "art-1792336931463",
+    "lang": "te",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-1792336931463_te_clip_2_body.wav",
+    "size_bytes": 9696356,
+    "status": "done",
+    "created_at": "2026-10-18T15:25:35.693Z"
+  },
+  "art-1792336931463:ja:clip_1_intro": {
+    "article_id": "art-1792336931463",
+    "lang": "ja",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1792336931463_ja_clip_1_intro.wav",
+    "size_bytes": 1327076,
+    "status": "done",
+    "created_at": "2026-10-18T15:27:19.762Z"
+  },
+  "art-1792336931463:ja:clip_2_body": {
+    "article_id": "art-1792336931463",
+    "lang": "ja",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-1792336931463_ja_clip_2_body.wav",
+    "size_bytes": 9525646,
+    "status": "done",
+    "created_at": "2026-10-18T15:28:58.731Z"
+  }
+}

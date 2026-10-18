@@ -3,14 +3,19 @@ import { Newspaper, Flame, ShieldCheck, Radio } from 'lucide-react';
 
 export default function LoadingSplash({ onFinished }) {
   const [progress, setProgress] = useState(15);
+  const [isExiting, setIsExiting] = useState(false);
 
   useEffect(() => {
     const timer1 = setTimeout(() => setProgress(45), 200);
-    const timer2 = setTimeout(() => setProgress(80), 500);
-    const timer3 = setTimeout(() => setProgress(100), 900);
+    const timer2 = setTimeout(() => setProgress(80), 600);
+    const timer3 = setTimeout(() => {
+      setProgress(100);
+      setIsExiting(true);
+    }, 1100);
+
     const timer4 = setTimeout(() => {
       if (onFinished) onFinished();
-    }, 1100);
+    }, 1700);
 
     return () => {
       clearTimeout(timer1);
@@ -25,25 +30,34 @@ export default function LoadingSplash({ onFinished }) {
       position: 'fixed',
       inset: 0,
       zIndex: 9999,
-      backgroundColor: 'var(--bg-primary, #FAF8F5)',
+      backgroundColor: isExiting ? 'transparent' : 'var(--bg-primary, #FAF8F5)',
+      backdropFilter: isExiting ? 'blur(0px)' : 'blur(12px)',
+      WebkitBackdropFilter: isExiting ? 'blur(0px)' : 'blur(12px)',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '2rem',
-      transition: 'opacity 0.4s ease-out'
+      transition: 'background-color 0.6s cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 0.6s ease',
+      pointerEvents: isExiting ? 'none' : 'auto'
     }}>
-      {/* Animated Glowing Masthead Logo */}
-      <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+      {/* Animated Flying Masthead Logo */}
+      <div style={{ 
+        textAlign: 'center', 
+        marginBottom: '1.75rem',
+        transform: isExiting ? 'translateY(-240px) scale(0.85)' : 'translateY(0) scale(1)',
+        opacity: isExiting ? 0 : 1,
+        transition: 'transform 0.65s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s ease-out'
+      }}>
         <img 
           src="/logo.png" 
           alt="PUBLIC SPARK Logo" 
           style={{ 
-            height: '110px', 
+            height: '115px', 
             width: 'auto', 
             objectFit: 'contain',
-            filter: 'drop-shadow(0 4px 18px rgba(197, 34, 31, 0.25))',
-            animation: 'pulse 1.8s infinite'
+            filter: 'drop-shadow(0 6px 22px rgba(197, 34, 31, 0.3))',
+            animation: isExiting ? 'none' : 'pulse 1.8s infinite'
           }} 
         />
 
@@ -57,7 +71,9 @@ export default function LoadingSplash({ onFinished }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '0.4rem'
+          gap: '0.4rem',
+          opacity: isExiting ? 0 : 1,
+          transition: 'opacity 0.3s ease'
         }}>
           <Radio size={14} className="pulse-dot" /> LIVE EDITORIAL NETWORK
         </div>
@@ -71,14 +87,17 @@ export default function LoadingSplash({ onFinished }) {
         backgroundColor: 'var(--border-medium, #E5E7EB)', 
         borderRadius: '10px', 
         overflow: 'hidden',
-        marginBottom: '1.25rem'
+        marginBottom: '1.25rem',
+        opacity: isExiting ? 0 : 1,
+        transform: isExiting ? 'translateY(20px)' : 'translateY(0)',
+        transition: 'opacity 0.35s ease, transform 0.35s ease'
       }}>
         <div style={{ 
           height: '100%', 
           width: `${progress}%`, 
           backgroundColor: 'var(--accent-crimson, #C5221F)', 
           transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          boxShadow: '0 0 10px rgba(197, 34, 31, 0.6)'
+          boxShadow: '0 0 12px rgba(197, 34, 31, 0.7)'
         }} />
       </div>
 
@@ -89,7 +108,10 @@ export default function LoadingSplash({ onFinished }) {
         fontWeight: '600',
         display: 'flex',
         alignItems: 'center',
-        gap: '0.4rem'
+        gap: '0.4rem',
+        opacity: isExiting ? 0 : 1,
+        transform: isExiting ? 'translateY(20px)' : 'translateY(0)',
+        transition: 'opacity 0.35s ease 0.05s, transform 0.35s ease 0.05s'
       }}>
         <ShieldCheck size={16} color="var(--accent-emerald, #059669)" /> 
         {progress < 50 ? 'Connecting to Newsroom Stream...' : progress < 90 ? 'Verifying Ground-Truth Metadata...' : 'Opening PublicSpark...'}

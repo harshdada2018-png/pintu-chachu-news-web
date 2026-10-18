@@ -1,0 +1,223 @@
+{
+  "themePresets": [
+    {
+      "id": "broadsheet",
+      "name": "The Grand Broadsheet",
+      "beat": "National Affairs & Investigative Journalism",
+      "description": "Warm newsprint paper with deep obsidian ink and heritage crimson accents for high editorial credibility.",
+      "colors": {
+        "primary": "#121212",
+        "bgPrimary": "#FBFBF9",
+        "bgSurface": "#FFFFFF",
+        "bgSecondary": "#F3F2EE",
+        "textMain": "#121212",
+        "textMuted": "#4A4A4A",
+        "textSubtle": "#737373",
+        "accentCrimson": "#B81D13",
+        "accentBlue": "#0D5B8C",
+        "borderLight": "#E8E6DF",
+        "borderMedium": "#D5D2C7"
+      }
+    },
+    {
+      "id": "global-wire",
+      "name": "The Global Wire",
+      "beat": "Global Wire & Breaking Bulletins",
+      "description": "Fast, urgent breaking news broadcast styling with signature signal red and clean newsroom slate.",
+      "colors": {
+        "primary": "#BB1919",
+        "bgPrimary": "#F3F4F6",
+        "bgSurface": "#FFFFFF",
+        "bgSecondary": "#E5E7EB",
+        "textMain": "#111827",
+        "textMuted": "#374151",
+        "textSubtle": "#6B7280",
+        "accentCrimson": "#D91424",
+        "accentBlue": "#0C548A",
+        "borderLight": "#E5E7EB",
+        "borderMedium": "#D1D5DB"
+      }
+    },
+    {
+      "id": "editorial-spectrum",
+      "name": "Metropolitan Editorial Spectrum",
+      "beat": "Civic Culture & Public Policy",
+      "description": "Authoritative deep navy foundation punctuated with canary marigold and cardinal coral for cultural journalism.",
+      "colors": {
+        "primary": "#052962",
+        "bgPrimary": "#F6F6F6",
+        "bgSurface": "#FFFFFF",
+        "bgSecondary": "#EAEDED",
+        "textMain": "#121212",
+        "textMuted": "#333333",
+        "textSubtle": "#707070",
+        "accentCrimson": "#C70000",
+        "accentBlue": "#B89B00",
+        "borderLight": "#DFE1E5",
+        "borderMedium": "#C1C5CC"
+      }
+    },
+    {
+      "id": "financial-bisque",
+      "name": "Financial Bisque",
+      "beat": "Markets, Commerce & Macroeconomics",
+      "description": "Classic warm salmon paper with dark claret typography and jade market accents for economic precision.",
+      "colors": {
+        "primary": "#0A2540",
+        "bgPrimary": "#FFF1E5",
+        "bgSurface": "#FDF8F4",
+        "bgSecondary": "#F7E6D7",
+        "textMain": "#262220",
+        "textMuted": "#4F4844",
+        "textSubtle": "#7D7570",
+        "accentCrimson": "#B00020",
+        "accentBlue": "#098453",
+        "borderLight": "#EBD7C5",
+        "borderMedium": "#D9C2AD"
+      }
+    },
+    {
+      "id": "tech-bento",
+      "name": "Modern Tech Bento",
+      "beat": "Emerging Tech, AI & Digital Frontiers",
+      "description": "Vibrant indigo and electric violet with neon coral accents tailored for high-energy digital media.",
+      "colors": {
+        "primary": "#6366F1",
+        "bgPrimary": "#F8FAFC",
+        "bgSurface": "#FFFFFF",
+        "bgSecondary": "#F1F5F9",
+        "textMain": "#0F172A",
+        "textMuted": "#334155",
+        "textSubtle": "#64748B",
+        "accentCrimson": "#EF4444",
+        "accentBlue": "#3B82F6",
+        "borderLight": "#E2E8F0",
+        "borderMedium": "#CBD5E1"
+      }
+    },
+    {
+      "id": "nordic-minimal",
+      "name": "Nordic Minimalist",
+      "beat": "Rapid Briefings & Bulletproof Summary",
+      "description": "Glacier chalk canvas with obsidian text and precision cyan for distraction-free rapid scanning.",
+      "colors": {
+        "primary": "#0284C7",
+        "bgPrimary": "#F8F9FA",
+        "bgSurface": "#FFFFFF",
+        "bgSecondary": "#F1F3F5",
+        "textMain": "#111827",
+        "textMuted": "#374151",
+        "textSubtle": "#6B7280",
+        "accentCrimson": "#EA580C",
+        "accentBlue": "#0284C7",
+        "borderLight": "#E5E7EB",
+        "borderMedium": "#D1D5DB"
+      }
+    },
+    {
+      "id": "vernacular-kesari",
+      "name": "Vernacular Kesari & Teal",
+      "beat": "Regional Bureau & Cultural Heritage",
+      "description": "Regal Indian saffron paired with deep peacock teal and warm khadi paper for regional editions.",
+      "colors": {
+        "primary": "#D9531E",
+        "bgPrimary": "#FAF8F5",
+        "bgSurface": "#FFFFFF",
+        "bgSecondary": "#F3EFEA",
+        "textMain": "#1F1B18",
+        "textMuted": "#423B36",
+        "textSubtle": "#786F68",
+        "accentCrimson": "#C62828",
+        "accentBlue": "#004D40",
+        "borderLight": "#EAE4DC",
+        "borderMedium": "#D6CDC2"
+      }
+    },
+    {
+      "id": "earth-heritage",
+      "name": "Earth & Environmental",
+      "beat": "Climate, Ecology & Science Deep Dives",
+      "description": "Deep highland pine, soft celadon mist canvas, and warm ochre for in-depth investigative journalism.",
+      "colors": {
+        "primary": "#0C4A42",
+        "bgPrimary": "#F7FAF8",
+        "bgSurface": "#FFFFFF",
+        "bgSecondary": "#EBF2EE",
+        "textMain": "#1A2321",
+        "textMuted": "#3D4C49",
+        "textSubtle": "#6C7E7A",
+        "accentCrimson": "#C25934",
+        "accentBlue": "#D97706",
+        "borderLight": "#DEE8E3",
+        "borderMedium": "#C5D6CF"
+      }
+    },
+    {
+      "id": "midnight-executive",
+      "name": "Midnight Executive",
+      "beat": "Executive Briefings & Diplomatic Dispatches",
+      "description": "Deep velvet charcoal with champagne ivory typography and brushed brass gold for VIP readers.",
+      "colors": {
+        "primary": "#D4AF37",
+        "bgPrimary": "#121316",
+        "bgSurface": "#1C1E24",
+        "bgSecondary": "#242831",
+        "textMain": "#EDEDED",
+        "textMuted": "#C5C5C8",
+        "textSubtle": "#8C8C92",
+        "accentCrimson": "#E11D48",
+        "accentBlue": "#D4AF37",
+        "borderLight": "#2C303B",
+        "borderMedium": "#3B404E"
+      }
+    },
+    {
+      "id": "pure-monolith",
+      "name": "The Pure Monolith",
+      "beat": "Public Interest Journalism & Data Desk",
+      "description": "High-contrast black-and-white grid structure with razor-sharp crimson breaking indicators.",
+      "colors": {
+        "primary": "#000000",
+        "bgPrimary": "#FFFFFF",
+        "bgSurface": "#FAFAFA",
+        "bgSecondary": "#F0F0F0",
+        "textMain": "#000000",
+        "textMuted": "#333333",
+        "textSubtle": "#666666",
+        "accentCrimson": "#E60000",
+        "accentBlue": "#2563EB",
+        "borderLight": "#E5E5E5",
+        "borderMedium": "#CCCCCC"
+      }
+    }
+  ],
+  "fontCatalog": [
+    { "name": "Rozha One", "category": "Hindi & Regional", "badge": "Royal Hindi", "previewSample": "दैनिक मुख्य समाचार — Royal Frontpage", "isSerif": true },
+    { "name": "Playfair Display", "category": "Royal & Newspaper", "badge": "Royal English", "previewSample": "The Global Editorial Gazette & Dispatch", "isSerif": true },
+    { "name": "Cinzel", "category": "Royal & Newspaper", "badge": "Roman Imperial", "previewSample": "PARLIAMENTARY ACCORD & SUMMIT", "isSerif": true },
+    { "name": "DM Serif Display", "category": "Royal & Newspaper", "badge": "High-End Serif", "previewSample": "Investigative Spotlight & Deep Dives", "isSerif": true },
+    { "name": "Prata", "category": "Royal & Newspaper", "badge": "Luxury Editorial", "previewSample": "International Diplomatic Chronicle", "isSerif": true },
+    { "name": "Mukta", "category": "Hindi & Regional", "badge": "Clean Newspaper", "previewSample": "ताज़ा तरीन खबरें — Live Wire Bulletins", "isSerif": false },
+    { "name": "Noto Serif Devanagari", "category": "Hindi & Regional", "badge": "Broadside Serif", "previewSample": "संपादकीय दृष्टिकोण — Editorial Perspective", "isSerif": true },
+    { "name": "Noto Sans Devanagari", "category": "Hindi & Regional", "badge": "Official Script", "previewSample": "सत्यापित समाचार — Verified Bureau Coverage", "isSerif": false },
+    { "name": "Hind", "category": "Hindi & Regional", "badge": "Modern Hindi", "previewSample": "दैनिक जनमत — National Headlines", "isSerif": false },
+    { "name": "Yatra One", "category": "Hindi & Regional", "badge": "Classic Vintage", "previewSample": "भारत दर्शन — Heritage & Culture Wire", "isSerif": true },
+    { "name": "Kalam", "category": "Hindi & Regional", "badge": "Calligraphic Serif", "previewSample": "जन विचार मंच — Public Voice Columns", "isSerif": false },
+    { "name": "Plus Jakarta Sans", "category": "Modern Digital Media", "badge": "Editorial Default", "previewSample": "Next-Gen Editorial Frameworks & Fast Briefings", "isSerif": false },
+    { "name": "Inter", "category": "Modern Digital Media", "badge": "Clean Mobile", "previewSample": "High legibility digital news streams across devices", "isSerif": false },
+    { "name": "Outfit", "category": "Modern Digital Media", "badge": "Modern Minimal", "previewSample": "Sleek contemporary journalism headlines", "isSerif": false }
+  ],
+  "presetImages": [
+    { "label": "Technology", "url": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80" },
+    { "label": "Science & Space", "url": "https://images.unsplash.com/photo-1517976487492-5750f3195933?auto=format&fit=crop&w=800&q=80" },
+    { "label": "Business & Economy", "url": "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=800&q=80" },
+    { "label": "Environment", "url": "https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=800&q=80" },
+    { "label": "Politics & World", "url": "https://images.unsplash.com/photo-1541872703-74c5e44368f9?auto=format&fit=crop&w=800&q=80" }
+  ],
+  "weather": {
+    "temperature": "28°C",
+    "location": "Delhi NCR",
+    "condition": "Partly Cloudy",
+    "source": "Bureau Meteorological Service"
+  }
+}

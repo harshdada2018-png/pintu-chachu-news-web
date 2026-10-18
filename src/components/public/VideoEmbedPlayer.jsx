@@ -8,7 +8,7 @@ export default function VideoEmbedPlayer({ videoUrlOrId, title }) {
   if (!videoId) {
     return (
       <div style={{ background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--text-subtle)' }}>
-        ⚠️ Invalid YouTube Video URL or ID provided.
+        Notice: Invalid YouTube Video URL or ID provided.
       </div>
     );
   }

@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary & Design System Overview
 
-This Technical Design Requirement (TDR) defines the formal **UI/UX Architecture and Visual Design System** for **PublicSpark**. PublicSpark is engineered to deliver an authentic, human-designed newsroom aesthetic resembling premier global publications (*The Verge, The Guardian, Indian Express*) with Bento Grid layout principles.
+This Technical Design Requirement (TDR) defines the formal **UI/UX Architecture and Visual Design System** for **PublicSpark**. PublicSpark is engineered to deliver an authentic, human-designed newsroom aesthetic resembling premier broadsheets and modern high-end editorial digital newsrooms with Bento Grid layout principles.
 
 ### Key Visual Commitments
 1. **Journalistic Credibility**: Elegant serif headlines (`Playfair Display`, `Lora`), classic masthead layout, fact-check guarantee badges (`ShieldCheck`), breaking news ribbons (`Flame`), and prominent author bylines.

@@ -1,0 +1,103 @@
+{
+  "socialLinks": {
+    "whatsapp": "https://chat.whatsapp.com/KmXlg8IYmkg3Y9VeBW6uIN",
+    "instagram": "https://instagram.com",
+    "facebook": "https://facebook.com",
+    "twitter": "https://x.com"
+  },
+  "typography": {
+    "headingFont": "Poppins",
+    "bodyFont": "Poppins",
+    "headingScale": 100,
+    "headingWeight": 650,
+    "bodySize": 16,
+    "bodyWeight": 600,
+    "regionalFonts": {
+      "hi": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "en": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "bn": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "mr": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "te": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "ta": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "gu": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "kn": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "ml": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "pa": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "or": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "as": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "ur": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "ja": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "zh-TW": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "fr": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "it": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      },
+      "id": {
+        "headingFont": "Playfair Display",
+        "bodyFont": "Poppins"
+      }
+    }
+  },
+  "theme": {
+    "primary": "#121212",
+    "bgPrimary": "#FBFBF9",
+    "bgSurface": "#FFFFFF",
+    "bgSecondary": "#F3F2EE",
+    "textMain": "#121212",
+    "textMuted": "#4A4A4A",
+    "textSubtle": "#737373",
+    "accentCrimson": "#B81D13",
+    "accentBlue": "#0D5B8C",
+    "borderLight": "#E8E6DF",
+    "borderMedium": "#D5D2C7"
+  }
+}

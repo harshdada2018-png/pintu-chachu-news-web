@@ -23,10 +23,31 @@ export const SUPPORTED_LANGUAGES = [
   { code: 'ja', name: 'Japanese', native: '日本語' },
   { code: 'id', name: 'Indonesian', native: 'Bahasa Indonesia' },
   { code: 'zh-TW', name: 'Chinese (Taiwan)', native: '繁體中文' },
+  { code: 'ru', name: 'Russian', native: 'Русский' }
 ];
 
 const BACKEND_TRANSLATE_URL = (import.meta.env && import.meta.env.VITE_TRANSLATE_API_URL) || '/api/translate';
 const translationMemoryCache = new Map();
+
+// Automatically cleanse any corrupted scraper error strings from browser localStorage
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('ps_art_obj_') || k.startsWith('ps_trans_'))) {
+        const val = localStorage.getItem(k);
+        if (val && (val.includes('QUERY LENGTH') || val.includes('MAX ALLOWED QUERY') || val.includes('MYMEMORY'))) {
+          keysToRemove.push(k);
+        }
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+    if (keysToRemove.length > 0) {
+      console.log(`[Cache Cleanup] Purged ${keysToRemove.length} stale/corrupted legacy translation cache items.`);
+    }
+  } catch (e) {}
+}
 
 function generateCacheKey(text, targetLang) {
   if (!text) return `ps_trans_${targetLang}_empty`;
@@ -39,9 +60,9 @@ function generateCacheKey(text, targetLang) {
 }
 
 /**
- * Fetch with automatic timeout (default 1800ms)
+ * Fetch with automatic timeout (default 15000ms for AI inference)
  */
-async function fetchWithTimeout(url, options = {}, timeoutMs = 1800) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -55,69 +76,18 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 1800) {
 }
 
 /**
- * Single-chunk multi-tier translation worker
+ * Translation worker (strictly calling backend Gemini endpoint, zero unofficial scrapers)
  */
-async function translateSingleChunk(cleanText, targetLang) {
-  if (!cleanText || targetLang === 'en') return cleanText;
+async function translateSingleChunk(cleanText, targetLang, sourceLang = 'hi') {
+  if (!cleanText || targetLang === sourceLang) return cleanText;
   const targetCode = (targetLang === 'zh-TW' || targetLang === 'zh-tw') ? 'zh-TW' : targetLang;
 
-  // Tier 1: MyMemory Translation API (Instant 200ms response, 100% CORS-friendly for all Indian & Global languages)
-  try {
-    const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanText.slice(0, 800))}&langpair=en|${encodeURIComponent(targetCode)}`;
-    const mmRes = await fetchWithTimeout(myMemoryUrl, {}, 2000);
-    if (mmRes.ok) {
-      const mmData = await mmRes.json();
-      if (mmData && mmData.responseData && mmData.responseData.translatedText) {
-        const translated = mmData.responseData.translatedText;
-        if (translated && translated.trim() && translated.trim() !== cleanText && !translated.includes('MYMEMORY WARNING')) {
-          return translated.trim();
-        }
-      }
-    }
-  } catch (e) {}
-
-  // Tier 2: Classic Google GTX Endpoint (translate.googleapis.com)
-  try {
-    const gtxUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetCode)}&dt=t&q=${encodeURIComponent(cleanText.slice(0, 1500))}`;
-    const gtxRes = await fetchWithTimeout(gtxUrl, {}, 1500);
-    if (gtxRes.ok) {
-      const gtxData = await gtxRes.json();
-      if (Array.isArray(gtxData) && Array.isArray(gtxData[0])) {
-        const translated = gtxData[0].map(item => (item && item[0]) ? item[0] : '').join('');
-        if (translated && translated.trim() && translated.trim() !== cleanText) {
-          return translated.trim();
-        }
-      }
-    }
-  } catch (e) {}
-
-  // Tier 3: Clients5 Chrome Extension Translate Endpoint (clients5.google.com)
-  try {
-    const clients5Url = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=${encodeURIComponent(targetCode)}&q=${encodeURIComponent(cleanText.slice(0, 1500))}`;
-    const c5Res = await fetchWithTimeout(clients5Url, {}, 1500);
-    if (c5Res.ok) {
-      const data = await c5Res.json();
-      let translated = '';
-      if (Array.isArray(data) && data.length > 0) {
-        if (typeof data[0] === 'string') {
-          translated = data[0];
-        } else if (Array.isArray(data[0])) {
-          translated = data[0].map(item => (Array.isArray(item) ? item[0] : item)).join(' ');
-        }
-      }
-      if (translated && translated.trim() && translated.trim() !== cleanText) {
-        return translated.trim();
-      }
-    }
-  } catch (e) {}
-
-  // Tier 4: Backend Proxy (/api/translate)
   try {
     const res = await fetchWithTimeout(BACKEND_TRANSLATE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: cleanText, targetLang: targetCode })
-    }, 1200);
+      body: JSON.stringify({ text: cleanText, targetLang: targetCode, source_lang: sourceLang })
+    }, 8000);
 
     if (res.ok) {
       const data = await res.json();
@@ -125,7 +95,9 @@ async function translateSingleChunk(cleanText, targetLang) {
         return data.translatedText;
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('[Gemini Translation Request]', e.message);
+  }
 
   return cleanText;
 }
@@ -134,8 +106,8 @@ async function translateSingleChunk(cleanText, targetLang) {
  * Translates a text string instantly into target language.
  * Uses smart paragraph grouping for long text to avoid high HTTP request counts.
  */
-export async function translateText(text, targetLang) {
-  if (!text || !text.trim() || targetLang === 'en') return text;
+export async function translateText(text, targetLang, sourceLang = 'hi') {
+  if (!text || !text.trim() || targetLang === sourceLang) return text;
 
   const cleanText = text.trim();
   const cacheKey = generateCacheKey(cleanText, targetLang);
@@ -149,7 +121,9 @@ export async function translateText(text, targetLang) {
   // 2. Check Local Storage Cache
   try {
     const localCached = localStorage.getItem(cacheKey);
-    if (localCached && localCached !== cleanText) {
+    if (localCached && (localCached.includes('QUERY LENGTH') || localCached.includes('MAX ALLOWED QUERY') || localCached.includes('MYMEMORY'))) {
+      localStorage.removeItem(cacheKey);
+    } else if (localCached && localCached !== cleanText) {
       translationMemoryCache.set(cacheKey, localCached);
       return localCached;
     }
@@ -158,7 +132,7 @@ export async function translateText(text, targetLang) {
   // 3. For short text <= 800 chars, perform direct single-chunk translation
   if (cleanText.length <= 800) {
     const result = await translateSingleChunk(cleanText, targetLang);
-    if (result && result !== cleanText) {
+    if (result && result !== cleanText && !result.includes('QUERY LENGTH') && !result.includes('MYMEMORY')) {
       translationMemoryCache.set(cacheKey, result);
       try {
         if (result.length < 50000) localStorage.setItem(cacheKey, result);
@@ -187,14 +161,18 @@ export async function translateText(text, targetLang) {
   const translatedChunks = [];
   for (let i = 0; i < chunks.length; i++) {
     const tChunk = await translateSingleChunk(chunks[i], targetLang);
-    translatedChunks.push(tChunk);
+    if (tChunk && !tChunk.includes('QUERY LENGTH')) {
+      translatedChunks.push(tChunk);
+    } else {
+      translatedChunks.push(chunks[i]);
+    }
     if (i < chunks.length - 1) {
       await new Promise(r => setTimeout(r, 40));
     }
   }
 
   const fullResult = translatedChunks.join('\n\n');
-  if (fullResult && fullResult !== cleanText) {
+  if (fullResult && fullResult !== cleanText && !fullResult.includes('QUERY LENGTH')) {
     translationMemoryCache.set(cacheKey, fullResult);
     try {
       if (fullResult.length < 50000) localStorage.setItem(cacheKey, fullResult);
@@ -209,11 +187,25 @@ export async function translateText(text, targetLang) {
  * Helper to retrieve a cached translated article object from LocalStorage.
  */
 export function getCachedArticleObject(articleId, targetLang) {
-  if (!articleId || !targetLang || targetLang === 'en') return null;
+  if (!articleId || !targetLang) return null;
   try {
-    const raw = localStorage.getItem(`ps_art_obj_${articleId}_${targetLang}`);
+    const key = `ps_art_obj_${articleId}_${targetLang}`;
+    const raw = localStorage.getItem(key);
     if (raw) {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      // Validate that content is real and not a legacy scraper error string
+      if (
+        !parsed ||
+        typeof parsed.content !== 'string' ||
+        parsed.content.includes('QUERY LENGTH') ||
+        parsed.content.includes('MAX ALLOWED QUERY') ||
+        parsed.content.includes('MYMEMORY') ||
+        (parsed.title && parsed.title.includes('QUERY LENGTH'))
+      ) {
+        localStorage.removeItem(key);
+        return null;
+      }
+      return parsed;
     }
   } catch (e) {}
   return null;
@@ -223,7 +215,8 @@ export function getCachedArticleObject(articleId, targetLang) {
  * Helper to cache a translated article object to LocalStorage.
  */
 export function cacheArticleObject(articleId, targetLang, translatedArticle) {
-  if (!articleId || !targetLang || targetLang === 'en' || !translatedArticle) return;
+  if (!articleId || !targetLang || !translatedArticle) return;
+  if (translatedArticle.content && translatedArticle.content.includes('QUERY LENGTH')) return;
   try {
     localStorage.setItem(`ps_art_obj_${articleId}_${targetLang}`, JSON.stringify(translatedArticle));
   } catch (e) {}
@@ -233,45 +226,55 @@ export function cacheArticleObject(articleId, targetLang, translatedArticle) {
  * Translates an article object (title, sub_title, summary, category, and optionally content).
  */
 export async function translateArticle(article, targetLang, options = { includeContent: true }) {
-  if (!article || targetLang === 'en') return article;
+  const sourceLang = (article?.originalLanguage || 'hi').toLowerCase();
+  if (!article || targetLang === sourceLang) return article;
 
   const includeContent = options.includeContent !== false;
   const articleId = article.id || article.slug;
 
   // Check LocalStorage Cache for 0ms instant retrieval
   const cached = getCachedArticleObject(articleId, targetLang);
-  if (cached && (!includeContent || (includeContent && cached.content))) {
+  if (cached && (!includeContent || (includeContent && cached.content && !cached.content.includes('QUERY LENGTH')))) {
     return cached;
   }
 
   try {
-    const [translatedTitle, translatedSubTitle, translatedSummary, translatedCategory] = await Promise.all([
-      translateText(article.title, targetLang),
-      article.sub_title ? translateText(article.sub_title, targetLang) : Promise.resolve(''),
-      article.summary ? translateText(article.summary, targetLang) : Promise.resolve(''),
-      article.category ? translateText(article.category, targetLang) : Promise.resolve('')
-    ]);
+    // Unified Fast Backend Gemini Translation Call (Translates Title, Highlights & Body in 1 API Call)
+    const backendRes = await fetchWithTimeout(BACKEND_TRANSLATE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        article_id: articleId,
+        lang: targetLang,
+        source_lang: sourceLang,
+        title: article.title,
+        highlights: Array.isArray(article.highlights) ? article.highlights : [],
+        body: includeContent ? article.content : ''
+      })
+    }, 30000);
 
-    let translatedContent = article.content;
-    if (includeContent && article.content) {
-      translatedContent = await translateText(article.content, targetLang);
+    if (backendRes.ok) {
+      const backendData = await backendRes.json();
+      if (backendData && backendData.status === 'done' && backendData.body && !backendData.body.includes('QUERY LENGTH')) {
+        const result = {
+          ...article,
+          title: backendData.title || article.title,
+          content: backendData.body || article.content,
+          highlights: Array.isArray(backendData.highlights) ? backendData.highlights : (article.highlights || []),
+          summary: article.summary,
+          sub_title: article.sub_title,
+          originalLanguage: article.originalLanguage || 'hi',
+          currentLanguage: targetLang
+        };
+        cacheArticleObject(articleId, targetLang, result);
+        return result;
+      }
     }
 
-    const result = {
-      ...article,
-      title: translatedTitle || article.title,
-      sub_title: translatedSubTitle || article.sub_title,
-      summary: translatedSummary || article.summary,
-      content: translatedContent || article.content,
-      category: translatedCategory || article.category,
-      originalLanguage: article.originalLanguage || 'en',
-      currentLanguage: targetLang
-    };
-
-    cacheArticleObject(articleId, targetLang, result);
-    return result;
+    // Rule: If translation failed or validation failed, do NOT save anything; cleanly return original Hindi article
+    return article;
   } catch (err) {
-    console.error('Error translating article:', err);
+    console.warn('Translation call failed or timed out. Serving original Hindi article:', err.message);
     return article;
   }
 }
@@ -280,19 +283,22 @@ export async function translateArticle(article, targetLang, options = { includeC
  * Translates ONLY the titles/headlines of articles for ultra-fast front-page rendering.
  */
 export async function translateHeadlinesOnly(articles, targetLang) {
-  if (!Array.isArray(articles) || articles.length === 0 || targetLang === 'en') {
+  if (!Array.isArray(articles) || articles.length === 0) {
     return articles;
   }
 
   return Promise.all(
     articles.map(async art => {
+      const sourceLang = (art.originalLanguage || 'hi').toLowerCase();
+      if (targetLang === sourceLang) return art;
+
       const articleId = art.id || art.slug;
       const cached = getCachedArticleObject(articleId, targetLang);
       if (cached && cached.title) {
         return { ...art, title: cached.title };
       }
       try {
-        const translatedTitle = await translateText(art.title, targetLang);
+        const translatedTitle = await translateText(art.title, targetLang, sourceLang);
         return { ...art, title: translatedTitle || art.title };
       } catch (e) {
         return art;

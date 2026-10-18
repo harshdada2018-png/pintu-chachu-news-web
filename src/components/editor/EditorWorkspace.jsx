@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { CheckCircle, Flame, Sparkles, XCircle, Clock, Eye, Edit3, ShieldAlert } from 'lucide-react';
+import { CheckCircle, Flame, Sparkles, XCircle, Clock, Eye, Edit3, ShieldAlert, Languages } from 'lucide-react';
+import { SUPPORTED_LANGUAGES } from '../../services/translationService';
 
 export default function EditorWorkspace({ pendingArticles, onApproveArticle, onRejectArticle }) {
   const [selectedArticle, setSelectedArticle] = useState(pendingArticles[0] || null);
   const [editedTitle, setEditedTitle] = useState(selectedArticle?.title || '');
+  const [editedLanguage, setEditedLanguage] = useState(selectedArticle?.originalLanguage || 'hi');
   const [isBreaking, setIsBreaking] = useState(false);
   const [headlineSuggestions, setHeadlineSuggestions] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -12,6 +14,7 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
   const handleSelectArticle = (art) => {
     setSelectedArticle(art);
     setEditedTitle(art.title);
+    setEditedLanguage(art.originalLanguage || 'hi');
     setIsBreaking(art.is_breaking || false);
     setHeadlineSuggestions([]);
   };
@@ -22,7 +25,7 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
     setTimeout(() => {
       setIsGenerating(false);
       setHeadlineSuggestions([
-        `🔥 ${selectedArticle.title} — Key Takeaways & Impact`,
+        `Top Story: ${selectedArticle.title} — Key Takeaways & Impact`,
         `BREAKING: ${selectedArticle.title.split(':')[0] || selectedArticle.title}`,
         `In-Depth Report: ${selectedArticle.title}`
       ]);
@@ -31,7 +34,7 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
 
   const handleApprove = () => {
     if (!selectedArticle) return;
-    onApproveArticle(selectedArticle.id, editedTitle, isBreaking);
+    onApproveArticle(selectedArticle.id, editedTitle, isBreaking, editedLanguage);
     setSelectedArticle(null);
     setHeadlineSuggestions([]);
   };
@@ -99,11 +102,37 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
           {selectedArticle ? (
             <div style={{ background: 'var(--bg-surface)', padding: '1.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
               {/* Category & Status */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <span className="story-category-tag">{selectedArticle.category}</span>
                 <span className="badge badge-live">
                   <Clock size={12} /> Pending Approval
                 </span>
+              </div>
+
+              {/* Original / Source Language Selector */}
+              <div style={{ marginBottom: '1.25rem', background: 'var(--bg-secondary)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)' }}>
+                <label style={{ display: 'block', fontWeight: '800', fontSize: '0.85rem', marginBottom: '0.35rem', color: 'var(--text-main)' }}>
+                  लेखन की मूल भाषा (Article Source Language)
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Languages size={17} color="var(--accent-indigo)" />
+                    <select
+                      value={editedLanguage}
+                      onChange={(e) => setEditedLanguage(e.target.value)}
+                      style={{ padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.875rem', fontWeight: '700', background: 'var(--bg-surface)', color: 'var(--text-main)' }}
+                    >
+                      {SUPPORTED_LANGUAGES.map(lang => (
+                        <option key={lang.code} value={lang.code}>
+                          {lang.native} ({lang.name})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <span style={{ fontSize: '0.775rem', color: 'var(--text-subtle)' }}>
+                    (डाउनस्ट्रीम अनुवाद और आवाज़ इसी मूल भाषा के आधार पर होगी)
+                  </span>
+                </div>
               </div>
 
               {/* Editable Headline */}

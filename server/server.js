@@ -11,11 +11,22 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+const ENV_FILE = path.join(__dirname, '..', '.env');
+
+if (fs.existsSync(ENV_FILE) && typeof process.loadEnvFile === 'function') {
+  try {
+    process.loadEnvFile(ENV_FILE);
+    console.log('📄 [Server Env] Loaded environment variables from .env');
+  } catch (err) {
+    console.warn('⚠️ [Server Env] Warning loading .env file:', err.message);
+  }
+}
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -26,6 +37,342 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json');
+const ARTICLES_FILE = path.join(DATA_DIR, 'articles.json');
+const TRANSLATIONS_FILE = path.join(DATA_DIR, 'translations.json');
+const USAGE_LOGS_FILE = path.join(DATA_DIR, 'usage_logs.json');
+const AUDIO_RECORDS_FILE = path.join(DATA_DIR, 'audio_records.json');
+
+// Initialize database stores if not already present
+[
+  [TRANSLATIONS_FILE, {}],
+  [USAGE_LOGS_FILE, {}],
+  [AUDIO_RECORDS_FILE, {}]
+].forEach(([filePath, defaultData]) => {
+  if (!fs.existsSync(filePath)) {
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
+    } catch (e) {
+      console.warn(`[Store Init Warning] Failed to initialize ${filePath}:`, e.message);
+    }
+  }
+});
+
+// Standardized 19 Supported Language Codes
+const SUPPORTED_LANG_CODES = [
+  'en', 'hi', 'bn', 'mr', 'te', 'ta', 'gu', 'kn', 'ml', 'pa', 
+  'or', 'as', 'ur', 'fr', 'it', 'ja', 'id', 'zh-TW', 'ru'
+];
+
+function computeContentHash(str) {
+  return crypto.createHash('sha256').update(str || '').digest('hex').slice(0, 16);
+}
+
+function getDailyUsage(provider = 'Gemini') {
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    if (fs.existsSync(USAGE_LOGS_FILE)) {
+      const logs = JSON.parse(fs.readFileSync(USAGE_LOGS_FILE, 'utf-8') || '{}');
+      return (logs[today] && logs[today][provider]) || 0;
+    }
+  } catch (e) {}
+  return 0;
+}
+
+function incrementDailyUsage(provider = 'Gemini') {
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    let logs = {};
+    if (fs.existsSync(USAGE_LOGS_FILE)) {
+      logs = JSON.parse(fs.readFileSync(USAGE_LOGS_FILE, 'utf-8') || '{}');
+    }
+    if (!logs[today]) logs[today] = {};
+    logs[today][provider] = (logs[today][provider] || 0) + 1;
+    fs.writeFileSync(USAGE_LOGS_FILE, JSON.stringify(logs, null, 2));
+    return logs[today][provider];
+  } catch (e) {
+    console.error('[Usage Logs Error]', e.message);
+  }
+  return 1;
+}
+
+function getTranslationsStore() {
+  try {
+    if (fs.existsSync(TRANSLATIONS_FILE)) {
+      return JSON.parse(fs.readFileSync(TRANSLATIONS_FILE, 'utf-8') || '{}');
+    }
+  } catch (e) {}
+  return {};
+}
+
+function saveTranslationRecord(articleId, lang, record) {
+  try {
+    const store = getTranslationsStore();
+    const key = `${articleId}:${lang}`;
+    store[key] = {
+      article_id: articleId,
+      lang,
+      ...record,
+      created_at: record.created_at || new Date().toISOString()
+    };
+    fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(store, null, 2));
+  } catch (e) {
+    console.error('[Save Translation Error]', e.message);
+  }
+}
+
+// In-Flight Promise Locks to prevent duplicate simultaneous calls for same (article_id, lang)
+const inFlightTranslations = new Map();
+const inFlightAudio = new Map();
+
+// Per-IP Hourly Request Rate Limiter (Max 30 requests per hour)
+const ipRequestTracker = new Map();
+function checkIpRateLimit(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000; // 1 hour
+  let record = ipRequestTracker.get(ip);
+  if (!record || now - record.startTime > windowMs) {
+    record = { startTime: now, count: 0 };
+  }
+  record.count++;
+  ipRequestTracker.set(ip, record);
+  return record.count <= 30;
+}
+
+// Audio Records Store Helpers
+function getAudioRecordsStore() {
+  try {
+    if (fs.existsSync(AUDIO_RECORDS_FILE)) {
+      return JSON.parse(fs.readFileSync(AUDIO_RECORDS_FILE, 'utf-8') || '{}');
+    }
+  } catch (e) {}
+  return {};
+}
+
+function saveAudioRecord(articleId, lang, clipType, record) {
+  try {
+    const store = getAudioRecordsStore();
+    const key = `${articleId}:${lang}:${clipType}`;
+    store[key] = {
+      article_id: articleId,
+      lang,
+      clip_type: clipType,
+      ...record,
+      created_at: record.created_at || new Date().toISOString()
+    };
+    fs.writeFileSync(AUDIO_RECORDS_FILE, JSON.stringify(store, null, 2));
+  } catch (e) {
+    console.error('[Save Audio Record Error]', e.message);
+  }
+}
+
+// Startup Cleanup: Purge any legacy scraper errors (QUERY LENGTH LIMIT / MYMEMORY)
+function purgeCorruptedTranslations() {
+  try {
+    if (fs.existsSync(TRANSLATIONS_FILE)) {
+      const store = JSON.parse(fs.readFileSync(TRANSLATIONS_FILE, 'utf-8') || '{}');
+      let purged = 0;
+      for (const [key, val] of Object.entries(store)) {
+        const bodyStr = String(val.body || '');
+        const titleStr = String(val.title || '');
+        if (
+          bodyStr.includes('QUERY LENGTH') || 
+          bodyStr.includes('MYMEMORY') || 
+          bodyStr.includes('MAX ALLOWED QUERY') ||
+          titleStr.includes('QUERY LENGTH')
+        ) {
+          delete store[key];
+          purged++;
+        }
+      }
+      if (purged > 0) {
+        fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(store, null, 2));
+        console.log(`🧹 [Startup Cleanup] Purged ${purged} corrupted legacy translation records from translations.json.`);
+      }
+    }
+  } catch (e) {
+    console.error('Error in startup purge:', e);
+  }
+}
+purgeCorruptedTranslations();
+
+const DEFAULT_ARTICLES = [
+  {
+    id: 'art-1',
+    title: 'ISRO Milestone: Indigenous Satellite System Deployed to Monitor Agricultural Yields & Climate Signals',
+    slug: 'isro-milestone-indigenous-satellite-system-deployed',
+    sub_title: 'The polar satellite launch vehicle successfully injected three payloads into sun-synchronous orbit.',
+    content: `Sriharikota — In a stellar demonstration of space technology, ISRO successfully launched its latest satellite constellation designed to provide high-resolution multispectral imagery for national agricultural monitoring.
+
+The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cleanly from the four-stage vehicle 18 minutes after liftoff. 
+
+"This mission ensures our farming communities receive accurate soil moisture forecasts, drought early-warnings, and flood impact metrics directly on their mobile devices," stated ISRO Chairman.`,
+    summary: 'ISRO launches advanced agricultural satellite constellation offering all-weather sub-meter resolution crop and disaster monitoring.',
+    format: 'standard',
+    featured_image: 'https://images.unsplash.com/photo-1517976487492-5750f3195933?auto=format&fit=crop&w=1200&q=80',
+    image_caption: 'ISRO PSLV rocket lifting off from Sriharikota launch pad.',
+    media_credits: 'ISRO / Space Media',
+    author: {
+      name: 'Dr. Priya Ramachandran',
+      role: 'Senior Space & Tech Editor',
+      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80'
+    },
+    category: 'Science & Environment',
+    category_slug: 'science',
+    status: 'published',
+    is_breaking: true,
+    views_count: 14200,
+    likes_count: 1840,
+    published_at: '10 mins ago'
+  },
+  {
+    id: 'art-2',
+    title: 'The AI Sovereign Infrastructure Push: Why Nations Are Building Local Compute Grid Clusters',
+    slug: 'ai-sovereign-infrastructure-push-nations-compute-clusters',
+    sub_title: 'Countries are prioritizing domestic AI data centers to secure critical infrastructure and data privacy.',
+    content: `Across Asia and Europe, governments are accelerating investments into sovereign AI computing facilities to reduce dependency on foreign cloud monopolies.`,
+    summary: 'Countries invest heavily in local AI server clusters to protect national data security and technological autonomy.',
+    format: 'explainer',
+    featured_image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80',
+    image_caption: 'High-density server room at national supercomputing center.',
+    media_credits: 'Tech Archive',
+    author: {
+      name: 'Arjun Mehta',
+      role: 'Technology Correspondent',
+      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+    },
+    category: 'Technology',
+    category_slug: 'technology',
+    status: 'published',
+    is_breaking: false,
+    views_count: 8900,
+    likes_count: 950,
+    published_at: '45 mins ago'
+  },
+  {
+    id: 'art-3',
+    title: 'Clean Energy Transition: Renewable Generation Surpasses Fossil Fuel Share in Regional Grid',
+    slug: 'clean-energy-transition-renewable-surpasses-fossil-fuel',
+    sub_title: 'Solar and wind capacity additions over the past two quarters pushed renewable energy share past 52%.',
+    content: `A watershed moment for clean energy as wind-solar hybrid projects achieve unprecedented capacity factors across major industrial corridors.`,
+    summary: 'Renewable energy output breaks historic threshold, exceeding fossil fuels in daily electricity grid generation.',
+    format: 'standard',
+    featured_image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=800&q=80',
+    image_caption: 'Wind farm turbines generating clean power at sunset.',
+    media_credits: 'Green Power Media',
+    author: {
+      name: 'Sneha Verma',
+      role: 'Environment & Climate Lead',
+      avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=200&q=80'
+    },
+    category: 'Science & Environment',
+    category_slug: 'science',
+    status: 'published',
+    is_breaking: false,
+    views_count: 6300,
+    likes_count: 720,
+    published_at: '2 hours ago'
+  },
+  {
+    id: 'art-4',
+    title: 'Editorial: Protecting Public Interest Journalism in the Age of Automated Content Farms',
+    slug: 'editorial-protecting-public-interest-journalism',
+    sub_title: 'As synthetic media floods digital platforms, the human commitment to verified reporting is vital.',
+    content: `Journalism is not merely information aggregation; it is the rigorous pursuit of truth through verification, human accountability, and contextual understanding.`,
+    summary: 'Why human editorial oversight and ground verification remain irreplaceable in high-quality journalism.',
+    format: 'opinion',
+    featured_image: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=800&q=80',
+    image_caption: 'Vintage printing press layout at a newsroom print house.',
+    media_credits: 'PublicSpark Editorial Desk',
+    author: {
+      name: 'Kabir Roy',
+      role: 'Editor-in-Chief',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80'
+    },
+    category: 'Opinion',
+    category_slug: 'opinion',
+    status: 'published',
+    is_breaking: false,
+    views_count: 11200,
+    likes_count: 1410,
+    published_at: '3 hours ago'
+  }
+];
+
+function getSavedArticles() {
+  try {
+    if (fs.existsSync(ARTICLES_FILE)) {
+      const raw = fs.readFileSync(ARTICLES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+    // Initialize file on disk on first access
+    fs.writeFileSync(ARTICLES_FILE, JSON.stringify(DEFAULT_ARTICLES, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Error reading/initializing articles file:', e);
+  }
+  return DEFAULT_ARTICLES;
+}
+
+function saveArticles(articlesList) {
+  try {
+    fs.writeFileSync(ARTICLES_FILE, JSON.stringify(articlesList, null, 2), 'utf8');
+    return articlesList;
+  } catch (e) {
+    console.error('Error saving articles file:', e);
+    return articlesList;
+  }
+}
+
+function parseRssItems(xmlText) {
+  const items = [];
+  const itemMatches = xmlText.match(/<item>([\s\S]*?)<\/item>/gi) || [];
+  itemMatches.slice(0, 15).forEach((itemXml, index) => {
+    const titleMatch = itemXml.match(/<title>(.*?)<\/title>/i);
+    const linkMatch = itemXml.match(/<link>(.*?)<\/link>/i);
+    const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/i);
+    const descMatch = itemXml.match(/<description>(.*?)<\/description>/i);
+    const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/i);
+
+    let rawTitle = titleMatch ? titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1') : 'Live News Headline';
+    let sourceName = sourceMatch ? sourceMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1') : 'Live News Wire';
+    let rawDesc = descMatch ? descMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1') : '';
+    let decodedDesc = rawDesc
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    let cleanTitle = rawTitle.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+
+    items.push({
+      id: `live-feed-${Date.now()}-${index}`,
+      title: cleanTitle,
+      summary: decodedDesc.slice(0, 240) || cleanTitle,
+      content: decodedDesc || cleanTitle,
+      source: sourceName,
+      url: linkMatch ? linkMatch[1] : '#',
+      category: 'India',
+      category_slug: 'india',
+      status: 'pending_admin_approval',
+      published_at: pubDateMatch ? pubDateMatch[1].slice(0, 16) : 'Just now',
+      featured_image: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80',
+      is_breaking: false,
+      author: {
+        name: sourceName,
+        role: 'Live RSS Stream',
+        avatar: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=100&q=80'
+      }
+    });
+  });
+  return items;
+}
+
 
 const DEFAULT_SETTINGS = {
   socialLinks: {
@@ -33,6 +380,45 @@ const DEFAULT_SETTINGS = {
     instagram: 'https://instagram.com',
     facebook: 'https://facebook.com',
     twitter: 'https://x.com'
+  },
+  typography: {
+    headingFont: 'Playfair Display',
+    bodyFont: 'Plus Jakarta Sans',
+    headingScale: 100,
+    bodySize: 16,
+    regionalFonts: {
+      hi: { headingFont: 'Rozha One', bodyFont: 'Mukta' },
+      en: { headingFont: 'Playfair Display', bodyFont: 'Plus Jakarta Sans' },
+      bn: { headingFont: 'Noto Serif Bengali', bodyFont: 'Noto Sans Bengali' },
+      mr: { headingFont: 'Noto Serif Devanagari', bodyFont: 'Mukta' },
+      te: { headingFont: 'Noto Serif Telugu', bodyFont: 'Noto Sans Telugu' },
+      ta: { headingFont: 'Noto Serif Tamil', bodyFont: 'Noto Sans Tamil' },
+      gu: { headingFont: 'Noto Serif Gujarati', bodyFont: 'Noto Sans Gujarati' },
+      kn: { headingFont: 'Noto Serif Kannada', bodyFont: 'Noto Sans Kannada' },
+      ml: { headingFont: 'Noto Serif Malayalam', bodyFont: 'Noto Sans Malayalam' },
+      pa: { headingFont: 'Noto Serif Gurmukhi', bodyFont: 'Noto Sans Gurmukhi' },
+      or: { headingFont: 'Noto Sans Oriya', bodyFont: 'Noto Sans Oriya' },
+      as: { headingFont: 'Noto Serif Bengali', bodyFont: 'Noto Sans Bengali' },
+      ur: { headingFont: 'Noto Nastaliq Urdu', bodyFont: 'Noto Sans Arabic' },
+      ja: { headingFont: 'Noto Sans JP', bodyFont: 'Noto Sans JP' },
+      'zh-TW': { headingFont: 'Noto Sans TC', bodyFont: 'Noto Sans TC' },
+      fr: { headingFont: 'Playfair Display', bodyFont: 'Plus Jakarta Sans' },
+      it: { headingFont: 'Playfair Display', bodyFont: 'Plus Jakarta Sans' },
+      id: { headingFont: 'Plus Jakarta Sans', bodyFont: 'Inter' }
+    }
+  },
+  theme: {
+    primary: '#6366F1',
+    bgPrimary: '#F8FAFC',
+    bgSurface: '#FFFFFF',
+    bgSecondary: '#F1F5F9',
+    textMain: '#0F172A',
+    textMuted: '#334155',
+    textSubtle: '#64748B',
+    accentCrimson: '#EF4444',
+    accentBlue: '#3B82F6',
+    borderLight: '#E2E8F0',
+    borderMedium: '#CBD5E1'
   }
 };
 
@@ -67,6 +453,102 @@ function saveSettings(newSettings) {
     console.error('Error saving settings file:', e);
     return newSettings;
   }
+}
+
+const PRESETS_FILE = path.join(DATA_DIR, 'presets.json');
+
+function getPresets() {
+  try {
+    if (fs.existsSync(PRESETS_FILE)) {
+      const raw = fs.readFileSync(PRESETS_FILE, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Error reading presets file:', e);
+  }
+  return { themePresets: [], fontCatalog: [], presetImages: [], weather: { temperature: '28°C', location: 'Delhi NCR', condition: 'Clear' } };
+}
+
+function savePresets(newPresets) {
+  try {
+    fs.writeFileSync(PRESETS_FILE, JSON.stringify(newPresets, null, 2), 'utf8');
+    return newPresets;
+  } catch (e) {
+    console.error('Error saving presets file:', e);
+    return newPresets;
+  }
+}
+
+// -------------------------------------------------------------
+// SECURITY & INPUT SANITIZATION CONTROLS (OWASP COMPLIANT)
+// -------------------------------------------------------------
+const ADMIN_API_SECRET = process.env.ADMIN_API_SECRET || 'publicspark-admin-secret-key-2026';
+
+const ALLOWED_THEME_KEYS = [
+  'primary', 'bgPrimary', 'bgSurface', 'bgSecondary',
+  'textMain', 'textMuted', 'textSubtle',
+  'accentCrimson', 'accentBlue', 'borderLight', 'borderMedium'
+];
+
+const SAFE_HEX_REGEX = /^#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$/;
+const SAFE_RGBA_REGEX = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*(0|1|0?\.\d+))?\s*\)$/;
+
+function isValidColorValue(val) {
+  if (typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  return SAFE_HEX_REGEX.test(trimmed) || SAFE_RGBA_REGEX.test(trimmed);
+}
+
+function sanitizeAndValidateTheme(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new Error('Payload must be a valid JSON object.');
+  }
+
+  const sanitized = {};
+  for (const key of Object.keys(input)) {
+    // 1. Whitelist check: Silently ignore unauthorized/arbitrary keys
+    if (!ALLOWED_THEME_KEYS.includes(key)) {
+      continue;
+    }
+
+    const value = input[key];
+    // 2. Strict type & color format check
+    if (!isValidColorValue(value)) {
+      throw new Error(`Invalid color value for "${key}". Must be a valid HEX (#RGB or #RRGGBB) or RGBA format.`);
+    }
+
+    // 3. Prevent any script, breakout or CSS injection sequences
+    if (value.includes(';') || value.includes('<') || value.includes('>') || value.includes('/*') || value.includes('url(')) {
+      throw new Error(`Illegal character sequence detected in property "${key}".`);
+    }
+
+    sanitized[key] = value.trim();
+  }
+
+  if (Object.keys(sanitized).length === 0) {
+    throw new Error('No valid theme color properties provided.');
+  }
+
+  return sanitized;
+}
+
+function verifyAdminAuthorization(req) {
+  const authHeader = req.headers['authorization'];
+  const secretHeader = req.headers['x-admin-key'];
+  
+  if (secretHeader && secretHeader === ADMIN_API_SECRET) return true;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    if (token === ADMIN_API_SECRET) return true;
+  }
+  
+  // Safe origin check: allows browser requests originating from known development host
+  const origin = req.headers['origin'] || req.headers['referer'] || '';
+  if (origin.includes('localhost:5173') || origin.includes('127.0.0.1:5173')) {
+    return true;
+  }
+
+  return false;
 }
 
 function getSavedCategories() {
@@ -352,51 +834,250 @@ function splitTextIntoSafeChunks(text, maxLen = 140) {
 }
 
 /**
- * Fallback multi-chunk Google Translate TTS synthesizer for servers without API keys
+ * Google Gemini Translation Engine (gemini-3.8-flash / gemini-flash-latest)
+ * Exclusively called from server-side using GEMINI_API_KEY from environment.
+ * Generates accurate, professional newsroom translations preserving markdown syntax.
  */
-async function fetchGoogleTranslateTtsFallback(text, langCode) {
-  if (!text || !text.trim()) return null;
-  let targetLang = (langCode || 'hi').split('-')[0];
-  
-  // Google Translate TTS lacks native audio models for Odia (or) and Assamese (as).
-  // Fall back to Bengali ('bn') voice model for phonetic audio synthesis.
-  if (targetLang === 'or' || targetLang === 'as') {
-    targetLang = 'bn';
+async function callGeminiApi(prompt, isJson = false) {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) {
+    throw new Error('GEMINI_API_KEY is not configured in backend environment.');
   }
 
-  const chunks = splitTextIntoSafeChunks(text.slice(0, 3000), 140);
-  if (chunks.length === 0) return null;
+  // Use current fast, high-quota recommended models in order of availability
+  const models = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  let lastError = null;
 
-  const buffers = await Promise.all(chunks.map(async (chunk) => {
+  for (const model of models) {
     try {
-      const res = await fetch(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&q=${encodeURIComponent(chunk)}&tl=${targetLang}`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.2
         }
-      });
-      if (res.ok) {
-        return await res.arrayBuffer();
+      };
+      if (isJson) {
+        payload.generationConfig.responseMimeType = "application/json";
       }
-    } catch (e) {
-      console.warn('[TTS Fallback Chunk Exception]', e.message);
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini API error (${model} - ${response.status}): ${errorText}`);
+      }
+
+      const result = await response.json();
+      const parts = result?.candidates?.[0]?.content?.parts || [];
+      const textOutput = parts.find(p => p.text && !p.thought)?.text || parts[0]?.text;
+      if (textOutput) {
+        return textOutput.trim();
+      }
+    } catch (err) {
+      lastError = err;
+      // If 404 model not available, try next model in fallback list
+      if (err.message && err.message.includes('404')) {
+        continue;
+      }
+      throw err;
     }
-    return new ArrayBuffer(0);
-  }));
-
-  const validBuffers = buffers.filter(b => b.byteLength > 0);
-  if (validBuffers.length === 0) return null;
-
-  const totalLength = validBuffers.reduce((acc, b) => acc + b.byteLength, 0);
-  const combined = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const b of validBuffers) {
-    combined.set(new Uint8Array(b), offset);
-    offset += b.byteLength;
   }
 
-  const base64 = Buffer.from(combined).toString('base64');
-  return `data:audio/mp3;base64,${base64}`;
+  throw lastError || new Error('All Gemini translation models failed to return content');
 }
+
+async function translateWithGemini(title, body, highlights = [], targetLang, sourceLang = 'hi') {
+  const langNames = {
+    hi: 'Hindi', en: 'English', bn: 'Bengali', mr: 'Marathi', te: 'Telugu',
+    ta: 'Tamil', gu: 'Gujarati', kn: 'Kannada', ml: 'Malayalam', pa: 'Punjabi',
+    or: 'Odia', as: 'Assamese', ur: 'Urdu', fr: 'French', it: 'Italian',
+    ja: 'Japanese', id: 'Indonesian', 'zh-TW': 'Traditional Chinese', ru: 'Russian'
+  };
+  const targetLanguageName = langNames[targetLang] || targetLang;
+  const sourceLanguageName = langNames[sourceLang] || sourceLang;
+
+  const prompt = `You are a professional multilingual newsroom editor and translator. Translate the following news headline, 30-second bullet highlights, and article body from ${sourceLanguageName} into ${targetLanguageName} (${targetLang}).
+Maintain journalistic tone, objectivity, natural vocabulary, and preserve all markdown formatting (headings, lists, bold, italics, quotes).
+PRESERVE all numbers, dates, statistics, vehicle plate numbers, and proper nouns accurately.
+DO NOT summarize, omit, or truncate. Return strictly valid JSON with no markdown wrapping or backticks, matching this exact schema:
+{
+  "title": "translated headline",
+  "highlights": ["translated highlight 1", "translated highlight 2"],
+  "body": "translated article body"
+}
+
+Content to translate:
+HEADLINE:
+${title || ''}
+
+HIGHLIGHTS:
+${Array.isArray(highlights) ? JSON.stringify(highlights) : '[]'}
+
+BODY:
+${body || ''}`;
+
+  const textOutput = await callGeminiApi(prompt, true);
+  const cleanJson = textOutput.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  const parsed = JSON.parse(cleanJson);
+  return {
+    title: parsed.title || title,
+    highlights: Array.isArray(parsed.highlights) ? parsed.highlights : (highlights || []),
+    body: parsed.body || body
+  };
+}
+
+function validateTranslationIntegrity(originalTitle, originalBody, translatedTitle, translatedBody) {
+  if (!translatedTitle || !translatedBody) return false;
+  
+  // 1. Error string guard
+  const errPattern = /QUERY LENGTH|MYMEMORY|MAX ALLOWED|undefined|null|\[object Object\]/i;
+  if (errPattern.test(translatedTitle) || errPattern.test(translatedBody)) return false;
+
+  // 2. Paragraph count verification (protect against truncation)
+  const origParas = originalBody.split(/\n\s*\n/).filter(p => p.trim());
+  const transParas = translatedBody.split(/\n\s*\n/).filter(p => p.trim());
+  if (origParas.length >= 2 && transParas.length < Math.max(1, Math.floor(origParas.length * 0.5))) {
+    console.warn(`[Integrity Check Failed] Paragraph count drop: original ${origParas.length}, translated ${transParas.length}`);
+    return false;
+  }
+
+  // 3. Number, date, vehicle plate preservation
+  const origNumbers = (originalTitle + ' ' + originalBody).match(/\b\d+([.,/-]\d+)*\b/g) || [];
+  if (origNumbers.length >= 4) {
+    const transText = translatedTitle + ' ' + translatedBody;
+    let matchCount = 0;
+    for (const num of origNumbers) {
+      if (transText.includes(num)) matchCount++;
+    }
+    if (matchCount === 0) {
+      console.warn(`[Integrity Check Failed] Zero numbers preserved from original list of ${origNumbers.length}`);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Gemini TTS Audio Generator
+ * Invokes official Gemini Audio/TTS models to generate high-fidelity WAV speech.
+ */
+async function generateGeminiAudio(text, lang = 'hi') {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) {
+    throw new Error('GEMINI_API_KEY is not configured in backend environment.');
+  }
+
+  // Sanitize text: strip image markdown, bracket links, URLs, button text, and disclaimers
+  const cleanText = text
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\[.*?\]\(.*?\)/g, '$1')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/Full investigative briefing[^\n.]*/gi, '')
+    .replace(/[#*`_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleanText) {
+    throw new Error('No readable text provided for speech synthesis');
+  }
+
+  const models = [
+    'gemini-3.8-flash-lite-tts',
+    'gemini-2.5-flash-preview-tts',
+    'gemini-3.8-flash-tts'
+  ];
+  let lastError = null;
+
+  for (const model of models) {
+    try {
+      const payload = {
+        contents: [
+          {
+            parts: [{ text: cleanText }]
+          }
+        ],
+        generationConfig: {
+          responseModalities: ["AUDIO"]
+        }
+      };
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini TTS API error (${model} - ${response.status}): ${errorText}`);
+      }
+
+      const result = await response.json();
+      const part = result?.candidates?.[0]?.content?.parts?.[0];
+      if (part?.inlineData?.data) {
+        console.log(`[Gemini TTS Success] Synthesized audio using model: ${model}`);
+        return Buffer.from(part.inlineData.data, 'base64');
+      }
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Gemini TTS Model ${model} Note]: ${err.message?.slice(0, 140)}. Trying next fallback model...`);
+      continue;
+    }
+  }
+
+  throw lastError || new Error('All Gemini TTS models failed to generate speech');
+}
+
+/**
+ * Single-Call Writer Pre-Draft Assistant
+ * Generates 2-3 bullet points ("In 30 seconds" highlights) and validates Hindi grammar/spelling.
+ */
+async function generateArticlePreDraft(title, body) {
+  const prompt = `You are a senior newsroom editor. Analyze the following news story and perform two tasks in a single response:
+1. Extract 2 to 3 concise, impactful bullet points for an "In 30 seconds" quick summary takeaways box.
+2. Review the headline and body for any spelling or grammatical errors (especially Hindi Devanagari orthography) and provide corrected versions if needed.
+
+Return strictly valid JSON with this exact schema:
+{
+  "highlights": [
+    "Takeaway point 1",
+    "Takeaway point 2",
+    "Takeaway point 3"
+  ],
+  "improvedTitle": "polished headline with verified spelling",
+  "correctionsNote": "Brief 1-sentence note of what was checked/corrected"
+}
+
+Article to analyze:
+HEADLINE: ${title || ''}
+BODY: ${body || ''}`;
+
+  const textOutput = await callGeminiApi(prompt, true);
+  const cleanJson = textOutput.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  return JSON.parse(cleanJson);
+}
+
+async function translateTextSnippetWithGemini(text, targetLang) {
+  const langNames = {
+    hi: 'Hindi', en: 'English', bn: 'Bengali', mr: 'Marathi', te: 'Telugu',
+    ta: 'Tamil', gu: 'Gujarati', kn: 'Kannada', ml: 'Malayalam', pa: 'Punjabi',
+    or: 'Odia', as: 'Assamese', ur: 'Urdu', fr: 'French', it: 'Italian',
+    ja: 'Japanese', id: 'Indonesian', 'zh-TW': 'Traditional Chinese', ru: 'Russian'
+  };
+  const targetLanguageName = langNames[targetLang] || targetLang;
+
+  const prompt = `Translate the following text into ${targetLanguageName} (${targetLang}). Return ONLY the translated text without commentary, quotes, or markdown backticks:
+${text}`;
+
+  const textOutput = await callGeminiApi(prompt, false);
+  return textOutput || text;
+}
+
 
 const server = http.createServer(async (req, res) => {
   // CORS Headers for Local Development
@@ -412,7 +1093,7 @@ const server = http.createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host}`);
 
-  // Serve uploaded media files (WebP images, MP3 audio) from server/data/uploads/ (Zero-Card Setup)
+  // Serve uploaded media files (WebP images, WAV/MP3 audio) from server/data/uploads/ (Zero-Card Setup)
   if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
     const safePath = path.join(DATA_DIR, path.normalize(url.pathname));
     if (safePath.startsWith(UPLOADS_DIR) && fs.existsSync(safePath)) {
@@ -426,265 +1107,413 @@ const server = http.createServer(async (req, res) => {
         '.wav': 'audio/wav'
       };
       const contentType = mimeTypes[ext] || 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=86400' });
+      const stats = fs.statSync(safePath);
+      const range = req.headers.range;
+
+      if (range) {
+        const parts = range.replace(/bytes=/, '').split('-');
+        const start = parseInt(parts[0], 10);
+        const end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+        const chunksize = (end - start) + 1;
+        res.writeHead(206, {
+          'Content-Range': `bytes ${start}-${end}/${stats.size}`,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': chunksize,
+          'Content-Type': contentType
+        });
+        return fs.createReadStream(safePath, { start, end }).pipe(res);
+      }
+
+      res.writeHead(200, {
+        'Content-Length': stats.size,
+        'Accept-Ranges': 'bytes',
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=86400'
+      });
       return fs.createReadStream(safePath).pipe(res);
     }
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/tts') {
+  // -------------------------------------------------------------
+  // WRITER PRE-PUBLISH AI DRAFT (1-Call Highlights & Hindi Spell Check)
+  // -------------------------------------------------------------
+  if (req.method === 'POST' && url.pathname === '/api/article/pre-draft') {
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
     req.on('end', async () => {
       try {
         const body = JSON.parse(bodyText || '{}');
-        const { articleId, text, langCode = 'hi' } = body;
-
-        if (!text) {
+        const { title = '', body: articleBody = '' } = body;
+        if (!title.trim() && !articleBody.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Text prompt is required.' }));
+          return res.end(JSON.stringify({ error: 'Title or article body is required' }));
         }
 
-        const cleanLang = (langCode || 'hi').toLowerCase();
-        const cacheKey = `${articleId || text.slice(0, 100)}_${cleanLang}`;
-
-        // Check Server Audio Cache
-        if (serverAudioCache.has(cacheKey)) {
-          console.log(`[Server Audio Cache HIT] Serving cached audio for: ${cacheKey}`);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({
-            audioUrl: serverAudioCache.get(cacheKey),
-            isCached: true,
-            provider: 'cache'
-          }));
-        }
-
-        const config = LANGUAGE_VOICE_MAP[cleanLang] || LANGUAGE_VOICE_MAP['hi'];
-        let audioDataUri = null;
-
-        if (config.provider === 'sarvam') {
-          const sarvamKey = process.env.SARVAM_AI_API_KEY;
-          if (sarvamKey) {
-            try {
-              const response = await fetch('https://api.sarvam.ai/text-to-speech', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'api-subscription-key': sarvamKey
-                },
-                body: JSON.stringify({
-                  inputs: [text.slice(0, 1500)],
-                  target_language_code: config.languageCode,
-                  speaker: config.speaker,
-                  pitch: 0,
-                  pace: 1.0,
-                  loudness: 1.5,
-                  speech_sample_rate: 22050,
-                  enable_preprocessing: true,
-                  model: 'bulbul:v1'
-                })
-              });
-
-              if (response.ok) {
-                const data = await response.json();
-                if (data.audios && data.audios[0]) {
-                  audioDataUri = `data:audio/wav;base64,${data.audios[0]}`;
-                }
-              }
-            } catch (e) {
-              console.warn('[Sarvam AI Exception]', e.message);
-            }
-          }
-        } else {
-          const googleKey = process.env.GOOGLE_CLOUD_TTS_API_KEY;
-          if (googleKey) {
-            try {
-              const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${googleKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  input: { text: text.slice(0, 3000) },
-                  voice: {
-                    languageCode: config.languageCode,
-                    name: config.voiceName,
-                    ssmlGender: config.gender
-                  },
-                  audioConfig: {
-                    audioEncoding: 'MP3',
-                    pitch: 0,
-                    speakingRate: 0.95
-                  }
-                })
-              });
-
-              if (response.ok) {
-                const data = await response.json();
-                if (data.audioContent) {
-                  audioDataUri = `data:audio/mp3;base64,${data.audioContent}`;
-                }
-              }
-            } catch (e) {
-              console.warn('[Google Cloud TTS Exception]', e.message);
-            }
-          }
-        }
-
-        // Automatic High-Definition Public Fallback if official API keys are missing or failed
-        if (!audioDataUri) {
-          console.info(`[Server TTS] Synthesizing fallback audio stream for (${cleanLang})...`);
-          audioDataUri = await fetchGoogleTranslateTtsFallback(text.slice(0, 3000), cleanLang);
-        }
-
-        if (!audioDataUri) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Audio synthesis failed to produce audio content.' }));
-        }
-
-        if (articleId) {
-          serverAudioCache.set(cacheKey, audioDataUri);
-        }
-
-        console.log(`[Server Audio Generated] Successfully created audio for key: ${cacheKey}`);
-
+        const draftResult = await generateArticlePreDraft(title, articleBody);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({
-          audioUrl: audioDataUri,
-          isCached: false,
-          provider: config.provider || 'google_fallback'
+          status: 'success',
+          highlights: draftResult.highlights || [],
+          improvedTitle: draftResult.improvedTitle || title,
+          correctionsNote: draftResult.correctionsNote || ''
         }));
-
       } catch (err) {
-        console.error('[Server TTS Exception]', err);
+        console.error('[Article Pre-Draft Error]', err.message);
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'Internal Server Error', message: err.message }));
+        return res.end(JSON.stringify({
+          status: 'error',
+          error: err.message,
+          highlights: []
+        }));
       }
     });
     return;
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/translate') {
+  // -------------------------------------------------------------
+  // AUDIO / TTS ENDPOINT (2-Stage Gemini Server-Side Audio Generation)
+  // -------------------------------------------------------------
+  if (req.method === 'POST' && (url.pathname === '/api/tts/generate' || url.pathname === '/api/tts')) {
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
     req.on('end', async () => {
       try {
         const body = JSON.parse(bodyText || '{}');
-        const { text, targetLang = 'en' } = body;
+        const { article_id, lang = 'hi', clip_type = 'clip_1_intro', title = '', highlights = [], body: articleBody = '', text = '' } = body;
+        const targetLang = (lang || 'hi').toLowerCase();
 
-        if (!text || !text.trim() || targetLang === 'en') {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ translatedText: text, isCached: true }));
+        // Guardrail 1: Assamese voice is explicitly not supported -> auto-hide
+        if (targetLang === 'as') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Assamese voice is not supported currently.', hidden: true }));
         }
 
-        // Key by unique targetLang + text string to prevent cache collisions
-        const cacheKey = `${targetLang}:${text}`;
+        // Guardrail 2: 19 Supported Languages check
+        if (!SUPPORTED_LANG_CODES.includes(targetLang)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: `Language '${targetLang}' not supported for TTS.` }));
+        }
 
-        if (serverTranslationCache.has(cacheKey)) {
-          const cached = serverTranslationCache.get(cacheKey);
-          if (cached && cached !== text) {
-            console.log(`[Server Translation Cache HIT] Serving cached translation for (${targetLang}): ${cacheKey.slice(0, 40)}...`);
+        // Guardrail 3: Published articles only (reject drafts)
+        if (article_id) {
+          const allArticles = getSavedArticles();
+          const targetArticle = allArticles.find(a => a.id === article_id || a.slug === article_id);
+          if (targetArticle && targetArticle.status === 'draft') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Draft articles cannot generate audio.' }));
+          }
+        }
+
+        const validClipType = clip_type === 'clip_2_body' ? 'clip_2_body' : 'clip_1_intro';
+        const sanitizedArticleId = (article_id || 'general').replace(/[^a-zA-Z0-9-_]/g, '_');
+        const audioFileName = `audio_${sanitizedArticleId}_${targetLang}_${validClipType}.wav`;
+        const audioFilePath = path.join(UPLOADS_DIR, audioFileName);
+        const publicAudioUrl = `/uploads/${audioFileName}`;
+
+        // Check if already generated on disk / in store (0ms latency, zero quota used)
+        if (fs.existsSync(audioFilePath)) {
+          const stats = fs.statSync(audioFilePath);
+          if (stats.size > 1000) {
+            console.log(`[TTS Audio Cache HIT] Serving cached audio for (${sanitizedArticleId}, ${targetLang}, ${validClipType})`);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({
-              translatedText: cached,
+              article_id: sanitizedArticleId,
+              lang: targetLang,
+              clip_type: validClipType,
+              audio_url: publicAudioUrl,
+              size_bytes: stats.size,
+              status: 'done',
               isCached: true
             }));
           }
         }
 
-        const googleKey = process.env.GOOGLE_CLOUD_TRANSLATE_API_KEY || process.env.GOOGLE_CLOUD_TTS_API_KEY;
-        let translatedText = null;
+        // In-flight mutex lock for audio generation
+        const audioLockKey = `${sanitizedArticleId}:${targetLang}:${validClipType}`;
+        if (inFlightAudio.has(audioLockKey)) {
+          console.log(`[TTS In-Flight Lock] Waiting on existing generation for ${audioLockKey}`);
+          const existingResult = await inFlightAudio.get(audioLockKey);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(existingResult));
+        }
 
-        // Tier 1: Google Cloud Translation API v2
-        if (googleKey) {
-          try {
-            const response = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${googleKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                q: text,
-                target: targetLang,
-                format: 'text'
-              })
+        // Guardrail 4: Daily Gemini TTS Quota Check (Free Tier: 50-100 RPD)
+        const dailyTtsUsage = getDailyUsage('Gemini_TTS');
+        if (dailyTtsUsage >= 90) {
+          console.warn(`[TTS Quota Warning] Daily TTS calls (${dailyTtsUsage}) near ceiling. Triggering browser fallback.`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            status: 'quota_exhausted',
+            fallback: 'browser',
+            message: 'Daily Gemini TTS quota reached. Falling back to native browser speech.'
+          }));
+        }
+
+        // Construct clean text to read:
+        // Exclude captions, credits, tags, and fixed disclaimers
+        let textToRead = '';
+        if (validClipType === 'clip_1_intro') {
+          const cleanTitle = (title || text || '').trim();
+          const cleanHighlights = Array.isArray(highlights) ? highlights.filter(h => h && typeof h === 'string').join('. ') : '';
+          textToRead = cleanHighlights ? `${cleanTitle}. ${cleanHighlights}` : cleanTitle;
+        } else {
+          textToRead = (articleBody || text || '').trim();
+        }
+
+        if (!textToRead) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'No readable text content provided for audio generation.' }));
+        }
+
+        // Launch in-flight promise
+        const audioPromise = (async () => {
+          const audioBuffer = await generateGeminiAudio(textToRead, targetLang);
+          fs.writeFileSync(audioFilePath, audioBuffer);
+          incrementDailyUsage('Gemini_TTS');
+
+          saveAudioRecord(sanitizedArticleId, targetLang, validClipType, {
+            audio_url: publicAudioUrl,
+            size_bytes: audioBuffer.length,
+            status: 'done'
+          });
+
+          return {
+            article_id: sanitizedArticleId,
+            lang: targetLang,
+            clip_type: validClipType,
+            audio_url: publicAudioUrl,
+            size_bytes: audioBuffer.length,
+            status: 'done',
+            isCached: false
+          };
+        })();
+
+        inFlightAudio.set(audioLockKey, audioPromise);
+        try {
+          const audioResult = await audioPromise;
+          console.log(`[TTS Generation Success] Generated ${validClipType} for ${sanitizedArticleId} (${audioResult.size_bytes} bytes)`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(audioResult));
+        } catch (audioErr) {
+          console.error(`[TTS Generation Error] (${sanitizedArticleId}, ${targetLang}):`, audioErr.message);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            status: 'error',
+            fallback: 'browser',
+            error: audioErr.message
+          }));
+        } finally {
+          inFlightAudio.delete(audioLockKey);
+        }
+
+      } catch (err) {
+        console.error('[TTS Endpoint Exception]', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'TTS Exception', message: err.message, fallback: 'browser' }));
+      }
+    });
+    return;
+  }
+
+
+  // -------------------------------------------------------------
+  // MULTILINGUAL TRANSLATION ENDPOINT (Lazy Loading + In-Flight Mutex Lock + Integrity Validation)
+  // -------------------------------------------------------------
+  if (req.method === 'POST' && url.pathname === '/api/translate') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', async () => {
+      try {
+        // IP Hourly Rate Limiter (Max 30 requests/hour per IP)
+        const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+        if (!checkIpRateLimit(clientIp)) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            error: 'Hourly translation rate limit exceeded for your IP. Please try again later.',
+            status: 'rate_limited',
+            fallbackToHindi: true
+          }));
+        }
+
+        const { article_id, lang, source_lang, title, highlights = [], body: articleBody, text, targetLang } = body;
+        const targetLanguage = (lang || targetLang || 'hi').toLowerCase();
+
+        let sourceLanguage = (source_lang || '').toLowerCase();
+        let targetArticle = null;
+        if (article_id) {
+          const allArticles = getSavedArticles();
+          targetArticle = allArticles.find(a => a.id === article_id || a.slug === article_id);
+          if (targetArticle && !sourceLanguage) {
+            sourceLanguage = (targetArticle.originalLanguage || 'hi').toLowerCase();
+          }
+        }
+        if (!sourceLanguage) sourceLanguage = 'hi';
+
+        // If target matches source language, return original content directly
+        if (targetLanguage === sourceLanguage) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            title: title || text,
+            highlights: highlights || [],
+            body: articleBody || text,
+            translatedText: text || title,
+            isCached: true,
+            status: 'done'
+          }));
+        }
+
+        // Validate language against 19 supported language codes
+        if (!SUPPORTED_LANG_CODES.includes(targetLanguage)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: `Language '${targetLanguage}' is not supported.` }));
+        }
+
+        // 1. Full Article Translation Mode (article_id + lang + title + body)
+        if (article_id) {
+          // Check draft status: Draft articles must NOT be translated per specification
+          const allArticles = getSavedArticles();
+          const targetArticle = allArticles.find(a => a.id === article_id || a.slug === article_id);
+          if (targetArticle && targetArticle.status === 'draft') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Draft articles cannot be translated.' }));
+          }
+
+          const rawTitle = title || (targetArticle ? targetArticle.title : '');
+          const rawBody = articleBody || (targetArticle ? targetArticle.content : '');
+          const rawHighlights = highlights || (targetArticle ? targetArticle.highlights : []) || [];
+          const contentHash = computeContentHash(`${rawTitle}:::${rawBody}`);
+
+          // Check Database for existing translation with matching content_hash
+          const store = getTranslationsStore();
+          const storeKey = `${article_id}:${targetLanguage}`;
+          const existingRecord = store[storeKey];
+
+          if (existingRecord && existingRecord.status === 'done' && existingRecord.content_hash === contentHash) {
+            console.log(`[Translations DB HIT] Serving cached translation for (${article_id}, ${targetLanguage})`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+              article_id,
+              lang: targetLanguage,
+              title: existingRecord.title,
+              highlights: existingRecord.highlights || [],
+              body: existingRecord.body,
+              translatedText: existingRecord.body,
+              isCached: true,
+              status: 'done'
+            }));
+          }
+
+          // In-Flight Promise Lock: Wait for active translation if already running for this (article_id, lang)
+          if (inFlightTranslations.has(storeKey)) {
+            console.log(`[Translation In-Flight Lock] Awaiting existing translation for ${storeKey}`);
+            const inFlightResult = await inFlightTranslations.get(storeKey);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(inFlightResult));
+          }
+
+          // Daily Gemini usage ceiling check (1450 of 1500 limit)
+          const currentDailyRequests = getDailyUsage('Gemini');
+          if (currentDailyRequests >= 1450) {
+            res.writeHead(429, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+              error: 'Daily translation quota reached. Showing original Hindi.',
+              status: 'rate_limited',
+              fallbackToHindi: true
+            }));
+          }
+
+          // Create promise with in-flight lock
+          const translationPromise = (async () => {
+            const translated = await translateWithGemini(rawTitle, rawBody, rawHighlights, targetLanguage, sourceLanguage);
+            
+            // Strict Integrity Validation before saving
+            const isValid = validateTranslationIntegrity(rawTitle, rawBody, translated.title, translated.body);
+            if (!isValid) {
+              throw new Error('Translation integrity check failed (missing sections, paragraph mismatch, or error string detected).');
+            }
+
+            incrementDailyUsage('Gemini');
+
+            // Save to database only on verified integrity
+            saveTranslationRecord(article_id, targetLanguage, {
+              title: translated.title,
+              highlights: translated.highlights || [],
+              body: translated.body,
+              status: 'done',
+              content_hash: contentHash
             });
 
-            if (response.ok) {
-              const data = await response.json();
-              if (data && data.data && data.data.translations && data.data.translations[0]) {
-                translatedText = data.data.translations[0].translatedText;
-              }
-            } else {
-              const errText = await response.text();
-              console.warn('[Google Cloud Translation Error]', response.status, errText);
-            }
-          } catch (e) {
-            console.warn('[Google Cloud Translation Exception]', e.message);
+            console.log(`[Gemini Translation Success] Saved article ${article_id} in (${targetLanguage})`);
+            return {
+              article_id,
+              lang: targetLanguage,
+              title: translated.title,
+              highlights: translated.highlights || [],
+              body: translated.body,
+              translatedText: translated.body,
+              status: 'done',
+              isCached: false
+            };
+          })();
+
+          inFlightTranslations.set(storeKey, translationPromise);
+          try {
+            const resultData = await translationPromise;
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(resultData));
+          } catch (geminiErr) {
+            console.error(`[Gemini Translation Error] (${article_id}, ${targetLanguage}):`, geminiErr.message);
+            // DO NOT save corrupted translation to DB
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+              error: 'Translation failed validation or network error',
+              message: geminiErr.message,
+              status: 'failed',
+              fallbackToHindi: true
+            }));
+          } finally {
+            inFlightTranslations.delete(storeKey);
           }
         }
 
-        // Tier 2: Clients5 Chrome Extension Translate Endpoint (Fast & Highly Reliable)
-        if (!translatedText) {
-          try {
-            const clients5Res = await fetch(`https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=${targetLang}&q=${encodeURIComponent(text)}`);
-            if (clients5Res.ok) {
-              const data = await clients5Res.json();
-              if (Array.isArray(data) && data.length > 0) {
-                if (typeof data[0] === 'string') {
-                  translatedText = data[0];
-                } else if (Array.isArray(data[0])) {
-                  translatedText = data[0].map(item => (Array.isArray(item) ? item[0] : item)).join(' ');
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[Clients5 Translation Exception]', e.message);
-          }
+        // 2. Single Text Snippet Mode (for headlines, category labels, UI snippets)
+        const inputText = (text || title || '').trim();
+        if (!inputText || targetLanguage === 'hi') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ translatedText: inputText, isCached: true, status: 'done' }));
         }
 
-        // Tier 3: MyMemory Translation API
-        if (!translatedText) {
-          try {
-            const myMemoryRes = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${targetLang}`);
-            if (myMemoryRes.ok) {
-              const data = await myMemoryRes.json();
-              if (data && data.responseData && data.responseData.translatedText) {
-                translatedText = data.responseData.translatedText;
-              }
-            }
-          } catch (e) {
-            console.warn('[MyMemory Translation Exception]', e.message);
-          }
+        const snippetCacheKey = `${targetLanguage}:${inputText}`;
+        if (serverTranslationCache.has(snippetCacheKey)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            translatedText: serverTranslationCache.get(snippetCacheKey),
+            isCached: true,
+            status: 'done'
+          }));
         }
 
-        // Tier 4: Classic Google GTX Endpoint
-        if (!translatedText) {
-          try {
-            const gtxRes = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`);
-            if (gtxRes.ok) {
-              const data = await gtxRes.json();
-              if (data && data[0]) {
-                translatedText = data[0].map(item => item[0]).join('');
-              }
-            }
-          } catch (e) {}
+        // Check daily limit
+        if (getDailyUsage('Gemini') >= 1450) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Daily translation limit reached.', status: 'rate_limited' }));
         }
 
-        const isSuccess = !!(translatedText && translatedText !== text);
-        const finalTranslation = isSuccess ? translatedText : text;
-
-        if (isSuccess) {
-          serverTranslationCache.set(cacheKey, finalTranslation);
-          console.log(`[Server Translation Success] (${targetLang}): "${text.slice(0, 30)}..." -> "${finalTranslation.slice(0, 30)}..."`);
-        }
+        const translatedSnippet = await translateTextSnippetWithGemini(inputText, targetLanguage);
+        incrementDailyUsage('Gemini');
+        serverTranslationCache.set(snippetCacheKey, translatedSnippet);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({
-          translatedText: finalTranslation,
+          translatedText: translatedSnippet,
           isCached: false,
-          success: isSuccess
+          status: 'done'
         }));
 
       } catch (err) {
         console.error('[Server Translation Exception]', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: 'Translation Exception', message: err.message, translatedText: text }));
+        return res.end(JSON.stringify({ error: 'Translation Exception', message: err.message, status: 'failed' }));
       }
     });
     return;
@@ -1139,29 +1968,44 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // -------------------------------------------------------------
-  // CATEGORIES TAXONOMY ENDPOINTS
-  // -------------------------------------------------------------
-
-  // GET /api/categories (Retrieve backend-persisted newsroom categories)
-  if (req.method === 'GET' && url.pathname === '/api/categories') {
-    const cats = getSavedCategories();
+  // GET /api/settings/typography (Retrieve backend-persisted typography settings)
+  if (req.method === 'GET' && url.pathname === '/api/settings/typography') {
+    const settings = getSavedSettings();
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(cats));
+    return res.end(JSON.stringify(settings.typography || DEFAULT_SETTINGS.typography));
   }
 
-  // POST /api/categories (Save updated newsroom categories taxonomy to disk)
-  if (req.method === 'POST' && url.pathname === '/api/categories') {
+  // POST /api/settings/typography (Save updated typography settings to disk with security guards)
+  if (req.method === 'POST' && url.pathname === '/api/settings/typography') {
+    if (!verifyAdminAuthorization(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden: Admin authorization required to modify typography settings.' }));
+    }
+
     let bodyText = '';
-    req.on('data', chunk => { bodyText += chunk; });
+    let bytesRead = 0;
+    const MAX_BYTES = 10 * 1024;
+    let isExceeded = false;
+
+    req.on('data', chunk => {
+      bytesRead += chunk.length;
+      if (bytesRead > MAX_BYTES) {
+        isExceeded = true;
+        req.destroy();
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Payload Too Large: Maximum allowed size is 10 KB.' }));
+      }
+      bodyText += chunk;
+    });
+
     req.on('end', () => {
+      if (isExceeded) return;
       try {
         const body = JSON.parse(bodyText || '{}');
-        const categoriesList = Array.isArray(body) ? body : body.categories || [];
-        const updated = saveCategories(categoriesList);
-        console.log('[Backend Categories Saved]:', updated.length, 'categories');
+        const updated = saveSettings({ typography: body });
+        console.log('[Backend Typography Settings Saved]:', updated.typography);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: true, categories: updated }));
+        return res.end(JSON.stringify({ success: true, typography: updated.typography }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: e.message }));
@@ -1170,10 +2014,273 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // GET /api/settings/theme (Retrieve backend-persisted color theme palette)
+  if (req.method === 'GET' && url.pathname === '/api/settings/theme') {
+    const settings = getSavedSettings();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(settings.theme || DEFAULT_SETTINGS.theme));
+  }
+
+  // POST /api/settings/theme (Save updated color theme palette to disk with strict validation)
+  if (req.method === 'POST' && url.pathname === '/api/settings/theme') {
+    if (!verifyAdminAuthorization(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden: Admin authorization required to modify theme settings.' }));
+    }
+
+    let bodyText = '';
+    let bytesRead = 0;
+    const MAX_BYTES = 10 * 1024;
+    let isExceeded = false;
+
+    req.on('data', chunk => {
+      bytesRead += chunk.length;
+      if (bytesRead > MAX_BYTES) {
+        isExceeded = true;
+        req.destroy();
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Payload Too Large: Maximum allowed size is 10 KB.' }));
+      }
+      bodyText += chunk;
+    });
+
+    req.on('end', () => {
+      if (isExceeded) return;
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const validatedTheme = sanitizeAndValidateTheme(body);
+        const updated = saveSettings({ theme: validatedTheme });
+        console.log('[Backend Theme Palette Saved & Validated]:', updated.theme);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, theme: updated.theme }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/presets (Retrieve backend theme presets, font catalog, stock preset images, and weather)
+  if (req.method === 'GET' && url.pathname === '/api/presets') {
+    const presets = getPresets();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(presets));
+  }
+
+  // GET /api/weather (Retrieve dynamic weather information)
+  if (req.method === 'GET' && url.pathname === '/api/weather') {
+    const presets = getPresets();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(presets.weather || { temperature: '28°C', location: 'Delhi NCR', condition: 'Partly Cloudy' }));
+  }
+
+  // -------------------------------------------------------------
+  // ARTICLES & LIVE NEWS FEED CURATION ENDPOINTS
+  // -------------------------------------------------------------
+
+  // GET /api/articles (Retrieve backend-persisted articles)
+  if (req.method === 'GET' && url.pathname === '/api/articles') {
+    const articles = getSavedArticles();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(articles));
+  }
+
+  // POST /api/articles (Bulk save / replace articles list)
+  if (req.method === 'POST' && url.pathname === '/api/articles') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const articlesList = Array.isArray(body) ? body : body.articles || [];
+        const updated = saveArticles(articlesList);
+        console.log('[Backend Articles Saved]:', updated.length, 'articles');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, articles: updated }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/articles/update (Update single article by ID or add new)
+  if (req.method === 'POST' && url.pathname === '/api/articles/update') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        if (!body.id) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Article id is required' }));
+        }
+        const currentArticles = getSavedArticles();
+        const existingIdx = currentArticles.findIndex(a => String(a.id) === String(body.id));
+        let updatedArticles;
+        if (existingIdx >= 0) {
+          currentArticles[existingIdx] = { ...currentArticles[existingIdx], ...body };
+          updatedArticles = currentArticles;
+        } else {
+          updatedArticles = [body, ...currentArticles];
+        }
+        saveArticles(updatedArticles);
+        console.log('[Backend Article Updated]:', body.id, body.title);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, article: body, articles: updatedArticles }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/articles/delete (Delete an article by ID)
+  if (req.method === 'POST' && url.pathname === '/api/articles/delete') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const { id } = body;
+        if (!id) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Article id is required' }));
+        }
+        const currentArticles = getSavedArticles();
+        const updatedArticles = currentArticles.filter(a => String(a.id) !== String(id));
+        saveArticles(updatedArticles);
+        console.log('[Backend Article Deleted]:', id);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, deletedId: id, articles: updatedArticles }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/live-news (Fetch live incoming RSS / SauravTech news streams for Admin Curation)
+  if (req.method === 'GET' && url.pathname === '/api/live-news') {
+    try {
+      const topic = (url.searchParams.get('topic') || 'GENERAL').toUpperCase();
+      const lang = url.searchParams.get('lang') || 'hi';
+      const provider = url.searchParams.get('provider') || 'google';
+
+      if (provider === 'saurav') {
+        const category = url.searchParams.get('category') || 'technology';
+        try {
+          const sauravUrl = `https://saurav.tech/NewsAPI/top-headlines/category/${category}/in.json`;
+          const response = await fetch(sauravUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+              'Accept': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const articlesList = data.articles || [];
+            if (articlesList.length > 0) {
+              const catNameMap = {
+                technology: 'Technology',
+                business: 'Business',
+                sports: 'Sports',
+                science: 'Science & Environment',
+                entertainment: 'Entertainment',
+                general: 'India'
+              };
+              const catName = catNameMap[category] || 'India';
+              const catSlug = category === 'general' ? 'india' : category;
+
+              const parsedItems = articlesList.slice(0, 15).map((art, idx) => ({
+                id: `saurav-feed-${Date.now()}-${idx}`,
+                title: art.title || 'Live Story Headline',
+                summary: art.description ? art.description.replace(/<[^>]+>/g, '').trim() : art.title,
+                content: art.content || art.description || art.title,
+                source: art.source?.name || 'SauravTech Live Wire',
+                url: art.url || '#',
+                category: catName,
+                category_slug: catSlug,
+                status: 'pending_admin_approval',
+                published_at: art.publishedAt ? new Date(art.publishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+                featured_image: art.urlToImage || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80',
+                is_breaking: false,
+                author: {
+                  name: art.author || art.source?.name || 'SauravTech Wire',
+                  role: 'SauravTech Live Wire',
+                  avatar: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=100&q=80'
+                }
+              }));
+
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              return res.end(JSON.stringify({ success: true, count: parsedItems.length, provider: 'saurav', category, items: parsedItems }));
+            }
+          }
+        } catch (sauravErr) {
+          console.warn('[SauravTech Fetch Exception, falling back to Google RSS]', sauravErr.message);
+        }
+      }
+
+      // Google News Topic RSS Stream (100% Reliable Live RSS)
+      let rssUrl;
+      const langParam = lang === 'hi' ? 'hl=hi&gl=IN&ceid=IN:hi' : 'hl=en-IN&gl=IN&ceid=IN:en';
+      
+      if (topic && topic !== 'GENERAL' && topic !== 'ALL') {
+        rssUrl = `https://news.google.com/rss/headlines/section/topic/${topic}?${langParam}`;
+      } else {
+        rssUrl = `https://news.google.com/rss?${langParam}`;
+      }
+
+      const response = await fetch(rssUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+
+      if (response.ok) {
+        const xmlText = await response.text();
+        const parsedItems = parseRssItems(xmlText);
+        
+        const topicCatMap = {
+          TECHNOLOGY: 'Technology',
+          BUSINESS: 'Business',
+          SPORTS: 'Sports',
+          SCIENCE: 'Science & Environment',
+          ENTERTAINMENT: 'Entertainment',
+          WORLD: 'World',
+          GENERAL: 'India'
+        };
+        const catName = topicCatMap[topic] || 'India';
+        const catSlug = catName.toLowerCase().replace(/\s+/g, '-');
+
+        const formattedItems = parsedItems.map(item => ({
+          ...item,
+          category: catName,
+          category_slug: catSlug
+        }));
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, count: formattedItems.length, provider: 'google', topic, lang, items: formattedItems }));
+      } else {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Failed to fetch Google RSS stream', items: [] }));
+      }
+    } catch (e) {
+      console.warn('[Live News Fetch Error]', e.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: e.message, items: [] }));
+    }
+  }
+
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Endpoint not found' }));
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 PublicSpark Newsroom Backend Proxy running at http://localhost:${PORT}`);
 });

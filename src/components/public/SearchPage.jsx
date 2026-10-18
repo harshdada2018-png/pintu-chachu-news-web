@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { Search, Filter, Clock, Eye, ArrowLeft } from 'lucide-react';
 import { MOCK_CATEGORIES } from '../../services/mockData';
+import { t, translateCategoryName } from '../../services/uiTranslations';
 
-export default function SearchPage({ articles, onSelectArticle, onBack }) {
+export default function SearchPage({ articles, categories, onSelectArticle, onBack, currentLanguage = 'hi' }) {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+
+  const activeCategories = categories && categories.length > 0 ? categories : MOCK_CATEGORIES;
 
   const filteredArticles = articles.filter((art) => {
     const matchesQuery = 
@@ -24,11 +27,11 @@ export default function SearchPage({ articles, onSelectArticle, onBack }) {
         className="btn btn-outline" 
         style={{ marginBottom: '1.5rem', padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
       >
-        <ArrowLeft size={15} /> Back to Top Stories
+        <ArrowLeft size={15} /> {t('backToTopStories', currentLanguage)}
       </button>
 
       <h2 className="headline" style={{ fontSize: '2rem', fontWeight: '800', marginBottom: '1.5rem' }}>
-        Search PublicSpark Archives
+        {t('searchArchives', currentLanguage)}
       </h2>
 
       {/* Search Bar & Category Filter */}
@@ -39,7 +42,7 @@ export default function SearchPage({ articles, onSelectArticle, onBack }) {
             type="text" 
             value={query} 
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by keywords, headlines, topics, or space mission..."
+            placeholder={t('searchPlaceholder', currentLanguage)}
             style={{ width: '100%', padding: '0.75rem 0.75rem 0.75rem 2.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '1rem' }}
           />
         </div>
@@ -49,23 +52,23 @@ export default function SearchPage({ articles, onSelectArticle, onBack }) {
           onChange={(e) => setSelectedCategory(e.target.value)}
           style={{ padding: '0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontWeight: '600' }}
         >
-          <option value="all">All Categories</option>
-          {MOCK_CATEGORIES.map((cat) => (
-            <option key={cat.id} value={cat.slug}>{cat.name}</option>
+          <option value="all">{t('allCategories', currentLanguage)}</option>
+          {activeCategories.map((cat) => (
+            <option key={cat.id} value={cat.slug}>{translateCategoryName(cat.name, currentLanguage)}</option>
           ))}
         </select>
       </div>
 
       {/* Search Results Count */}
       <div style={{ fontSize: '0.9rem', color: 'var(--text-subtle)', marginBottom: '1.25rem', fontWeight: '600' }}>
-        Showing {filteredArticles.length} results {query && `for "${query}"`}
+        {t('showingResults', currentLanguage)}: {filteredArticles.length} {query && `(${query})`}
       </div>
 
       {/* Results List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         {filteredArticles.length === 0 ? (
           <div style={{ background: 'var(--bg-surface)', padding: '3rem', borderRadius: 'var(--radius-md)', textAlign: 'center', color: 'var(--text-subtle)' }}>
-            No articles match your search criteria. Try a different keyword.
+            {t('noArticlesMatch', currentLanguage)}
           </div>
         ) : (
           filteredArticles.map((art) => (
@@ -90,7 +93,7 @@ export default function SearchPage({ articles, onSelectArticle, onBack }) {
                 style={{ width: '100%', height: '100px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} 
               />
               <div>
-                <span className="story-category-tag">{art.category}</span>
+                <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
                 <h3 className="story-card-title" style={{ fontSize: '1.25rem', margin: '0.2rem 0 0.4rem 0' }}>
                   {art.title}
                 </h3>
@@ -98,7 +101,7 @@ export default function SearchPage({ articles, onSelectArticle, onBack }) {
                   {art.summary}
                 </p>
                 <div style={{ display: 'flex', gap: '1rem', fontSize: '0.775rem', color: 'var(--text-subtle)', marginTop: '0.5rem' }}>
-                  <span>By {art.author?.name}</span>
+                  <span>{t('byAuthor', currentLanguage)} {art.author?.name}</span>
                   <span>• {art.published_at}</span>
                 </div>
               </div>

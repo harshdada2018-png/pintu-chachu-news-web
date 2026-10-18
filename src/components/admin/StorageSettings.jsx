@@ -13,7 +13,7 @@ export default function StorageSettings() {
   const fetchStorageStats = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/storage/status');
+      const res = await fetch('/api/storage/status');
       if (res.ok) {
         const data = await res.json();
         setServerStats(data);
@@ -58,7 +58,7 @@ export default function StorageSettings() {
   const handlePurgeServerCache = async () => {
     if (window.confirm('Are you sure you want to purge all in-memory server translation & audio caches?')) {
       try {
-        const res = await fetch('http://localhost:5000/api/storage/purge', { method: 'POST' });
+        const res = await fetch('/api/storage/purge', { method: 'POST' });
         if (res.ok) {
           const data = await res.json();
           setFeedback({ type: 'success', text: `Server cache purged! Cleared ${data.purged.audioCache} audio streams & ${data.purged.translationCache} translations.` });

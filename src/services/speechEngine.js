@@ -108,8 +108,21 @@ const BCP47_LOCALE_MAP = {
   id: 'id-ID',
   zh: 'zh-TW',
   'zh-tw': 'zh-TW',
-  'zh-TW': 'zh-TW'
+  'zh-TW': 'zh-TW',
+  ru: 'ru-RU'
 };
+
+/**
+ * Check if the user's browser has an installed speech voice for the given language.
+ * Returns true if available or if voices are still asynchronously initializing.
+ */
+export function hasBrowserVoiceForLanguage(langCode) {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return false;
+  const voices = populateVoices();
+  if (!voices || voices.length === 0) return true;
+  const match = findMatchingVoice(voices, langCode);
+  return Boolean(match);
+}
 
 function cleanTextForSpeech(text) {
   if (!text || typeof text !== 'string') return '';
@@ -298,21 +311,8 @@ export async function speakTextWithNaturalVoice(
 
   const normalizedLang = (langCode || 'hi').toLowerCase();
 
-  // Primary: Execute high-definition Google TTS synthesis via Backend Node.js Proxy (/api/tts)
-  playCloudAudioWithCache({
-    articleId,
-    text: cleaned,
-    langCode: normalizedLang,
-    onStart: onStartCallback,
-    onPlay: onPlayCallback,
-    onEnd: onEndCallback,
-    onTimeUpdate: optsTimeUpdate,
-    startPosition: optsStartPosition,
-    onError: (err) => {
-      console.warn('[SpeechEngine] Backend TTS server offline, falling back to Web Speech API:', err);
-      speakWithWebSpeechFallback(cleaned, normalizedLang, onStartCallback, onPlayCallback, onEndCallback);
-    }
-  });
+  // Browser-only Web Speech API playback (100% free, client-side, zero unofficial scrapers)
+  speakWithWebSpeechFallback(cleaned, normalizedLang, onStartCallback, onPlayCallback, onEndCallback);
 }
 
 /**
