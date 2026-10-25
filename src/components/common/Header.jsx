@@ -96,7 +96,7 @@ export default function Header({
       <div className="mobile-app-header-wrapper show-on-mobile">
         <div className="mobile-app-header">
           {/* Left: Menu & Brand Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexShrink: 0 }}>
             <button
               className="mobile-hamburger-btn"
               onClick={() => setIsMobileMenuOpen(true)}
@@ -107,19 +107,20 @@ export default function Header({
             <a 
               href="#" 
               onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
-              style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+              style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', flexShrink: 0 }}
               title="PublicSpark Home"
             >
               <img 
                 src="/logo.png" 
                 alt="PUBLIC SPARK" 
                 style={{ 
-                  height: '32px', 
+                  height: '28px', 
+                  maxWidth: '85px',
                   width: 'auto', 
                   objectFit: 'contain',
                   mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
                   background: theme === 'dark' ? '#FFFFFF' : 'transparent',
-                  padding: theme === 'dark' ? '2px 8px' : '0',
+                  padding: theme === 'dark' ? '2px 6px' : '0',
                   borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0'
                 }} 
               />
@@ -127,10 +128,10 @@ export default function Header({
           </div>
 
           {/* Right: Language Pill, Search & Dark/Light Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
             {/* Quick Mobile Language Select */}
             <div className="mobile-lang-pill">
-              <Languages size={13} color="var(--accent-crimson)" />
+              <Languages size={13} color="var(--accent-crimson)" style={{ flexShrink: 0 }} />
               <select 
                 value={currentLanguage} 
                 onChange={(e) => onLanguageChange(e.target.value)}
@@ -139,13 +140,13 @@ export default function Header({
               >
                 <optgroup label="Regional">
                   {SUPPORTED_LANGUAGES.filter(l => !['fr', 'it', 'ja', 'id', 'zh-TW', 'ru', 'en'].includes(l.code)).map((lang) => (
-                    <option key={lang.code} value={lang.code}>{lang.native} ({lang.name})</option>
+                    <option key={lang.code} value={lang.code}>{lang.native}</option>
                   ))}
                   <option value="en">English</option>
                 </optgroup>
                 <optgroup label="Global">
                   {SUPPORTED_LANGUAGES.filter(l => ['fr', 'it', 'ja', 'id', 'zh-TW', 'ru'].includes(l.code)).map((lang) => (
-                    <option key={lang.code} value={lang.code}>{lang.native} ({lang.name})</option>
+                    <option key={lang.code} value={lang.code}>{lang.native}</option>
                   ))}
                 </optgroup>
               </select>
@@ -158,7 +159,7 @@ export default function Header({
               title={t('search', currentLanguage)}
               aria-label="Search"
             >
-              <Search size={16} />
+              <Search size={15} />
             </button>
 
             {/* Dark / Light Toggle */}

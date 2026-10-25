@@ -424,3 +424,17 @@ This document records significant mistakes, root causes, verified solutions, and
   4. *Verified with `npx vite build` (clean exit code 0 in 403ms).*
 - **Prevention Method**: Never use `position: absolute; left: 50%` to center logos or titles on compact mobile app bars (widths < 480px) when both left and right action buttons are present. Always group branding naturally on the left and actions on the right using Flexbox `space-between` to guarantee zero collisions on all mobile screens.
 
+### Mistake 33: Native `<select>` Intrinsic Sizing to Longest Option Blowing Up Mobile Bar and Pushing Dark Mode Off-Screen
+- **Mistake**: On mobile viewports (e.g. iPhone 12 Pro 390x844), the language dropdown pill was cut off on the right screen boundary, and the search and darkmode/lightmode toggle buttons were completely pushed off-screen and invisible ("mobile view me language la protion kaat raha hai amsd ous me darkmode ad light mode wala opionbhe nahi aa raha hai").
+- **Root Cause**:
+  1. *Intrinsic Width of Native `<select>`*: Standard HTML `<select>` elements without an explicit CSS `width` or `max-width` compute their closed-state layout width using the *widest option* in the entire dropdown list. Because `<option>` elements contained verbose compound strings like `{lang.native} ({lang.name})` (e.g., `Chinese (Taiwan) (繁體中文)` and `Bahasa Indonesia (Indonesian)`), the `<select>` expanded to ~200px wide.
+  2. *Right-Edge Viewport Blowout*: Left controls (hamburger 38px + logo 100px = 138px) combined with the 220px language pill, search icon (32px), and theme toggle (32px) required over 430px of horizontal space. On a 390px (and especially 360px) screen, this 40px+ horizontal overflow pushed the language pill against the screen edge and threw the search and theme buttons completely outside the visible viewport.
+  3. *Missing `flex-shrink: 0` Guard on Touch Actions*: Buttons lacked `flex-shrink: 0` and `min-width`, allowing the oversized `<select>` container to greedily push sibling icons off the layout canvas.
+- **Verified Solution**:
+  1. *Option String Simplification*: Changed mobile `<option>` strings to pure `{lang.native}` (`हिंदी`, `English`, `मराठी`, `বাংলা`, `தமிழ்`, etc.), providing authentic native-script recognition without English parenthetical bloat.
+  2. *Explicit CSS Width Clamping*: Set `.mobile-lang-select` to `width: 56px; max-width: 56px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;` and capped `.mobile-lang-pill` at `max-width: 95px; flex-shrink: 0;`.
+  3. *Immune Action Buttons*: Added `flex-shrink: 0; min-width: 32px;` to `.mobile-action-icon` and `flexShrink: 0` to both left and right flex wrappers in `Header.jsx`.
+  4. *Header Budget Calibration*: Calibrated mobile header padding to `0 0.65rem` and logo height to `28px` (`maxWidth: 85px`). Left group (115px) + Right group (161px) = 276px total, leaving 114px of safety margin on 390px screens and 64px on 360px screens with zero clipping.
+  5. *Verified with `npx vite build` (clean exit code 0 in 424ms).*
+- **Prevention Method**: On mobile navigation bars (< 400px), never render native `<select>` dropdowns without explicit CSS `width` / `max-width` limits, because browser layout engines calculate `<select>` width from the longest child `<option>`. Always enforce `flex-shrink: 0` and explicit dimensions on mobile action buttons to guarantee they are never pushed off-screen.
+
