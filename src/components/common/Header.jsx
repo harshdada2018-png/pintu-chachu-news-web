@@ -92,71 +92,93 @@ export default function Header({
   return (
     <header style={{ width: '100%' }}>
       {/* Sovereign Compact Mobile App Bar (<= 768px Only) */}
-      <div className="mobile-app-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-          <button
-            className="mobile-hamburger-btn"
-            onClick={() => setIsMobileMenuOpen(true)}
-            aria-label="Open Newsroom Navigation Drawer"
-          >
-            <Menu size={20} />
-          </button>
+      {/* Sovereign Compact Mobile App Bar (<= 768px Only - Fixed at top: 0 like BBC) */}
+      <div className="mobile-app-header-wrapper show-on-mobile">
+        <div className="mobile-app-header" style={{ position: 'relative' }}>
+          {/* Left Actions: Hamburger Menu (≡) & Search (Q) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', zIndex: 2 }}>
+            <button
+              className="mobile-hamburger-btn"
+              onClick={() => setIsMobileMenuOpen(true)}
+              aria-label="Open Newsroom Navigation Drawer"
+            >
+              <Menu size={20} />
+            </button>
+            <button 
+              onClick={() => onNavigate('search')} 
+              className="mobile-action-icon"
+              title={t('search', currentLanguage)}
+              aria-label="Search"
+            >
+              <Search size={18} />
+            </button>
+          </div>
+
+          {/* Centered Brand Logo (Exactly like BBC) */}
           <a 
             href="#" 
             onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
-            style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+            style={{ 
+              position: 'absolute', 
+              left: '50%', 
+              transform: 'translateX(-50%)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              textDecoration: 'none',
+              zIndex: 1
+            }}
+            title="PublicSpark Home"
           >
             <img 
               src="/logo.png" 
               alt="PUBLIC SPARK" 
-              style={{ height: '32px', width: 'auto', objectFit: 'contain' }} 
+              style={{ 
+                height: '34px', 
+                width: 'auto', 
+                objectFit: 'contain',
+                mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
+                background: theme === 'dark' ? '#FFFFFF' : 'transparent',
+                padding: theme === 'dark' ? '2px 8px' : '0',
+                borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0'
+              }} 
             />
           </a>
-        </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          {/* Quick Mobile Language Select */}
-          <div className="mobile-lang-pill">
-            <Languages size={13} color="var(--accent-crimson)" />
-            <select 
-              value={currentLanguage} 
-              onChange={(e) => onLanguageChange(e.target.value)}
-              className="mobile-lang-select"
-              aria-label="Select Language"
+          {/* Right Actions: Language Pill & Dark/Light Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', zIndex: 2 }}>
+            {/* Quick Mobile Language Select */}
+            <div className="mobile-lang-pill">
+              <Languages size={13} color="var(--accent-crimson)" />
+              <select 
+                value={currentLanguage} 
+                onChange={(e) => onLanguageChange(e.target.value)}
+                className="mobile-lang-select"
+                aria-label="Select Language"
+              >
+                <optgroup label="Regional">
+                  {SUPPORTED_LANGUAGES.filter(l => !['fr', 'it', 'ja', 'id', 'zh-TW', 'ru', 'en'].includes(l.code)).map((lang) => (
+                    <option key={lang.code} value={lang.code}>{lang.native} ({lang.name})</option>
+                  ))}
+                  <option value="en">English</option>
+                </optgroup>
+                <optgroup label="Global">
+                  {SUPPORTED_LANGUAGES.filter(l => ['fr', 'it', 'ja', 'id', 'zh-TW', 'ru'].includes(l.code)).map((lang) => (
+                    <option key={lang.code} value={lang.code}>{lang.native} ({lang.name})</option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Dark / Light Toggle */}
+            <button 
+              onClick={onToggleTheme} 
+              className="mobile-action-icon"
+              title="Toggle Dark/Light Mode"
+              aria-label="Toggle Theme"
             >
-              <optgroup label="Regional">
-                {SUPPORTED_LANGUAGES.filter(l => !['fr', 'it', 'ja', 'id', 'zh-TW', 'ru', 'en'].includes(l.code)).map((lang) => (
-                  <option key={lang.code} value={lang.code}>{lang.native} ({lang.name})</option>
-                ))}
-                <option value="en">English</option>
-              </optgroup>
-              <optgroup label="Global">
-                {SUPPORTED_LANGUAGES.filter(l => ['fr', 'it', 'ja', 'id', 'zh-TW', 'ru'].includes(l.code)).map((lang) => (
-                  <option key={lang.code} value={lang.code}>{lang.native} ({lang.name})</option>
-                ))}
-              </optgroup>
-            </select>
+              {theme === 'dark' ? <Sun size={15} color="#F59E0B" /> : <Moon size={15} />}
+            </button>
           </div>
-
-          {/* Quick Search */}
-          <button 
-            onClick={() => onNavigate('search')} 
-            className="mobile-action-icon"
-            title={t('search', currentLanguage)}
-            aria-label="Search"
-          >
-            <Search size={16} />
-          </button>
-
-          {/* Dark / Light Toggle */}
-          <button 
-            onClick={onToggleTheme} 
-            className="mobile-action-icon"
-            title="Toggle Dark/Light Mode"
-            aria-label="Toggle Theme"
-          >
-            {theme === 'dark' ? <Sun size={15} color="#F59E0B" /> : <Moon size={15} />}
-          </button>
         </div>
       </div>
 
