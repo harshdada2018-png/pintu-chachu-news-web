@@ -34,9 +34,12 @@ export default defineConfig({
   base: '/',
   plugins: [react(), autoBackendPlugin()],
   server: {
+    watch: {
+      ignored: ['**/vedio/**', '**/*.mp4', '**/server/data/**']
+    },
     host: '0.0.0.0', // Expose to all local IPs and Electron apps like ResponsivelyApp
     port: 5173,
-    open: true,
+    open: false,
     cors: true,
     strictPort: false,
     proxy: {

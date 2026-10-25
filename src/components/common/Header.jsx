@@ -58,12 +58,9 @@ export default function Header({
   // Sticky header on scroll detection (triggers as soon as masthead-top scrolls away)
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 45) {
-        setIsSticky(true);
-      } else {
-        setIsSticky(false);
-      }
+      setIsSticky(window.scrollY > 40);
     };
+    handleScroll(); // Execute once on mount so page refreshes while scrolled stay sticky
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
@@ -275,10 +272,14 @@ export default function Header({
         </div>
       </div>
 
-      {/* Classic Newspaper Main Masthead (Desktop Only - Sticky at top: 0 like BBC) */}
+      {/* Classic Newspaper Main Masthead (Desktop Only - Fixed at top: 0 when scrolled like BBC) */}
       <div 
-        className={`masthead-main hide-on-mobile ${isSticky ? 'is-sticky' : ''}`}
+        className="masthead-main-wrapper hide-on-mobile"
+        style={{ minHeight: isSticky ? '118px' : 'auto' }}
       >
+        <div 
+          className={`masthead-main ${isSticky ? 'is-sticky' : ''}`}
+        >
         <div 
           className="container" 
           style={{ 
@@ -425,6 +426,7 @@ export default function Header({
           )}
         </div>
       </div>
+    </div>
 
       {/* Live Breaking News Ticker Bar */}
       <div className="ticker-bar">

@@ -395,3 +395,19 @@ This document records significant mistakes, root causes, verified solutions, and
   4. Added `flexShrink: 0` to list item titles and badges in the dropdown options list.
   5. Verified compilation with `npx vite build` (clean exit code 0 in 380ms).
 - **Prevention Method**: Never use the universal selector `*` with `min-width: 0` on parent layout classes. Always scope `min-width: 0` strictly to direct grid children (`.container > *`). In any horizontal flex row or scrollable pill container (`overflow-x: auto`), always explicitly set `flex-shrink: 0` and `white-space: nowrap` on child buttons to prevent flexbox from shrinking them to 0px width.
+
+### Mistake 31: `position: sticky` Trapped Inside `<header>` Containing Block & Vite Watcher EBUSY Video Lock Crash
+- **Mistake**: 
+  1. The newsroom desktop logo and header disappeared completely when scrolling down the page into articles ("aabhi bhe chup ja raha hai yaar").
+  2. The Vite development server silently exited with `Error: EBUSY: resource busy or locked, watch ... .mp4` when files in `vedio/` were locked by Windows processes, causing the browser to serve stale code without active hot reloading.
+- **Root Cause**:
+  1. *Containing Block Boundary of `position: sticky`*: In CSS specifications, an element with `position: sticky` is strictly bound within the layout boundaries of its direct parent (`<header>`). `<header>` has a finite height of ~190px and is a sibling of `<main>`. As soon as the reader scrolls past 190px into `<main>`, `<header>` scrolls completely off the screen, dragging all child elements (including `.masthead-main`) with it. `position: sticky` cannot stick across sibling elements.
+  2. *Vite Watcher Windows EBUSY Exception*: Node.js `fs.watch` on Windows throws fatal EBUSY exceptions when media files (e.g. video files in `vedio/`) are locked by screen recorders, video players, or Windows Search Indexer, crashing Vite if the folder is not excluded from watcher configurations.
+- **Verified Solution**:
+  1. *Direct Viewport Pinning (`position: fixed`)*: Switched `.masthead-main.is-sticky` to `position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; width: 100% !important; z-index: 10000 !important;`. Because `position: fixed` attaches directly to the browser viewport (window), it is 100% immune to parent height limits, containing block boundaries, and sibling layout separation.
+  2. *Zero-CLS Placeholder Wrapper*: Wrapped `.masthead-main` inside `.masthead-main-wrapper` with `minHeight: isSticky ? '118px' : 'auto'`, reserving the un-scrolled masthead's document space so ticker, categories, and articles below experience 0 cumulative layout shift (CLS).
+  3. *Scroll Listener Initialization on Mount*: Updated `Header.jsx`'s `useEffect` to call `handleScroll()` once on mount (`setIsSticky(window.scrollY > 40)`), ensuring page refreshes while already scrolled down immediately render the fixed sticky bar without flickering.
+  4. *Vite Watcher Hardening*: Added `server.watch.ignored: ['**/vedio/**', '**/*.mp4', '**/server/data/**']` in `vite.config.js`, completely preventing EBUSY file-lock crashes.
+  5. *Verified with `npx vite build` (clean exit code 0) and verified running daemon dev server at `http://localhost:5173/`.*
+- **Prevention Method**: When implementing sticky navigation bars that must persist across the entire page, never rely on `position: sticky` on a child element if its parent container does not wrap the whole document. Use `position: fixed` with a placeholder wrapper to guarantee persistent viewport freezing, and always exclude media/upload folders from Vite watchers on Windows.
+
