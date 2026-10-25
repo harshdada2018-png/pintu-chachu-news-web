@@ -603,8 +603,8 @@ export default function VisualFontPicker({
           textAlign: 'left'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, overflow: 'hidden' }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: '800', background: 'var(--bg-secondary)', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-light)', whiteSpace: 'nowrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1, overflow: 'hidden' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: '800', background: 'var(--bg-secondary)', padding: '0.2rem 0.5rem', borderRadius: '4px', border: '1px solid var(--border-light)', whiteSpace: 'nowrap', flexShrink: 0 }}>
             {selectedFontObj.badge}
           </span>
           <span
@@ -615,7 +615,9 @@ export default function VisualFontPicker({
               color: 'var(--text-main)',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
-              textOverflow: 'ellipsis'
+              textOverflow: 'ellipsis',
+              flex: 1,
+              minWidth: 0
             }}
           >
             {selectedFontObj.name} — {selectedFontObj.previewSample}
@@ -667,23 +669,27 @@ export default function VisualFontPicker({
             </div>
 
             {/* Category Filter Pills */}
-            <div style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto', paddingBottom: '0.2rem' }}>
+            <div style={{ display: 'flex', gap: '0.4rem', overflowX: 'auto', paddingBottom: '0.35rem', alignItems: 'center' }}>
               {CATEGORIES.map(cat => (
                 <button
                   key={cat}
                   type="button"
                   onClick={() => setActiveCategory(cat)}
                   style={{
-                    padding: '0.25rem 0.6rem',
-                    borderRadius: '12px',
-                    fontSize: '0.725rem',
+                    padding: '0.3rem 0.75rem',
+                    borderRadius: '999px',
+                    fontSize: '0.75rem',
                     fontWeight: '700',
                     border: '1px solid',
-                    borderColor: activeCategory === cat ? 'var(--accent-indigo)' : 'transparent',
+                    borderColor: activeCategory === cat ? 'var(--accent-indigo)' : 'var(--border-medium)',
                     background: activeCategory === cat ? 'var(--accent-indigo)' : 'var(--bg-main)',
                     color: activeCategory === cat ? '#fff' : 'var(--text-subtle)',
                     cursor: 'pointer',
-                    whiteSpace: 'nowrap'
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    lineHeight: 1.2
                   }}
                 >
                   {cat}
@@ -729,10 +735,10 @@ export default function VisualFontPicker({
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', minWidth: 0, flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                         {/* Font Title */}
-                        <span style={{ fontSize: '0.825rem', fontWeight: '800', color: isSelected ? 'var(--accent-indigo)' : 'var(--text-main)' }}>
+                        <span style={{ fontSize: '0.825rem', fontWeight: '800', color: isSelected ? 'var(--accent-indigo)' : 'var(--text-main)', flexShrink: 0 }}>
                           {font.name}
                         </span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', background: 'var(--bg-secondary)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', background: 'var(--bg-secondary)', padding: '0.1rem 0.4rem', borderRadius: '4px', flexShrink: 0 }}>
                           {font.badge}
                         </span>
                       </div>

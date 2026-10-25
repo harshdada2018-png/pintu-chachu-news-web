@@ -381,3 +381,17 @@ This document records significant mistakes, root causes, verified solutions, and
   6. Verified with automated API simulation: a 112-second test session logged exactly `avgReadDuration: 112s` with zero intermediate heartbeats.
   7. Verified frontend compilation with `npm run build` (built cleanly in 1.00s with 0 errors).
 - **Prevention Method**: Never use high-frequency client heartbeats (5s) for simple duration tracking on public content. Track time locally in client memory and dispatch a single, reliable exit beacon (`navigator.sendBeacon`) upon session completion to reduce server load by 90%+.
+
+### Mistake 30: Universal Descendant Selector (`*`) with `min-width: 0` Collapsing Flex Items and Causing Layout Text Overlap
+- **Mistake**: In the Admin Workspace Typography & Fonts desk, the font selector dropdown trigger button had its category badge (`Royal Hindi`) colliding and overlapping directly over the font title (`Rozha One`), and the popup's horizontal category filter buttons (`All`, `Royal & Newspaper`, `Hindi & Regional`, etc.) collapsed to 0px width and rendered directly on top of each other horizontally across the scrollbar.
+- **Root Cause**:
+  1. *Universal Descendant CSS Selector*: In `src/index.css`, `.typography-desk-layout * { min-width: 0; }` was written with the universal asterisk selector `*` instead of direct children `> *`. In CSS Flexbox, default `min-width: auto` prevents flex items from shrinking below their content size. Applying `min-width: 0` to *every nested element* stripped this defense from all child buttons, spans, and pills.
+  2. *Missing `flex-shrink: 0` on Horizontal Elements*: Inside flex containers with `overflow-x: auto`, elements without explicit `flex-shrink: 0` (such as the category filter buttons and badge spans) were aggressively compressed down to 0px width by flexbox.
+  3. *Uncontained `white-space: nowrap` Overflow*: Because the elements had `white-space: nowrap`, their text content did not wrap; it overflowed their 0px bounding box, causing 6+ buttons to render at the identical horizontal origin coordinate and stack on top of each other.
+- **Verified Solution**:
+  1. Scoped CSS rule in `src/index.css`: replaced `.typography-desk-layout *` with `.typography-desk-layout > *`, ensuring only top-level grid columns receive `min-width: 0` to prevent grid blowout, while leaving all interior buttons and spans with their standard content width.
+  2. In `src/components/admin/VisualFontPicker.jsx`, added `flexShrink: 0` to the trigger badge span (`{selectedFontObj.badge}`) and `flex: 1, minWidth: 0, textOverflow: 'ellipsis'` to the font name span, ensuring clean separation and elegant truncation if space is tight.
+  3. Added `flexShrink: 0`, `display: 'inline-flex'`, `alignItems: 'center'`, and pill padding to all category filter buttons (`CATEGORIES.map`), ensuring they retain their full width and scroll cleanly across the horizontal scrollbar.
+  4. Added `flexShrink: 0` to list item titles and badges in the dropdown options list.
+  5. Verified compilation with `npx vite build` (clean exit code 0 in 380ms).
+- **Prevention Method**: Never use the universal selector `*` with `min-width: 0` on parent layout classes. Always scope `min-width: 0` strictly to direct grid children (`.container > *`). In any horizontal flex row or scrollable pill container (`overflow-x: auto`), always explicitly set `flex-shrink: 0` and `white-space: nowrap` on child buttons to prevent flexbox from shrinking them to 0px width.

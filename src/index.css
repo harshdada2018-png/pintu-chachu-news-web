@@ -811,7 +811,7 @@ button {
   min-width: 0;
 }
 
-.typography-desk-layout * {
+.typography-desk-layout > * {
   min-width: 0;
   box-sizing: border-box;
 }
