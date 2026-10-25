@@ -276,3 +276,24 @@
   3. *Homepage Dynamic Binding (`src/App.jsx`)*:
      - Homepage polls `/api/poll` on mount. If `enabled: false`, the card is 100% hidden. If `enabled: true`, renders dynamic options, respects local user vote records per poll ID, and synchronizes real-time votes directly with the server.
 - **Reasoning**: Replaces mock hardcoded content with an authentic, production-ready editorial engagement tool that gives administrators full operational control.
+
+## Decision 27: Persistent Sticky Broadsheet Logo & BBC-Style Ceil-Locking Architecture
+- **Status**: Approved by User & Implemented
+- **Context**: User requested: "yaar jaab aapa neche scro;; karte ho to saab ouper ka ke chip jana chhaye buy mews la logo nahi chipna chhaye logo jisa ka tisa rahe vo nahi chipna chaheey like bbc" and clarified "A1: number 3 - jaab aapan scroll kare to logo ouper khiske o uper ke wall me ja kar ruk jaye or page scroll hota rahe like jisa e imae de raha hu vesa".
+- **Decision & Engineering Solution**:
+  1. *Ceil-Locking Sticky Masthead (`src/index.css` & `Header.jsx`)*:
+     - Set `.masthead-main` on desktop to `position: sticky; top: 0; z-index: 500;` with an opaque solid surface background (`var(--bg-surface)`) and clean 1px bottom border.
+     - When the reader scrolls down past 45px, `masthead-top` (date, weather, fact-check badge) scrolls up into the ceiling, while `.masthead-main` hits `top: 0` and firmly freezes/locks at the top wall.
+  2. *Smooth Proportional Scaling & Space Management*:
+     - When sticky, logo smoothly transitions from 75px to 44px (`transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1)`).
+     - Padding tightens from `0.85rem 0` to `0.35rem 0`, creating a sleek, compact ~52px sticky bar height that preserves maximum vertical reading space for articles.
+     - Hindi tagline ("स्वतंत्र डिजिटल न्यूज़रूम • सत्य • सत्यापन • पारदर्शिता") gracefully hides while sticky to prevent vertical clutter.
+  3. *BBC-Style Quick Navigation Bar Integration*:
+     - Revealed on the left edge when sticky: `[≡ Sections]` (triggers the full newsroom category & desk drawer) and `[Search]` button.
+     - Revealed on the right edge when sticky: Compact language pill and dark/light mode toggle.
+     - Brand logo remains 100% centered and clickable to return home, exactly mirroring the reference BBC layout.
+  4. *Desktop vs Mobile Navigation Flow*:
+     - On desktop, `.category-nav` is set to `position: relative`, allowing category tabs to scroll naturally with the page while the persistent logo stays locked at the ceiling.
+     - On mobile (`<= 768px`), the compact 52px app header remains sticky at `top: 0` with category navigation docked at `top: 52px`.
+- **Reasoning**: Fulfills the user's exact BBC reference requirement, guarantees persistent brand identity during long reading sessions, and prevents unwanted visual clipping while maintaining 60 FPS scrolling performance.
+

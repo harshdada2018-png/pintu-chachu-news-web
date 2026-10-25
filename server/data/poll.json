@@ -1,12 +1,12 @@
 {
-  "enabled": true,
+  "enabled": false,
   "id": "poll-default-v1",
   "question": "Do you believe AI news readers enhance digital journalism speed and trust?",
   "options": [
     {
       "id": "opt-1",
       "label": "हाँ, बिल्कुल (Yes, absolutely)",
-      "votes": 1421
+      "votes": 1422
     },
     {
       "id": "opt-2",
@@ -19,7 +19,7 @@
       "votes": 121
     }
   ],
-  "totalVotes": 1952,
+  "totalVotes": 1953,
   "createdAt": "2026-10-25T10:00:00.000Z",
-  "updatedAt": "2026-10-25T10:18:00.050Z"
+  "updatedAt": "2026-10-25T10:46:55.489Z"
 }

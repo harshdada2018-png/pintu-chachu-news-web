@@ -55,10 +55,10 @@ export default function Header({
       .catch(err => console.warn('[Weather API] Offline fallback:', err));
   }, []);
 
-  // Sticky header on scroll detection
+  // Sticky header on scroll detection (triggers as soon as masthead-top scrolls away)
   useEffect(() => {
     const handleScroll = () => {
-      if (window.scrollY > 120) {
+      if (window.scrollY > 45) {
         setIsSticky(true);
       } else {
         setIsSticky(false);
@@ -275,9 +275,77 @@ export default function Header({
         </div>
       </div>
 
-      {/* Classic Newspaper Main Masthead (Desktop Only) */}
-      <div className="masthead-main hide-on-mobile" style={{ padding: '0.85rem 0', borderBottom: '1px solid var(--border-medium)' }}>
-        <div className="container" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {/* Classic Newspaper Main Masthead (Desktop Only - Sticky at top: 0 like BBC) */}
+      <div 
+        className={`masthead-main hide-on-mobile ${isSticky ? 'is-sticky' : ''}`}
+      >
+        <div 
+          className="container" 
+          style={{ 
+            position: 'relative', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            minHeight: isSticky ? '46px' : 'auto'
+          }}
+        >
+          {/* Left Quick Actions (Revealed when sticky, exactly like BBC ≡ Q) */}
+          {isSticky && (
+            <div 
+              style={{ 
+                position: 'absolute', 
+                left: '1.25rem', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.4rem',
+                zIndex: 2
+              }}
+            >
+              <button
+                onClick={() => setIsMobileMenuOpen(true)}
+                title="Browse Sections & Desks"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-main)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.35rem 0.55rem',
+                  borderRadius: 'var(--radius-sm)',
+                  fontWeight: '700',
+                  fontSize: '0.8rem',
+                  transition: 'background 0.2s ease'
+                }}
+                className="btn-hover-subtle"
+              >
+                <Menu size={18} />
+                <span>{t('allNews', currentLanguage) || 'Sections'}</span>
+              </button>
+              <button
+                onClick={() => onNavigate('search')}
+                title={t('search', currentLanguage)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-main)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '0.35rem 0.5rem',
+                  borderRadius: 'var(--radius-sm)',
+                  transition: 'background 0.2s ease'
+                }}
+                className="btn-hover-subtle"
+              >
+                <Search size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* Centered Logo (Locks to top wall and smoothly scales down when scrolling) */}
           <a 
             href="#" 
             onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
@@ -288,21 +356,73 @@ export default function Header({
               src="/logo.png" 
               alt="PUBLIC SPARK News Logo" 
               style={{ 
-                height: '75px', 
+                height: isSticky ? '44px' : '75px', 
                 width: 'auto', 
                 maxWidth: '90vw',
                 objectFit: 'contain',
                 mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
                 background: theme === 'dark' ? '#FFFFFF' : 'transparent',
-                padding: theme === 'dark' ? '4px 14px' : '0',
+                padding: theme === 'dark' ? (isSticky ? '3px 10px' : '4px 14px') : '0',
                 borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0',
-                transition: 'transform 0.2s ease'
+                transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
               }} 
             />
           </a>
-          <div className="masthead-tagline" style={{ marginTop: '0.35rem', textAlign: 'center', fontSize: '0.75rem', letterSpacing: '0.18em', color: 'var(--text-subtle)' }}>
-            {t('tagline', currentLanguage)}
-          </div>
+
+          {/* Hindi Tagline (Visible at top, smoothly hidden when sticky like BBC) */}
+          {!isSticky && (
+            <div className="masthead-tagline" style={{ marginTop: '0.35rem', textAlign: 'center', fontSize: '0.75rem', letterSpacing: '0.18em', color: 'var(--text-subtle)' }}>
+              {t('tagline', currentLanguage)}
+            </div>
+          )}
+
+          {/* Right Quick Actions (Revealed when sticky: Quick Language & Theme Switcher) */}
+          {isSticky && (
+            <div 
+              style={{ 
+                position: 'absolute', 
+                right: '1.25rem', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.45rem',
+                zIndex: 2
+              }}
+            >
+              {/* Quick Language Pill */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: 'var(--accent-crimson-bg)', padding: '0.2rem 0.45rem', borderRadius: '4px', border: '1px solid var(--accent-crimson)' }}>
+                <Languages size={12} color="var(--accent-crimson)" />
+                <select 
+                  value={currentLanguage} 
+                  onChange={(e) => onLanguageChange(e.target.value)}
+                  style={{ background: 'transparent', border: 'none', fontWeight: '800', color: 'var(--accent-crimson)', cursor: 'pointer', fontSize: '0.72rem', outline: 'none' }}
+                >
+                  {SUPPORTED_LANGUAGES.map(l => (
+                    <option key={l.code} value={l.code}>{l.code.toUpperCase()}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Theme Toggle Button */}
+              <button
+                onClick={onToggleTheme}
+                title="Toggle Dark/Light Mode"
+                style={{
+                  background: 'transparent',
+                  border: '1px solid var(--border-medium)',
+                  color: 'var(--text-main)',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '0.3rem 0.45rem',
+                  borderRadius: 'var(--radius-sm)',
+                  transition: 'background 0.2s ease'
+                }}
+                className="btn-hover-subtle"
+              >
+                {theme === 'dark' ? <Sun size={14} color="#F59E0B" /> : <Moon size={14} color="#1E293B" />}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
