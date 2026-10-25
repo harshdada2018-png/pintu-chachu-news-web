@@ -92,11 +92,11 @@ export default function Header({
   return (
     <header style={{ width: '100%' }}>
       {/* Sovereign Compact Mobile App Bar (<= 768px Only) */}
-      {/* Sovereign Compact Mobile App Bar (<= 768px Only - Fixed at top: 0 like BBC) */}
+      {/* Sovereign Compact Mobile App Bar (<= 768px Only - Fixed at top: 0, 0 overlap) */}
       <div className="mobile-app-header-wrapper show-on-mobile">
-        <div className="mobile-app-header" style={{ position: 'relative' }}>
-          {/* Left Actions: Hamburger Menu (≡) & Search (Q) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', zIndex: 2 }}>
+        <div className="mobile-app-header">
+          {/* Left: Menu & Brand Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
             <button
               className="mobile-hamburger-btn"
               onClick={() => setIsMobileMenuOpen(true)}
@@ -104,48 +104,30 @@ export default function Header({
             >
               <Menu size={20} />
             </button>
-            <button 
-              onClick={() => onNavigate('search')} 
-              className="mobile-action-icon"
-              title={t('search', currentLanguage)}
-              aria-label="Search"
+            <a 
+              href="#" 
+              onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
+              style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+              title="PublicSpark Home"
             >
-              <Search size={18} />
-            </button>
+              <img 
+                src="/logo.png" 
+                alt="PUBLIC SPARK" 
+                style={{ 
+                  height: '32px', 
+                  width: 'auto', 
+                  objectFit: 'contain',
+                  mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
+                  background: theme === 'dark' ? '#FFFFFF' : 'transparent',
+                  padding: theme === 'dark' ? '2px 8px' : '0',
+                  borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0'
+                }} 
+              />
+            </a>
           </div>
 
-          {/* Centered Brand Logo (Exactly like BBC) */}
-          <a 
-            href="#" 
-            onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
-            style={{ 
-              position: 'absolute', 
-              left: '50%', 
-              transform: 'translateX(-50%)', 
-              display: 'flex', 
-              alignItems: 'center', 
-              textDecoration: 'none',
-              zIndex: 1
-            }}
-            title="PublicSpark Home"
-          >
-            <img 
-              src="/logo.png" 
-              alt="PUBLIC SPARK" 
-              style={{ 
-                height: '34px', 
-                width: 'auto', 
-                objectFit: 'contain',
-                mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
-                background: theme === 'dark' ? '#FFFFFF' : 'transparent',
-                padding: theme === 'dark' ? '2px 8px' : '0',
-                borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0'
-              }} 
-            />
-          </a>
-
-          {/* Right Actions: Language Pill & Dark/Light Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', zIndex: 2 }}>
+          {/* Right: Language Pill, Search & Dark/Light Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             {/* Quick Mobile Language Select */}
             <div className="mobile-lang-pill">
               <Languages size={13} color="var(--accent-crimson)" />
@@ -168,6 +150,16 @@ export default function Header({
                 </optgroup>
               </select>
             </div>
+
+            {/* Quick Search */}
+            <button 
+              onClick={() => onNavigate('search')} 
+              className="mobile-action-icon"
+              title={t('search', currentLanguage)}
+              aria-label="Search"
+            >
+              <Search size={16} />
+            </button>
 
             {/* Dark / Light Toggle */}
             <button 

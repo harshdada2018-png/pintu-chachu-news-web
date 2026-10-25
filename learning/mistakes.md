@@ -409,5 +409,18 @@ This document records significant mistakes, root causes, verified solutions, and
   3. *Scroll Listener Initialization on Mount*: Updated `Header.jsx`'s `useEffect` to call `handleScroll()` once on mount (`setIsSticky(window.scrollY > 40)`), ensuring page refreshes while already scrolled down immediately render the fixed sticky bar without flickering.
   4. *Vite Watcher Hardening*: Added `server.watch.ignored: ['**/vedio/**', '**/*.mp4', '**/server/data/**']` in `vite.config.js`, completely preventing EBUSY file-lock crashes.
   5. *Verified with `npx vite build` (clean exit code 0) and verified running daemon dev server at `http://localhost:5173/`.*
-- **Prevention Method**: When implementing sticky navigation bars that must persist across the entire page, never rely on `position: sticky` on a child element if its parent container does not wrap the whole document. Use `position: fixed` with a placeholder wrapper to guarantee persistent viewport freezing, and always exclude media/upload folders from Vite watchers on Windows.
+
+### Mistake 32: Absolute Centering of Logo on Mobile (<= 400px) Causing Element Overlap and Collision with Language Pill
+- **Mistake**: On mobile viewports (e.g. 390x844 iPhone 12 Pro), the mobile top bar layout broke ("aare ye phone ka to pura view he bigar gaya hai"), where the language selection dropdown pill ("हिंदी (Hindi)") collided and overlapped directly on top of the centered brand logo.
+- **Root Cause**:
+  1. *Absolute Centering in Space-Constrained Viewport*: Attempting to replicate desktop's centered logo layout on mobile via `position: absolute; left: 50%; transform: translateX(-50%)` placed the logo (width ~110px) in the horizontal range of 140px to 250px on a 390px screen.
+  2. *Right-Aligned Action Collision*: The right-hand actions (Language dropdown with text "हिंदी (Hindi)" ~140px + Theme button 32px + gaps) extended from 210px to 390px. Because the logo was placed using absolute coordinates rather than natural flex flow, the right action container overlapped directly over the logo by ~40px.
+- **Verified Solution**:
+  1. *Restored Natural Flexbox Spacing*: Removed `position: absolute` and restored standard Flexbox `space-between` grouping:
+     - **Left Flex Group**: Hamburger button (`[≡]`) + **PUBLIC SPARK** logo in a flex row (`gap: 0.65rem`).
+     - **Right Flex Group**: Language selector pill + Search icon (`[Q]`) + Dark/Light toggle in a flex row (`gap: 0.4rem`).
+  2. *Immune to Overlap*: Under natural Flexbox flow with `justify-content: space-between`, total width of left (140px) + right (185px) = 325px, leaving 65px of clean breathing room on a 390px viewport and completely eliminating any possibility of overlapping.
+  3. *Preserved Mobile Top Pinning*: Retained `.mobile-app-header-wrapper` (`height: 52px`) and `.mobile-app-header` (`position: fixed !important; top: 0 !important; z-index: 10001;`), so the mobile header stays permanently visible when scrolling through news content without hiding.
+  4. *Verified with `npx vite build` (clean exit code 0 in 403ms).*
+- **Prevention Method**: Never use `position: absolute; left: 50%` to center logos or titles on compact mobile app bars (widths < 480px) when both left and right action buttons are present. Always group branding naturally on the left and actions on the right using Flexbox `space-between` to guarantee zero collisions on all mobile screens.
 
