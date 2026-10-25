@@ -19,6 +19,7 @@
 | YouTube Video Coverage & Conditional Reel | Completed | Strictly conditional YouTube video embeds in ArticleReader, Video Reel section, Reporter/Editor/Admin integration with zero empty space when absent |
 | Sovereign Eye-Comfort Dark Mode (1-Theme Lock) | Completed | Anti-halation 9.8:1 palette (#0D1117/#E6EDF3), photo night shield, zero eye-strain contrast, and architecture lock bypassing inline palette overrides in dark mode |
 | Admin Typography Overlapping Layout Bugfix | Completed | Replaced universal `min-width: 0` selector with `> *` and added `flexShrink: 0` to trigger badge and category filter pills in VisualFontPicker to eliminate text overlap |
+| Daily Reader Poll Management Suite | Completed | Added PollManager desk in Admin Workspace, live on/off switch, custom question/options editor, live simulation preview, vote reset, backend poll.json storage, and live synchronization with homepage |
 | :--- | :--- | :--- |
 | Project Planning & Governance Initialization | Completed | Created planning documents and mistake tracking |
 | Multi-Language Typography & Google Fonts Research | Completed | Selected fonts for 18 languages |

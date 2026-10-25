@@ -257,3 +257,22 @@
   2. *Photo Night Shield*: Automatically applies `filter: brightness(0.92) contrast(0.98)` to images in dark mode (smoothly transitioning to `1.0` on hover) to prevent sudden daylight glare in dark rooms.
   3. *Single-Theme Lock Architecture*: In `src/App.jsx`, when `theme === 'dark'`, inline custom palette overrides on `root.style` are wiped, giving `[data-theme="dark"]` in CSS 100% full authority. Custom palettes from the Admin Color Customizer exclusively adjust Light/Day Mode.
 - **Reasoning**: Delivers medical-grade reading comfort, eliminates eye strain, and prevents fragmentation or broken contrast caused by ad-hoc dark mode customizations.
+
+## Decision 26: Daily Reader Poll Management & Live Backend Persistence Suite
+- **Status**: Approved by User & Implemented
+- **Context**: The Daily Reader Poll was previously an unmanageable mock component hardcoded in `src/App.jsx` with static questions and local-only vote counts in `localStorage`. The user requested an administration panel to edit the poll question, options, and toggle the poll ON/OFF, with zero empty space when disabled.
+- **Decision & Engineering Solution**:
+  1. *Backend Data Store & Endpoints (`server/data/poll.json` & `server/server.js`)*:
+     - Created independent atomic poll storage `server/data/poll.json` keeping reader vote traffic isolated from global settings.
+     - `GET /api/poll`: Serves active poll state, question, options, and live percentages.
+     - `POST /api/poll/vote`: Atomic voter increment with validation, preventing client race conditions.
+     - `POST /api/poll/admin`: Protected endpoint allowing admins to toggle visibility, edit question/options, or reset votes for a fresh poll topic (assigning a new poll `id`).
+  2. *Admin Workspace Integration (`src/components/admin/PollManager.jsx`)*:
+     - Added "Daily Reader Poll" tab under "Editorial & Content" in the Admin Workspace sidebar.
+     - 1-Click Master ON/OFF Toggle: Instantly sets live status or hides the card from the public website with 0 leftover blank area.
+     - Multi-Option Customizer: Supports dynamic 2 to 5 options with live percentage calculation.
+     - Live Broadsheet Simulation Preview: Interactive toggle to view both unvoted button states and voted percentage bar results in real time before publishing.
+     - Safe Reset Button: Allows resetting vote tallies to 0 with confirmation guard when launching a new topic.
+  3. *Homepage Dynamic Binding (`src/App.jsx`)*:
+     - Homepage polls `/api/poll` on mount. If `enabled: false`, the card is 100% hidden. If `enabled: true`, renders dynamic options, respects local user vote records per poll ID, and synchronizes real-time votes directly with the server.
+- **Reasoning**: Replaces mock hardcoded content with an authentic, production-ready editorial engagement tool that gives administrators full operational control.

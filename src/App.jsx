@@ -107,24 +107,60 @@ export default function App() {
   const [playingArticleId, setPlayingArticleId] = useState(null);
   const [playingArticle, setPlayingArticle] = useState(null);
 
-  // Daily News Opinion Poll State
-  const [pollState, setPollState] = useState(() => {
-    try {
-      const local = localStorage.getItem('ps_news_poll_vote');
-      return local ? JSON.parse(local) : { voted: false, choice: null, counts: { yes: 1420, no: 410, undecided: 120 } };
-    } catch (e) {
-      return { voted: false, choice: null, counts: { yes: 1420, no: 410, undecided: 120 } };
-    }
+  // Live Daily Reader Poll State (Managed via Admin Desk & Backend Synced)
+  const [pollData, setPollData] = useState({
+    enabled: true,
+    id: 'poll-default-v1',
+    question: 'क्या आप मानते हैं कि AI न्यूज़ रीडर डिजिटल पत्रकारिता की गति और विश्वसनीयता को बढ़ाते हैं?',
+    options: [
+      { id: 'opt-1', label: 'हाँ, बिल्कुल (Yes, absolutely)', votes: 1420 },
+      { id: 'opt-2', label: 'नहीं, मानवीय संपादक ज़रूरी हैं (No, human editors are vital)', votes: 410 },
+      { id: 'opt-3', label: 'तटस्थ / अनिश्चित (Neutral / Unsure)', votes: 121 }
+    ],
+    totalVotes: 1951
   });
+  const [userVotedChoice, setUserVotedChoice] = useState(null);
 
-  const handlePollVote = (choice) => {
-    if (pollState.voted) return;
-    const nextCounts = { ...pollState.counts, [choice]: pollState.counts[choice] + 1 };
-    const newState = { voted: true, choice, counts: nextCounts };
-    setPollState(newState);
-    localStorage.setItem('ps_news_poll_vote', JSON.stringify(newState));
+  // Fetch active poll on mount
+  useEffect(() => {
+    fetch('/api/poll')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.question) {
+          setPollData(data);
+          const savedVote = localStorage.getItem(`ps_news_poll_vote_${data.id}`);
+          if (savedVote) {
+            setUserVotedChoice(savedVote);
+          }
+        }
+      })
+      .catch(err => console.warn('[Poll] Fallback to default:', err));
+  }, []);
+
+  const handlePollVote = async (optionId) => {
+    if (userVotedChoice || !pollData || !pollData.enabled) return;
+
+    setUserVotedChoice(optionId);
+    if (pollData.id) {
+      localStorage.setItem(`ps_news_poll_vote_${pollData.id}`, optionId);
+    }
+
     setToastMessage(`${t('voteRecorded', currentLanguage)} - ${t('dailyReaderPoll', currentLanguage)}`);
     setIsToastOpen(true);
+
+    try {
+      const res = await fetch('/api/poll/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optionId })
+      });
+      const data = await res.json();
+      if (data && data.poll) {
+        setPollData(data.poll);
+      }
+    } catch (err) {
+      console.warn('[Poll Vote] Sync error:', err);
+    }
   };
 
   // Toast & Bookmark State
@@ -938,94 +974,87 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Interactive Daily Public Voice Poll Widget */}
-                      <div style={{ 
-                        background: 'var(--bg-surface)', 
-                        border: '1px solid var(--border-medium)', 
-                        borderRadius: 'var(--radius-bento)', 
-                        padding: '1.25rem',
-                        boxShadow: 'var(--shadow-sm)'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-indigo)', fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', marginBottom: '0.6rem', letterSpacing: '0.05em' }}>
-                          <BarChart3 size={15} /> {t('dailyReaderPoll', currentLanguage)}
+                      {/* Interactive Daily Public Voice Poll Widget (Controlled via Admin Desk) */}
+                      {pollData && pollData.enabled && (
+                        <div style={{ 
+                          background: 'var(--bg-surface)', 
+                          border: '1px solid var(--border-medium)', 
+                          borderRadius: 'var(--radius-bento)', 
+                          padding: '1.25rem',
+                          boxShadow: 'var(--shadow-sm)'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-indigo)', fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', marginBottom: '0.6rem', letterSpacing: '0.05em' }}>
+                            <BarChart3 size={15} /> {t('dailyReaderPoll', currentLanguage)}
+                          </div>
+                          <h4 style={{ fontSize: '0.95rem', fontWeight: '800', lineHeight: '1.35', marginBottom: '1rem', color: 'var(--text-main)' }}>
+                            "{pollData.question}"
+                          </h4>
+
+                          {!userVotedChoice ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {pollData.options.map((opt, i) => {
+                                const dotColor = i === 0 ? 'var(--accent-indigo)' : i === 1 ? 'var(--accent-crimson)' : 'var(--text-subtle)';
+                                return (
+                                  <button
+                                    key={opt.id}
+                                    onClick={() => handlePollVote(opt.id)}
+                                    className="btn btn-outline"
+                                    style={{
+                                      width: '100%',
+                                      justifyContent: 'flex-start',
+                                      padding: '0.5rem 0.85rem',
+                                      fontSize: '0.85rem',
+                                      fontWeight: '700',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                      textAlign: 'left'
+                                    }}
+                                  >
+                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0 }}></div>
+                                    <span style={{ flex: 1 }}>{opt.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                              {(() => {
+                                const totalVotes = pollData.options.reduce((sum, o) => sum + (o.votes || 0), 0);
+                                return (
+                                  <>
+                                    {pollData.options.map((opt, i) => {
+                                      const pct = totalVotes > 0 ? Math.round(((opt.votes || 0) / totalVotes) * 100) : 0;
+                                      const barColor = i === 0 ? 'var(--accent-indigo)' : i === 1 ? 'var(--accent-crimson)' : 'var(--accent-amber)';
+                                      const isChosen = userVotedChoice === opt.id;
+
+                                      return (
+                                        <div key={opt.id}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '0.2rem' }}>
+                                            <span style={{ color: isChosen ? 'var(--accent-indigo)' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                              {opt.label} ({opt.votes || 0})
+                                              {isChosen && <span style={{ fontSize: '0.68rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-indigo)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>आपकी पसंद</span>}
+                                            </span>
+                                            <span style={{ color: 'var(--text-subtle)' }}>{pct}%</span>
+                                          </div>
+                                          <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
+                                            <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width 0.5s ease' }}></div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', fontSize: '0.75rem', color: 'var(--accent-emerald)', fontWeight: '700', marginTop: '0.4rem', textAlign: 'center' }}>
+                                      <Check size={14} />
+                                      <span>{t('voteRecorded', currentLanguage)} ({totalVotes.toLocaleString()} {t('readersVoted', currentLanguage)})</span>
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
                         </div>
-                        <h4 style={{ fontSize: '0.95rem', fontWeight: '800', lineHeight: '1.35', marginBottom: '1rem', color: 'var(--text-main)' }}>
-                          "{t('pollQuestion', currentLanguage)}"
-                        </h4>
-
-                        {!pollState.voted ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            <button
-                              onClick={() => handlePollVote('yes')}
-                              className="btn btn-outline"
-                              style={{ width: '100%', justifyContent: 'flex-start', padding: '0.45rem 0.85rem', fontSize: '0.85rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                            >
-                              <ThumbsUp size={14} color="var(--accent-indigo)" /> {t('pollYes', currentLanguage)}
-                            </button>
-                            <button
-                              onClick={() => handlePollVote('no')}
-                              className="btn btn-outline"
-                              style={{ width: '100%', justifyContent: 'flex-start', padding: '0.45rem 0.85rem', fontSize: '0.85rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                            >
-                              <ThumbsDown size={14} color="var(--accent-crimson)" /> {t('pollNo', currentLanguage)}
-                            </button>
-                            <button
-                              onClick={() => handlePollVote('undecided')}
-                              className="btn btn-outline"
-                              style={{ width: '100%', justifyContent: 'flex-start', padding: '0.45rem 0.85rem', fontSize: '0.85rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                            >
-                              <HelpCircle size={14} color="var(--text-subtle)" /> {t('pollNeutral', currentLanguage)}
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            {(() => {
-                              const totalVotes = pollState.counts.yes + pollState.counts.no + pollState.counts.undecided;
-                              const yesPct = Math.round((pollState.counts.yes / totalVotes) * 100);
-                              const noPct = Math.round((pollState.counts.no / totalVotes) * 100);
-                              const undecidedPct = 100 - (yesPct + noPct);
-                              return (
-                                <>
-                                  <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '0.2rem' }}>
-                                      <span>{t('pollYes', currentLanguage)} ({pollState.counts.yes})</span>
-                                      <span>{yesPct}%</span>
-                                    </div>
-                                    <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
-                                      <div style={{ width: `${yesPct}%`, height: '100%', background: 'var(--accent-indigo)', transition: 'width 0.5s ease' }}></div>
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '0.2rem' }}>
-                                      <span>{t('pollNo', currentLanguage)} ({pollState.counts.no})</span>
-                                      <span>{noPct}%</span>
-                                    </div>
-                                    <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
-                                      <div style={{ width: `${noPct}%`, height: '100%', background: 'var(--accent-crimson)', transition: 'width 0.5s ease' }}></div>
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '0.2rem' }}>
-                                      <span>{t('pollNeutral', currentLanguage)} ({pollState.counts.undecided})</span>
-                                      <span>{undecidedPct}%</span>
-                                    </div>
-                                    <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
-                                      <div style={{ width: `${undecidedPct}%`, height: '100%', background: 'var(--accent-amber)', transition: 'width 0.5s ease' }}></div>
-                                    </div>
-                                  </div>
-
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', fontSize: '0.75rem', color: 'var(--accent-emerald)', fontWeight: '700', marginTop: '0.4rem', textAlign: 'center' }}>
-                                    <Check size={14} />
-                                    <span>{t('voteRecorded', currentLanguage)} ({totalVotes.toLocaleString()} {t('readersVoted', currentLanguage)})</span>
-                                  </div>
-                                </>
-                              );
-                            })()}
-                          </div>
-                        )}
-                      </div>
+                      )}
 
                       {/* Sidebar Sticky Unit Placement */}
                       <PartnerUnit position="sidebar" />

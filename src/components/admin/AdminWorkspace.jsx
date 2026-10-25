@@ -3,7 +3,7 @@ import {
   Settings, Users, FolderTree, DollarSign, Plus, Trash2, CheckCircle2,
   BarChart2, HardDrive, Share2, Send, Newspaper, Eye, EyeOff, Edit3,
   Radio, Search, Flame, Sparkles, X, RefreshCw, RotateCcw, Check, ExternalLink, ShieldAlert,
-  Type, Sliders, Globe, Languages, MapPin, Palette, Monitor, Smartphone
+  Type, Sliders, Globe, Languages, MapPin, Palette, Monitor, Smartphone, BarChart3
 } from 'lucide-react';
 
 const WhatsAppIcon = ({ size = 16, color = '#25D366' }) => (
@@ -40,6 +40,7 @@ import StorageSettings from './StorageSettings';
 import VisualFontPicker, { DEFAULT_REGIONAL_FONTS, LANGUAGE_PREVIEW_DATA } from './VisualFontPicker';
 import ColorPaletteCustomizer from './ColorPaletteCustomizer';
 import MonetizationDesk from './MonetizationDesk';
+import PollManager from './PollManager';
 
 // Story Editor Modal Component
 function StoryEditorModal({ article, categories, onClose, onSave }) {
@@ -767,6 +768,13 @@ export default function AdminWorkspace({
                 <Newspaper size={16} /> Live News Control ({articles.length})
               </button>
               <button
+                onClick={() => setActiveTab('poll')}
+                className={`sidebar-nav-link ${activeTab === 'poll' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <BarChart3 size={16} /> Daily Reader Poll
+              </button>
+              <button
                 onClick={() => setActiveTab('categories')}
                 className={`sidebar-nav-link ${activeTab === 'categories' ? 'active' : ''}`}
                 style={{ width: '100%' }}
@@ -1226,6 +1234,7 @@ export default function AdminWorkspace({
           )}
 
           {activeTab === 'analytics' && <AnalyticsDashboard articles={articles} />}
+          {activeTab === 'poll' && <PollManager />}
           {activeTab === 'storage' && <StorageSettings />}
 
           {activeTab === 'users' && (

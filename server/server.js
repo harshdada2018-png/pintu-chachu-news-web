@@ -42,6 +42,7 @@ const ARTICLES_FILE = path.join(DATA_DIR, 'articles.json');
 const TRANSLATIONS_FILE = path.join(DATA_DIR, 'translations.json');
 const USAGE_LOGS_FILE = path.join(DATA_DIR, 'usage_logs.json');
 const AUDIO_RECORDS_FILE = path.join(DATA_DIR, 'audio_records.json');
+const POLL_FILE = path.join(DATA_DIR, 'poll.json');
 
 // Initialize database stores if not already present
 [
@@ -872,6 +873,42 @@ function saveCategories(categoriesList) {
   } catch (e) {
     console.error('Error saving categories file:', e);
     return categoriesList;
+  }
+}
+
+const DEFAULT_POLL = {
+  enabled: true,
+  id: 'poll-default-v1',
+  question: 'क्या आप मानते हैं कि AI न्यूज़ रीडर डिजिटल पत्रकारिता की गति और विश्वसनीयता को बढ़ाते हैं?',
+  options: [
+    { id: 'opt-1', label: 'हाँ, बिल्कुल (Yes, absolutely)', votes: 1420 },
+    { id: 'opt-2', label: 'नहीं, मानवीय संपादक ज़रूरी हैं (No, human editors are vital)', votes: 410 },
+    { id: 'opt-3', label: 'तटस्थ / अनिश्चित (Neutral / Unsure)', votes: 121 }
+  ],
+  totalVotes: 1951,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
+
+function getPollData() {
+  try {
+    if (fs.existsSync(POLL_FILE)) {
+      const raw = fs.readFileSync(POLL_FILE, 'utf8');
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Error reading poll file:', e);
+  }
+  return DEFAULT_POLL;
+}
+
+function savePollData(pollData) {
+  try {
+    fs.writeFileSync(POLL_FILE, JSON.stringify(pollData, null, 2), 'utf8');
+    return pollData;
+  } catch (e) {
+    console.error('Error saving poll file:', e);
+    return pollData;
   }
 }
 
@@ -2777,6 +2814,117 @@ const server = http.createServer(async (req, res) => {
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/poll (Retrieve active daily reader poll status, question, and vote statistics)
+  if (req.method === 'GET' && url.pathname === '/api/poll') {
+    const poll = getPollData();
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache'
+    });
+    return res.end(JSON.stringify(poll));
+  }
+
+  // POST /api/poll/vote (Submit reader vote for a specific option)
+  if (req.method === 'POST' && url.pathname === '/api/poll/vote') {
+    let bodyText = '';
+    req.on('data', chunk => {
+      bodyText += chunk;
+      if (bodyText.length > 5120) req.destroy();
+    });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const { optionId } = body;
+        if (!optionId || typeof optionId !== 'string') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Valid optionId is required.' }));
+        }
+
+        const poll = getPollData();
+        if (!poll.enabled) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Daily Reader Poll is currently inactive.' }));
+        }
+
+        const targetOption = poll.options.find(o => o.id === optionId);
+        if (!targetOption) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Option not found in current poll.' }));
+        }
+
+        targetOption.votes = (targetOption.votes || 0) + 1;
+        poll.totalVotes = poll.options.reduce((sum, opt) => sum + (opt.votes || 0), 0);
+        poll.updatedAt = new Date().toISOString();
+
+        savePollData(poll);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, poll }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Invalid JSON request payload.' }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/poll/admin (Update poll configuration: toggle on/off, edit question, options, or reset votes)
+  if (req.method === 'POST' && url.pathname === '/api/poll/admin') {
+    if (!verifyAdminAuthorization(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden: Admin authorization required.' }));
+    }
+
+    let bodyText = '';
+    req.on('data', chunk => {
+      bodyText += chunk;
+      if (bodyText.length > 20480) req.destroy();
+    });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const { enabled, question, options, resetVotes } = body;
+
+        const currentPoll = getPollData();
+        const updatedPoll = { ...currentPoll };
+
+        if (typeof enabled === 'boolean') {
+          updatedPoll.enabled = enabled;
+        }
+
+        if (question && typeof question === 'string' && question.trim().length > 0) {
+          updatedPoll.question = question.trim();
+        }
+
+        if (Array.isArray(options) && options.length >= 2) {
+          updatedPoll.options = options.map((opt, index) => ({
+            id: opt.id || `opt-${index + 1}`,
+            label: String(opt.label || `Option ${index + 1}`).trim(),
+            votes: resetVotes ? 0 : (typeof opt.votes === 'number' ? opt.votes : 0)
+          }));
+        }
+
+        if (resetVotes) {
+          updatedPoll.id = `poll-${Date.now()}`;
+          updatedPoll.options = updatedPoll.options.map(opt => ({ ...opt, votes: 0 }));
+          updatedPoll.totalVotes = 0;
+        } else {
+          updatedPoll.totalVotes = updatedPoll.options.reduce((sum, opt) => sum + (opt.votes || 0), 0);
+        }
+
+        updatedPoll.updatedAt = new Date().toISOString();
+
+        savePollData(updatedPoll);
+        console.log(`[Daily Reader Poll Updated]: enabled=${updatedPoll.enabled}, totalVotes=${updatedPoll.totalVotes}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, poll: updatedPoll }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: 'Failed to update poll configuration: ' + err.message }));
       }
     });
     return;
