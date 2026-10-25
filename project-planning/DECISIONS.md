@@ -231,3 +231,12 @@
   4. *Wire Copy Sanitization*: Configured `MarkdownRenderer.jsx` with Unicode escape ranges (`[\u{1F300}-\u{1F9FF}...]`) to strip emojis from pasted wire releases, ensuring no emoji renders on published articles.
   5. *Automated Verification*: Validated using an automated Node.js regex scanner confirming 0 emojis in `src/`, followed by a clean `npm run build` test.
 - **Reasoning**: Guarantees institutional broadsheet dignity, eliminates cross-platform emoji rendering discrepancies, and strictly fulfills user expectations.
+
+## Decision 24: Default Public UI Design Protocol with Instant Rollback Guarantee
+- **Status**: Approved by User & Initiated
+- **Context**: User requested to design and implement a new default UI for the site that remains active as the base state until changed by the Admin. Crucially, the user requested that if they do not like the final design, it can be 100% cleanly reverted back to how it was ("desine khatam hone ke baad jo me dene wala hu aagar pasand nahi aaya ti me bolu ga wapas jaisakaro to vo wapas ho jaye ga ok na").
+- **Decision & Engineering Solution**:
+  1. *Git Checkpoint Tag for Instant 1-Click Rollback*: Created explicit Git tag `checkpoint-before-ui-redesign` (commit `8ade9da`) containing 100% of the verified working codebase (monetization desk, analytics, legal suite, 19-lang TTS, font pickers, SSR gateway). If the user decides to revert, a single rollback command will instantly restore the exact baseline with zero data loss or side effects.
+  2. *True Default System Layering*: The new default design will be rooted in default CSS variables (`:root` in `src/index.css`), default fallback values in `server/data/settings.json`, and initial component structures. When a new visitor arrives or before an administrator configures custom styles in the Admin Desk, this new default UI will be active. If an admin later customizes colors or fonts, those user settings will seamlessly overlay the default.
+  3. *Zero-Emoji & High Editorial Dignity*: Maintain the established zero-emoji rule, SVG icons, and human-centered editorial broadsheet standards.
+- **Reasoning**: Ensures total psychological safety for creative design exploration while guaranteeing the integrity and reversibility of all previously completed features.

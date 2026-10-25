@@ -8,11 +8,14 @@
 > - **Google AdSense Mandatory Legal Suite**: Privacy Policy, Terms, About, Contact/Grievance, Fact-Check policies integrated via `LegalModal.jsx`.
 > - **32kbps Mono MP3 Compression & 14-Day Rolling Cleanup**: Operational in `server.js`.
 > - **Supabase Schema**: Production DDL in `supabase_schema.sql` ready to execute.
-> - **Next in Line**: Phase 2 — Ad Slot Placements & Banner/AdSense Customizer.
+> - **Next in Line**: Default Site UI Redesign (Base Layout, Visual Hierarchy & Styling).
+> - **Safety Checkpoint Tag**: `checkpoint-before-ui-redesign` (Git Commit `8ade9da`) for 1-click instantaneous rollback if needed.
 
 ## Task Status Tracker
 
 | Task / Feature | Status | Details |
+| :--- | :--- | :--- |
+| Default UI Redesign & Baseline Foundation | In Progress | Setting up baseline default UI for public site prior to admin overrides |
 | :--- | :--- | :--- |
 | Project Planning & Governance Initialization | Completed | Created planning documents and mistake tracking |
 | Multi-Language Typography & Google Fonts Research | Completed | Selected fonts for 18 languages |
