@@ -257,13 +257,8 @@ export default function PollManager() {
         </div>
       )}
 
-      {/* MAIN 2-COLUMN SPLIT DESK */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(300px, 0.8fr)',
-        gap: '1.5rem',
-        alignItems: 'start'
-      }}>
+      {/* MAIN 2-COLUMN SPLIT DESK (Responsive 1-Column on Mobile) */}
+      <div className="poll-desk-layout">
         
         {/* LEFT COLUMN: EDIT FORM */}
         <div style={{

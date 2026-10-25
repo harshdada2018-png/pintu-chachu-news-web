@@ -713,8 +713,21 @@ export default function AdminWorkspace({
     return true;
   });
 
+  const ADMIN_DESKS = [
+    { id: 'curation', label: `Live News Control (${articles.length})`, shortLabel: `News (${articles.length})`, icon: Newspaper, group: 'Editorial & Content' },
+    { id: 'poll', label: 'Daily Reader Poll', shortLabel: 'Reader Poll', icon: BarChart3, group: 'Editorial & Content' },
+    { id: 'categories', label: `Categories (${categories.length})`, shortLabel: `Categories (${categories.length})`, icon: FolderTree, group: 'Editorial & Content' },
+    { id: 'analytics', label: 'Analytics & Traffic', shortLabel: 'Analytics', icon: BarChart2, group: 'Editorial & Content' },
+    { id: 'typography', label: 'Typography & Fonts', shortLabel: 'Typography', icon: Type, group: 'Design & Brand Identity' },
+    { id: 'theme', label: 'Color Harmonies & Themes', shortLabel: 'Colors & Theme', icon: Palette, group: 'Design & Brand Identity' },
+    { id: 'social', label: 'Social Channels Links', shortLabel: 'Social Links', icon: Share2, group: 'Design & Brand Identity' },
+    { id: 'ads', label: 'Ad Slot Placements', shortLabel: 'Ad Slots', icon: DollarSign, group: 'Operations & Monetization' },
+    { id: 'storage', label: 'Storage & Cache', shortLabel: 'Storage', icon: HardDrive, group: 'Operations & Monetization' },
+    { id: 'users', label: `Team & Permissions (${usersList.length})`, shortLabel: `Team (${usersList.length})`, icon: Users, group: 'Operations & Monetization' }
+  ];
+
   return (
-    <div className="container" style={{ padding: '2rem 1.25rem' }}>
+    <div className="container admin-container" style={{ padding: '1.75rem 1.25rem' }}>
       {/* Story Editor Modal */}
       {isEditModalOpen && (
         <StoryEditorModal
@@ -728,15 +741,15 @@ export default function AdminWorkspace({
       {/* Admin Masthead Header */}
       <div className="workspace-header" style={{ padding: '1.25rem', borderRadius: 'var(--radius-md)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <h2 className="workspace-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+            <h2 className="workspace-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', fontSize: 'clamp(1.2rem, 4.5vw, 1.75rem)', margin: 0 }}>
               <Settings color="var(--accent-blue)" /> Newsroom Admin Control Desk
             </h2>
-            <p style={{ color: 'var(--text-subtle)', fontSize: '0.875rem', marginTop: '0.2rem' }}>
+            <p style={{ color: 'var(--text-subtle)', fontSize: '0.875rem', marginTop: '0.25rem', lineHeight: '1.4' }}>
               Complete Admin authority to approve, edit, show, hide, or delete live news & external feeds.
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               onClick={() => { setEditingArticle(null); setIsEditModalOpen(true); }}
               className="btn btn-primary"
@@ -744,7 +757,7 @@ export default function AdminWorkspace({
             >
               <Plus size={16} /> Create Custom Story
             </button>
-            <div style={{ background: '#ECFDF5', color: 'var(--accent-emerald)', padding: '0.4rem 0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <div style={{ background: '#ECFDF5', color: 'var(--accent-emerald)', padding: '0.4rem 0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.4rem', whiteSpace: 'nowrap' }}>
               <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--accent-emerald)', display: 'inline-block' }} />
               Admin Authority Active
             </div>
@@ -753,8 +766,60 @@ export default function AdminWorkspace({
       </div>
 
       <div className="workspace-grid">
-        {/* Sidebar Nav */}
-        <div className="workspace-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        {/* Mobile Navigation Header (<= 768px Only - Single Touch-Scrollable Row & Quick Dropdown) */}
+        <div className="admin-mobile-nav show-on-mobile">
+          {/* 1. Quick Dropdown Desk Switcher */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.65rem' }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+              Select Desk:
+            </span>
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value)}
+              className="admin-mobile-desk-select"
+              aria-label="Select Newsroom Admin Desk"
+            >
+              <optgroup label="Editorial & Content">
+                <option value="curation">Live News Control ({articles.length})</option>
+                <option value="poll">Daily Reader Poll</option>
+                <option value="categories">Categories ({categories.length})</option>
+                <option value="analytics">Analytics & Traffic</option>
+              </optgroup>
+              <optgroup label="Design & Brand Identity">
+                <option value="typography">Typography & Fonts</option>
+                <option value="theme">Color Harmonies & Themes</option>
+                <option value="social">Social Channels Links</option>
+              </optgroup>
+              <optgroup label="Operations & Monetization">
+                <option value="ads">Ad Slot Placements</option>
+                <option value="storage">Storage & Cache</option>
+                <option value="users">Team & Permissions ({usersList.length})</option>
+              </optgroup>
+            </select>
+          </div>
+
+          {/* 2. Touch-Scrollable Horizontal Pill Bar */}
+          <div className="admin-mobile-pill-bar">
+            {ADMIN_DESKS.map(desk => {
+              const Icon = desk.icon;
+              const isActive = activeTab === desk.id;
+              return (
+                <button
+                  key={desk.id}
+                  onClick={() => setActiveTab(desk.id)}
+                  className={`admin-mobile-pill-btn ${isActive ? 'active' : ''}`}
+                  type="button"
+                >
+                  <Icon size={14} />
+                  <span>{desk.shortLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Desktop Sidebar Nav (> 768px Only) */}
+        <div className="workspace-sidebar hide-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <div>
             <div style={{ fontSize: '0.7rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-subtle)', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>
               Editorial & Content

@@ -208,8 +208,8 @@ export default function ColorPaletteCustomizer({ currentTheme, onSaveTheme }) {
         </div>
       )}
 
-      {/* Main 2-Column Suite Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 1.25fr) minmax(360px, 1fr)', gap: '1.75rem', alignItems: 'start' }}>
+      {/* Main 2-Column Suite Layout (Responsive 1-Column on Mobile) */}
+      <div className="color-palette-desk-layout">
         
         {/* COLUMN 1: 10 Curated Editorial Color Harmonies */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>

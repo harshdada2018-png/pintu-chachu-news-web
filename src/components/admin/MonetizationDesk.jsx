@@ -230,7 +230,7 @@ export default function MonetizationDesk({ onShowToast }) {
           <h3 style={{ fontSize: '1.05rem', fontWeight: '800', margin: 0 }}>Google AdSense Credentials & Verification</h3>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem', alignItems: 'start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', alignItems: 'start' }}>
           {/* Publisher ID Box */}
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.4rem', color: 'var(--text-main)' }}>

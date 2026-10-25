@@ -438,3 +438,18 @@ This document records significant mistakes, root causes, verified solutions, and
   5. *Verified with `npx vite build` (clean exit code 0 in 424ms).*
 - **Prevention Method**: On mobile navigation bars (< 400px), never render native `<select>` dropdowns without explicit CSS `width` / `max-width` limits, because browser layout engines calculate `<select>` width from the longest child `<option>`. Always enforce `flex-shrink: 0` and explicit dimensions on mobile action buttons to guarantee they are never pushed off-screen.
 
+### Mistake 34: Section Wrapper `<div>`s Creating Squished Multi-Column Navigation on Mobile & Desktop `minmax` Grids Blowing Out Viewport
+- **Mistake**: In the Admin Workspace on mobile (e.g. iPhone 12 Pro 390x844), navigation tabs rendered as squished, side-by-side vertical columns with truncated button titles ("Typography & Fon...", "Color Harmonies & ..."), and desk content areas (like `Daily Reader Poll Manager` and `Color Harmonies`) overflowed horizontally and were clipped off screen ("admine pannel ko bhe ache se set karo for mobile verson").
+- **Root Cause**:
+  1. *Section Wrapper `<div>`s in Flex Row*: In `AdminWorkspace.jsx`, sidebar navigation buttons were grouped inside 3 section `<div>` containers (`Editorial & Content`, `Design & Brand Identity`, `Operations & Monetization`). Applying `flex-direction: row` to `.workspace-sidebar` on mobile caused these 3 section `<div>`s to sit side-by-side as flex items, creating 3 squished vertical columns that truncated all button labels.
+  2. *Hardcoded Desktop `minmax` Grid Constraints*: `PollManager.jsx` had `gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(300px, 0.8fr)'` (620px min) and `ColorPaletteCustomizer.jsx` had `minmax(340px, 1.25fr) minmax(360px, 1fr)` (700px min). On a 390px mobile screen, these grids blew out the viewport by 230px+, triggering horizontal scrolling and clipped headings.
+- **Verified Solution**:
+  1. *Dedicated Mobile Admin Navigation*: Built `.admin-mobile-nav` with:
+     - **Quick Desk Dropdown Switcher** (`select.admin-mobile-desk-select`): Instant 1-tap jump to any of the 10 desks on mobile.
+     - **Touch-Scrollable Horizontal Pill Bar** (`.admin-mobile-pill-bar`): Flat, single-row touch-scrollable pills with Lucide icons and counts with `flex-shrink: 0; white-space: nowrap;`.
+  2. *Clean Separation*: Desktop categorized sidebar uses `.hide-on-mobile`, while the mobile navigation uses `.show-on-mobile`.
+  3. *Responsive 1-Column Desk Layouts*: Added `.poll-desk-layout` and `.color-palette-desk-layout` in `src/index.css` with `@media (max-width: 960px) { grid-template-columns: 1fr !important; }`.
+  4. *Header & Container Calibration*: Clamped workspace title (`clamp(1.2rem, 4.5vw, 1.75rem)`), added `flex-wrap: wrap` to action buttons, and tuned AdSense credentials grid `minmax(320px)` to `minmax(280px)`.
+  5. *Verified with `npx vite build` (clean exit code 0 in 635ms).*
+- **Prevention Method**: When designing mobile navigation for multi-category dashboards, never apply `flex-direction: row` to an outer container whose children are nested section `<div>`s. Use a flattened mobile pill rail or native desk dropdown for mobile, and always collapse 2-column `minmax` grids to `1fr` on viewports <= 960px.
+
