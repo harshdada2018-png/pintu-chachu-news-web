@@ -55,10 +55,10 @@ export default function Header({
       .catch(err => console.warn('[Weather API] Offline fallback:', err));
   }, []);
 
-  // Sticky header on scroll detection (triggers smoothly once masthead-top has scrolled past)
+  // Sticky header on scroll detection (triggers as soon as masthead-top scrolls away)
   useEffect(() => {
     const handleScroll = () => {
-      setIsSticky(window.scrollY > 70);
+      setIsSticky(window.scrollY > 45);
     };
     handleScroll(); // Execute once on mount so page refreshes while scrolled stay sticky
     window.addEventListener('scroll', handleScroll, { passive: true });
@@ -275,7 +275,7 @@ export default function Header({
       {/* Classic Newspaper Main Masthead (Desktop Only - Fixed at top: 0 when scrolled like BBC) */}
       <div 
         className="masthead-main-wrapper hide-on-mobile"
-        style={{ minHeight: isSticky ? '118px' : 'auto', transition: 'min-height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)' }}
+        style={{ minHeight: isSticky ? '118px' : 'auto', transition: 'min-height 0.25s cubic-bezier(0.16, 1, 0.3, 1)' }}
       >
         <div 
           className={`masthead-main ${isSticky ? 'is-sticky' : ''}`}
@@ -289,10 +289,10 @@ export default function Header({
               alignItems: 'center', 
               justifyContent: 'center',
               minHeight: isSticky ? '46px' : 'auto',
-              transition: 'min-height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)'
+              transition: 'min-height 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
           >
-            {/* Left Quick Actions (Smoothly glides and fades in like BBC ≡ Q) */}
+            {/* Left Quick Actions (Snappy fade and slide like BBC ≡ Q) */}
             <div 
               style={{ 
                 position: 'absolute', 
@@ -302,9 +302,9 @@ export default function Header({
                 gap: '0.4rem',
                 zIndex: 2,
                 opacity: isSticky ? 1 : 0,
-                transform: isSticky ? 'translateX(0)' : 'translateX(-12px)',
+                transform: isSticky ? 'translateX(0)' : 'translateX(-8px)',
                 pointerEvents: isSticky ? 'auto' : 'none',
-                transition: 'opacity 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)'
+                transition: 'opacity 0.2s ease, transform 0.2s ease'
               }}
             >
               <button
@@ -349,7 +349,7 @@ export default function Header({
               </button>
             </div>
 
-            {/* Centered Logo (Smoothly scales down over 0.45s like luxury broadsheets) */}
+            {/* Centered Logo (Snappy scaling over 0.25s) */}
             <a 
               href="#" 
               onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
@@ -368,12 +368,12 @@ export default function Header({
                   background: theme === 'dark' ? '#FFFFFF' : 'transparent',
                   padding: theme === 'dark' ? (isSticky ? '3px 10px' : '4px 14px') : '0',
                   borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0',
-                  transition: 'height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), padding 0.45s ease'
+                  transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
                 }} 
               />
             </a>
 
-            {/* Hindi Tagline (Gently fades out and folds up rather than vanishing abruptly) */}
+            {/* Hindi Tagline (Snappy fade and collapse) */}
             <div 
               className="masthead-tagline" 
               style={{ 
@@ -386,13 +386,13 @@ export default function Header({
                 maxHeight: isSticky ? '0px' : '24px',
                 overflow: 'hidden',
                 pointerEvents: isSticky ? 'none' : 'auto',
-                transition: 'opacity 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), max-height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), margin 0.45s ease'
+                transition: 'opacity 0.2s ease, maxHeight 0.25s ease, margin 0.2s ease'
               }}
             >
               {t('tagline', currentLanguage)}
             </div>
 
-            {/* Right Quick Actions (Smoothly glides and fades in) */}
+            {/* Right Quick Actions (Snappy fade and slide) */}
             <div 
               style={{ 
                 position: 'absolute', 
@@ -402,9 +402,9 @@ export default function Header({
                 gap: '0.45rem',
                 zIndex: 2,
                 opacity: isSticky ? 1 : 0,
-                transform: isSticky ? 'translateX(0)' : 'translateX(12px)',
+                transform: isSticky ? 'translateX(0)' : 'translateX(8px)',
                 pointerEvents: isSticky ? 'auto' : 'none',
-                transition: 'opacity 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)'
+                transition: 'opacity 0.2s ease, transform 0.2s ease'
               }}
             >
               {/* Quick Language Pill */}
@@ -444,6 +444,7 @@ export default function Header({
           </div>
         </div>
       </div>
+
 
       {/* Live Breaking News Ticker Bar */}
       <div className="ticker-bar">
