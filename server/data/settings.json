@@ -11,7 +11,9 @@
     "headingScale": 100,
     "headingWeight": 650,
     "bodySize": 16,
-    "bodyWeight": 600,
+    "bodyWeight": 400,
+    "mobileHeadingScale": 85,
+    "mobileBodySize": 15,
     "regionalFonts": {
       "hi": {
         "headingFont": "Playfair Display",
@@ -89,15 +91,73 @@
   },
   "theme": {
     "primary": "#121212",
-    "bgPrimary": "#FBFBF9",
+    "bgPrimary": "#ffffff",
     "bgSurface": "#FFFFFF",
     "bgSecondary": "#F3F2EE",
     "textMain": "#121212",
     "textMuted": "#4A4A4A",
     "textSubtle": "#737373",
-    "accentCrimson": "#B81D13",
+    "accentCrimson": "#563e3e",
     "accentBlue": "#0D5B8C",
     "borderLight": "#E8E6DF",
     "borderMedium": "#D5D2C7"
+  },
+  "adsConfig": {
+    "adSensePublisherId": "ca-pub-1234567890123456",
+    "autoAdsEnabled": false,
+    "slots": {
+      "header": {
+        "id": "header",
+        "name": "Header Broadsheet Leaderboard",
+        "position": "header",
+        "enabled": true,
+        "type": "sponsor",
+        "adSlotId": "",
+        "sponsorBannerUrl": "/uploads/img_sponsor_header_1792749746636.webp",
+        "sponsorTargetUrl": "6268466656",
+        "sponsorName": "harsh",
+        "desktopDimensions": "728×90",
+        "mobileDimensions": "320×50"
+      },
+      "in_article": {
+        "id": "in_article",
+        "name": "In-Article Native Reading Unit",
+        "position": "in_article",
+        "enabled": true,
+        "type": "adsense",
+        "adSlotId": "",
+        "sponsorBannerUrl": "",
+        "sponsorTargetUrl": "",
+        "sponsorName": "Featured Partner",
+        "desktopDimensions": "336×280 / Fluid",
+        "mobileDimensions": "300×250"
+      },
+      "sidebar": {
+        "id": "sidebar",
+        "name": "Sidebar Sticky Half-Page Unit",
+        "position": "sidebar",
+        "enabled": true,
+        "type": "adsense",
+        "adSlotId": "",
+        "sponsorBannerUrl": "",
+        "sponsorTargetUrl": "",
+        "sponsorName": "Featured Partner",
+        "desktopDimensions": "300×600",
+        "mobileDimensions": "300×250"
+      },
+      "mobile_footer": {
+        "id": "mobile_footer",
+        "name": "Mobile Sticky Anchor Banner",
+        "position": "mobile_footer",
+        "enabled": false,
+        "type": "adsense",
+        "adSlotId": "",
+        "sponsorBannerUrl": "",
+        "sponsorTargetUrl": "",
+        "sponsorName": "Featured Partner",
+        "desktopDimensions": "Hidden on Desktop",
+        "mobileDimensions": "320×50 Sticky"
+      }
+    }
   }
 }

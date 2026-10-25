@@ -7,6 +7,9 @@ import ReporterWorkspace from './components/reporter/ReporterWorkspace';
 import EditorWorkspace from './components/editor/EditorWorkspace';
 import AdminWorkspace from './components/admin/AdminWorkspace';
 import SearchPage from './components/public/SearchPage';
+import LegalModal from './components/common/LegalModal';
+import PartnerUnit from './components/common/PartnerUnit';
+import { fetchAdSettings } from './services/monetizationService';
 import { MOCK_ARTICLES, MOCK_CATEGORIES } from './services/mockData';
 import { getCachedNews, saveNewsToCache, getCachedCategories, saveCategoriesToCache } from './services/cacheService';
 import { translateArticle, translateHeadlinesOnly, SUPPORTED_LANGUAGES } from './services/translationService';
@@ -14,7 +17,7 @@ import { speakTextWithNaturalVoice, stopAudioSpeech } from './services/speechEng
 import { DEFAULT_REGIONAL_FONTS } from './components/admin/VisualFontPicker';
 import { DEFAULT_THEME_PALETTE } from './components/admin/ColorPaletteCustomizer';
 import { t, translateCategoryName } from './services/uiTranslations';
-import { Clock, Eye, Sparkles, TrendingUp, Flame, ShieldCheck, Volume2, Pause, Play, Heart, Bookmark, Send, Share2, BarChart3, Vote, X, VolumeX, ThumbsUp, ThumbsDown, HelpCircle } from 'lucide-react';
+import { Clock, Eye, Sparkles, TrendingUp, Flame, ShieldCheck, Volume2, Pause, Play, Heart, Bookmark, Send, Share2, BarChart3, Vote, X, VolumeX, ThumbsUp, ThumbsDown, HelpCircle, Newspaper, Check } from 'lucide-react';
 
 const WhatsAppIcon = ({ size = 18, color = '#ffffff' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -42,13 +45,59 @@ const XTwitterIcon = ({ size = 18, color = '#ffffff' }) => (
   </svg>
 );
 
+function parseRouteFromUrl() {
+  try {
+    const pathname = window.location.pathname;
+    const search = window.location.search;
+    if (pathname.startsWith('/article/')) {
+      const slug = decodeURIComponent(pathname.replace(/^\/article\//, '').split('/')[0]);
+      if (slug) return { view: 'article', idOrSlug: slug };
+    }
+    if (pathname.startsWith('/news/')) {
+      const slug = decodeURIComponent(pathname.replace(/^\/news\//, '').split('/')[0]);
+      if (slug) return { view: 'article', idOrSlug: slug };
+    }
+    if (search.includes('article=')) {
+      const params = new URLSearchParams(search);
+      const id = params.get('article');
+      if (id) return { view: 'article', idOrSlug: id };
+    }
+    if (pathname === '/search') return { view: 'search' };
+    if (pathname === '/reporter') return { view: 'reporter' };
+    if (pathname === '/editor') return { view: 'editor' };
+    if (pathname === '/admin') return { view: 'admin' };
+  } catch (e) {}
+  return { view: 'home' };
+}
+
 export default function App() {
   const [theme, setTheme] = useState('light');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Failsafe Watchdog: Ensure loading screen NEVER stays for more than 1.5 seconds
+  useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      setIsLoading(false);
+      try { sessionStorage.setItem('ps_splash_shown', 'true'); } catch (e) {}
+    }, 1500);
+    return () => clearTimeout(safetyTimer);
+  }, []);
   const [currentRole, setCurrentRole] = useState('visitor'); // visitor | reporter | editor | admin
-  const [activeView, setActiveView] = useState('home'); // home | article | reporter | editor | admin | search
+  const [activeView, setActiveView] = useState(() => parseRouteFromUrl().view); // home | article | reporter | editor | admin | search
   const [activeCategory, setActiveCategory] = useState('all');
-  const [selectedArticle, setSelectedArticle] = useState(null);
+  const [selectedArticle, setSelectedArticle] = useState(() => {
+    const route = parseRouteFromUrl();
+    if (route.view === 'article' && route.idOrSlug) {
+      const cached = getCachedNews();
+      const articles = cached?.articles || MOCK_ARTICLES;
+      return articles.find(a => a.id === route.idOrSlug || a.slug === route.idOrSlug) || null;
+    }
+    return null;
+  });
+
+  // Mandatory 5 Legal Pages Modal for Google AdSense Compliance
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState('privacy');
 
   // Multi-Language State (Default: Hindi 'hi')
   const [currentLanguage, setCurrentLanguage] = useState('hi');
@@ -98,6 +147,8 @@ export default function App() {
     headingWeight: 700,
     bodySize: 16,
     bodyWeight: 400,
+    mobileHeadingScale: 85,
+    mobileBodySize: 15,
     regionalFonts: DEFAULT_REGIONAL_FONTS
   };
 
@@ -142,6 +193,8 @@ export default function App() {
 
     root.style.setProperty('--font-size-base', `${typography.bodySize || 16}px`);
     root.style.setProperty('--font-scale-heading', `${(typography.headingScale || 100) / 100}`);
+    root.style.setProperty('--font-size-base-mobile', `${typography.mobileBodySize || 15}px`);
+    root.style.setProperty('--font-scale-heading-mobile', `${(typography.mobileHeadingScale || 85) / 100}`);
     root.style.setProperty('--font-weight-heading', `${typography.headingWeight || 700}`);
     root.style.setProperty('--font-weight-body', `${typography.bodyWeight || 400}`);
   }, [typography, currentLanguage]);
@@ -306,6 +359,9 @@ export default function App() {
       })
       .catch(err => console.warn('[Backend Sync] Theme offline fallback:', err.message));
 
+    // Initial sync of ad settings
+    fetchAdSettings().catch(err => console.warn('[Backend Sync] Ads offline fallback:', err.message));
+
     fetch('/api/categories')
       .then(res => res.json())
       .then(data => {
@@ -368,7 +424,7 @@ export default function App() {
 
     // Check if input is a phone number or numeric ID (e.g. +919876543210, 9876543210, +91 98765 43210)
     const digitsOnly = trimmed.replace(/[^\d]/g, '');
-    const isPhoneOrNumeric = /^[\+\d\s\-()]+$/.test(trimmed) && digitsOnly.length >= 7;
+    const isPhoneOrNumeric = /^[+\d\s\-()]+$/.test(trimmed) && digitsOnly.length >= 7;
 
     if (isPhoneOrNumeric) {
       return `https://facebook.com/${digitsOnly}`;
@@ -467,8 +523,70 @@ export default function App() {
   const handleSelectArticle = async (art) => {
     setSelectedArticle(art);
     setActiveView('article');
+    const cleanSlug = art.slug || art.id;
+    window.history.pushState({ articleId: art.id, slug: cleanSlug }, '', `/article/${cleanSlug}`);
+    document.title = `${art.title} - PUBLIC SPARK`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const handleNavigate = (view) => {
+    setActiveView(view);
+    if (view === 'home') {
+      setSelectedArticle(null);
+      window.history.pushState({}, '', '/');
+      document.title = 'PUBLIC SPARK - Breaking News & Live Updates';
+    } else {
+      window.history.pushState({}, '', `/${view}`);
+      document.title = `${view.charAt(0).toUpperCase() + view.slice(1)} - PUBLIC SPARK`;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleRoleChange = (role) => {
+    setCurrentRole(role);
+    if (role === 'visitor') {
+      handleNavigate('home');
+    } else {
+      handleNavigate(role);
+    }
+  };
+
+  // Browser Back / Forward Button & Popstate Synchronization
+  useEffect(() => {
+    const handlePopState = () => {
+      const route = parseRouteFromUrl();
+      if (route.view === 'article' && route.idOrSlug) {
+        const found = baseArticles.find(a => a.id === route.idOrSlug || a.slug === route.idOrSlug);
+        if (found) {
+          setSelectedArticle(found);
+          setActiveView('article');
+          document.title = `${found.title} - PUBLIC SPARK`;
+          return;
+        }
+      }
+      setSelectedArticle(null);
+      setActiveView(route.view);
+      if (route.view === 'home') {
+        document.title = 'PUBLIC SPARK - Breaking News & Live Updates';
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [baseArticles]);
+
+  // Synchronize deep-link route once base articles load from server
+  useEffect(() => {
+    const route = parseRouteFromUrl();
+    if (route.view === 'article' && route.idOrSlug && !selectedArticle) {
+      const found = baseArticles.find(a => a.id === route.idOrSlug || a.slug === route.idOrSlug);
+      if (found) {
+        setSelectedArticle(found);
+        setActiveView('article');
+        document.title = `${found.title} - PUBLIC SPARK`;
+      }
+    }
+  }, [baseArticles, selectedArticle]);
 
   // 1-Click Quick Audio Reading Trigger for Homepage Cards
   const handleQuickAudioRead = (e, article) => {
@@ -585,19 +703,22 @@ export default function App() {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Animated Loading Splash Screen */}
       {isLoading && (
-        <LoadingSplash onFinished={() => setIsLoading(false)} />
+        <LoadingSplash onFinished={() => {
+          setIsLoading(false);
+          try { sessionStorage.setItem('ps_splash_shown', 'true'); } catch (e) {}
+        }} />
       )}
 
       {/* Header with Masthead, Language Selector & Category Nav */}
       <Header 
         currentRole={currentRole}
-        onRoleChange={setCurrentRole}
+        onRoleChange={handleRoleChange}
         theme={theme}
         onToggleTheme={toggleTheme}
         activeCategory={activeCategory}
         onSelectCategory={setActiveCategory}
         activeView={activeView}
-        onNavigate={setActiveView}
+        onNavigate={handleNavigate}
         currentLanguage={currentLanguage}
         onLanguageChange={setCurrentLanguage}
         isTranslating={isTranslating}
@@ -679,6 +800,9 @@ export default function App() {
             ) : (
               /* STANDARD CATEGORY & NEWSPAPER 3-COLUMN LAYOUT */
               <>
+                {/* Header Broadsheet Leaderboard Ad Slot */}
+                <PartnerUnit position="header" />
+
                 {heroArticle ? (
                   <div className="news-grid-lead">
                     {/* Main Hero Column */}
@@ -721,26 +845,30 @@ export default function App() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                       {secondaryArticles.map((art) => (
                         <div key={art.id} className="story-card-secondary" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
-                          <div className="img-container" style={{ height: '170px' }}>
-                            <img src={art.featured_image} alt={art.title} />
+                          <div className="secondary-card-img-wrap">
+                            <div className="img-container">
+                              <img src={art.featured_image} alt={art.title} loading="lazy" />
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
-                            <button 
-                              onClick={(e) => handleQuickAudioRead(e, art)}
-                              className="btn btn-outline"
-                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                            >
-                              {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                              {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
-                            </button>
-                          </div>
-                          <h3 className="story-card-title">{art.title}</h3>
-                          <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                            <span>{art.published_at}</span>
-                            <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
-                            <span>• <Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '8.9K'} {t('views', currentLanguage)}</span>
-                            <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '950'} {t('likes', currentLanguage)}</span>
+                          <div className="secondary-card-content">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                              <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
+                              <button 
+                                onClick={(e) => handleQuickAudioRead(e, art)}
+                                className="btn btn-outline"
+                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                              >
+                                {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
+                                {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
+                              </button>
+                            </div>
+                            <h3 className="story-card-title">{art.title}</h3>
+                            <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span>{art.published_at}</span>
+                              <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                              <span>• <Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '8.9K'} {t('views', currentLanguage)}</span>
+                              <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '950'} {t('likes', currentLanguage)}</span>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -783,8 +911,8 @@ export default function App() {
 
                       {/* Interactive Daily Public Voice Poll Widget */}
                       <div style={{ 
-                        background: 'var(--gradient-bento-hero)', 
-                        border: '1px solid var(--glass-border)', 
+                        background: 'var(--bg-surface)', 
+                        border: '1px solid var(--border-medium)', 
                         borderRadius: 'var(--radius-bento)', 
                         padding: '1.25rem',
                         boxShadow: 'var(--shadow-sm)'
@@ -859,8 +987,9 @@ export default function App() {
                                     </div>
                                   </div>
 
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', fontWeight: '700', marginTop: '0.4rem', textAlign: 'center' }}>
-                                    ✓ {t('voteRecorded', currentLanguage)} ({totalVotes.toLocaleString()} {t('readersVoted', currentLanguage)})
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', fontSize: '0.75rem', color: 'var(--accent-emerald)', fontWeight: '700', marginTop: '0.4rem', textAlign: 'center' }}>
+                                    <Check size={14} />
+                                    <span>{t('voteRecorded', currentLanguage)} ({totalVotes.toLocaleString()} {t('readersVoted', currentLanguage)})</span>
                                   </div>
                                 </>
                               );
@@ -868,16 +997,78 @@ export default function App() {
                           </div>
                         )}
                       </div>
+
+                      {/* Sidebar Sticky Unit Placement */}
+                      <PartnerUnit position="sidebar" />
                     </div>
                   </div>
                 ) : (
-                  <div style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--text-subtle)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--border-medium)', margin: '2rem 0' }}>
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
-                      {t('noStoriesFound', currentLanguage)}
-                    </h3>
-                    <p style={{ fontSize: '0.9rem', maxWidth: '440px', margin: '0 auto', lineHeight: '1.5' }}>
-                      {t('noStoriesCategory', currentLanguage)}
-                    </p>
+                  <div style={{ margin: '2rem 0' }}>
+                    {/* Editorial Dispatch Card for Empty Section */}
+                    <div style={{ 
+                      padding: '3rem 2rem', 
+                      textAlign: 'center', 
+                      background: 'var(--bg-surface)', 
+                      borderRadius: 'var(--radius-md)', 
+                      border: '1px solid var(--border-medium)', 
+                      boxShadow: 'var(--shadow-sm)',
+                      maxWidth: '680px',
+                      margin: '0 auto 3rem auto'
+                    }}>
+                      <div style={{ display: 'inline-flex', padding: '0.75rem', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.08)', color: 'var(--accent-indigo)', marginBottom: '1rem' }}>
+                        <Newspaper size={32} />
+                      </div>
+                      <h3 style={{ fontSize: '1.35rem', fontWeight: '900', color: 'var(--text-main)', marginBottom: '0.5rem', fontFamily: 'var(--font-serif)' }}>
+                        {translateCategoryName(categories?.find(c => c.slug === activeCategory)?.name || activeCategory, currentLanguage)}: {t('reportingInProgress', currentLanguage)}
+                      </h3>
+                      <p style={{ fontSize: '0.925rem', color: 'var(--text-muted)', maxWidth: '480px', margin: '0 auto 1.5rem auto', lineHeight: '1.6' }}>
+                        {t('reportingInProgressDesc', currentLanguage)}
+                      </p>
+                      <button 
+                        onClick={() => setActiveCategory('all')} 
+                        className="btn btn-primary"
+                        style={{ padding: '0.55rem 1.25rem', fontSize: '0.85rem', fontWeight: '700', borderRadius: '30px' }}
+                      >
+                        {t('topStories', currentLanguage)}
+                      </button>
+                    </div>
+
+                    {/* Fallback Live Stream Grid so page is NEVER empty */}
+                    <div style={{ borderTop: '2px solid var(--border-dark)', paddingTop: '2rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', fontSize: '0.9rem', fontWeight: '900', color: 'var(--accent-crimson)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <Flame size={16} /> {t('topTrendingStories', currentLanguage)}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '2rem' }}>
+                        {publishedArticles.slice(0, 6).map((art) => (
+                          <div key={art.id} className="story-card-secondary" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
+                            <div className="secondary-card-img-wrap">
+                              <div className="img-container">
+                                <img src={art.featured_image} alt={art.title} loading="lazy" />
+                              </div>
+                            </div>
+                            <div className="secondary-card-content">
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                                <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
+                                <button 
+                                  onClick={(e) => handleQuickAudioRead(e, art)}
+                                  className="btn btn-outline"
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                                >
+                                  {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
+                                  {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
+                                </button>
+                              </div>
+                              <h3 className="story-card-title">{art.title}</h3>
+                              <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                                <span>• <Eye size={12} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '6.3K'} {t('views', currentLanguage)}</span>
+                                <span>• <Heart size={12} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '720'} {t('likes', currentLanguage)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -890,25 +1081,29 @@ export default function App() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '2rem' }}>
                       {remainingArticles.map((art) => (
                         <div key={art.id} className="story-card-secondary" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
-                          <div className="img-container" style={{ height: '200px' }}>
-                            <img src={art.featured_image} alt={art.title} />
+                          <div className="secondary-card-img-wrap">
+                            <div className="img-container">
+                              <img src={art.featured_image} alt={art.title} loading="lazy" />
+                            </div>
                           </div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
-                            <button 
-                              onClick={(e) => handleQuickAudioRead(e, art)}
-                              className="btn btn-outline"
-                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                            >
-                              {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                              {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
-                            </button>
-                          </div>
-                          <h3 className="story-card-title">{art.title}</h3>
-                          <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.4rem', flexWrap: 'wrap' }}>
-                            <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
-                            <span>• <Eye size={12} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '6.3K'} {t('views', currentLanguage)}</span>
-                            <span>• <Heart size={12} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '720'} {t('likes', currentLanguage)}</span>
+                          <div className="secondary-card-content">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                              <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
+                              <button 
+                                onClick={(e) => handleQuickAudioRead(e, art)}
+                                className="btn btn-outline"
+                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                              >
+                                {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
+                                {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
+                              </button>
+                            </div>
+                            <h3 className="story-card-title">{art.title}</h3>
+                            <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                              <span>• <Eye size={12} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '6.3K'} {t('views', currentLanguage)}</span>
+                              <span>• <Heart size={12} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '720'} {t('likes', currentLanguage)}</span>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -924,7 +1119,7 @@ export default function App() {
         {activeView === 'article' && (
           <ArticleReader 
             article={selectedArticle} 
-            onBack={() => setActiveView('home')} 
+            onBack={() => handleNavigate('home')} 
             onSelectArticle={handleSelectArticle}
             currentLanguage={currentLanguage}
             onShowToast={(msg) => { setToastMessage(msg); setIsToastOpen(true); }}
@@ -937,7 +1132,7 @@ export default function App() {
             articles={publishedArticles}
             categories={categories}
             onSelectArticle={handleSelectArticle}
-            onBack={() => setActiveView('home')}
+            onBack={() => handleNavigate('home')}
             currentLanguage={currentLanguage}
           />
         )}
@@ -1110,13 +1305,41 @@ export default function App() {
             </div>
             <div>
               <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: '0.85rem', letterSpacing: '0.08em' }}>
-                About Newsroom
+                About & Standards
               </h4>
               <ul style={{ listStyle: 'none', fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <li>About PublicSpark</li>
-                <li>Editorial Code of Ethics</li>
-                <li>Fact-Check Policy</li>
-                <li>Contact Editorial Desk</li>
+                <li>
+                  <button onClick={() => { setLegalModalTab('about'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    About PublicSpark
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => { setLegalModalTab('ethics'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    Editorial Code & Fact-Check
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => { setLegalModalTab('contact'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    Contact & Grievance Redressal
+                  </button>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: '0.85rem', letterSpacing: '0.08em' }}>
+                Legal & Compliance
+              </h4>
+              <ul style={{ listStyle: 'none', fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <li>
+                  <button onClick={() => { setLegalModalTab('privacy'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    Privacy Policy (AdSense & Cookies)
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => { setLegalModalTab('terms'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    Terms of Service
+                  </button>
+                </li>
               </ul>
             </div>
           </div>
@@ -1124,30 +1347,9 @@ export default function App() {
             © 2026 PublicSpark Newsroom Platform. All rights reserved. Built with precision for human journalism.
           </div>
         </div>
-      {/* Floating Glassmorphic Audio Mini-Player Bar */}
+      {/* Floating Broadsheet Audio Mini-Player Bar */}
       {playingArticleId && (
-        <div 
-          style={{
-            position: 'fixed',
-            bottom: '20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: '92%',
-            maxWidth: '680px',
-            zIndex: 99999,
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            border: '1px solid var(--accent-indigo)',
-            borderRadius: 'var(--radius-bento)',
-            padding: '0.85rem 1.25rem',
-            boxShadow: 'var(--shadow-glow), 0 12px 36px rgba(0,0,0,0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '1rem'
-          }}
-        >
+        <div className="floating-broadsheet-audio">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', overflow: 'hidden', flex: 1 }}>
             {/* Audio Equalizer animation bars */}
             <div className="equalizer-container" style={{ flexShrink: 0 }}>
@@ -1195,6 +1397,17 @@ export default function App() {
       )}
 
       </footer>
+
+      {/* Mandatory 5 Legal Pages Modal for Google AdSense Compliance */}
+      <LegalModal 
+        isOpen={isLegalModalOpen} 
+        onClose={() => setIsLegalModalOpen(false)} 
+        initialTab={legalModalTab} 
+        currentLanguage={currentLanguage} 
+      />
+
+      {/* Mobile Sticky Anchor Ad Slot (Automatically active only on mobile when enabled) */}
+      <PartnerUnit position="mobile_footer" />
     </div>
   );
 }

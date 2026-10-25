@@ -4,13 +4,13 @@ import { fetchAnalyticsOverview, fetchTrendingArticles, fetchCountryBreakdown } 
 import { MOCK_ARTICLES } from '../../services/mockData';
 
 const COUNTRY_NAMES = {
-  IN: { name: 'India', flag: '🇮🇳', code: 'IN', color: '#3B82F6' },
-  US: { name: 'United States', flag: '🇺🇸', code: 'US', color: '#10B981' },
-  GB: { name: 'United Kingdom', flag: '🇬🇧', code: 'GB', color: '#8B5CF6' },
-  CA: { name: 'Canada', flag: '🇨🇦', code: 'CA', color: '#F59E0B' },
-  BD: { name: 'Bangladesh', flag: '🇧🇩', code: 'BD', color: '#EF4444' },
-  AE: { name: 'United Arab Emirates', flag: '🇦🇪', code: 'AE', color: '#06B6D4' },
-  DE: { name: 'Germany', flag: '🇩🇪', code: 'DE', color: '#EC4899' }
+  IN: { name: 'India', code: 'IN', color: '#3B82F6' },
+  US: { name: 'United States', code: 'US', color: '#10B981' },
+  GB: { name: 'United Kingdom', code: 'GB', color: '#8B5CF6' },
+  CA: { name: 'Canada', code: 'CA', color: '#F59E0B' },
+  BD: { name: 'Bangladesh', code: 'BD', color: '#EF4444' },
+  AE: { name: 'United Arab Emirates', code: 'AE', color: '#06B6D4' },
+  DE: { name: 'Germany', code: 'DE', color: '#EC4899' }
 };
 
 const HOURLY_PEAK_DATA = [
@@ -60,12 +60,12 @@ export default function AnalyticsDashboard({ articles }) {
         code,
         count,
         percentage: parseFloat(((count / total) * 100).toFixed(1)),
-        meta: COUNTRY_NAMES[code] || { name: code, flag: '🌐', code, color: '#6B7280' }
+        meta: COUNTRY_NAMES[code] || { name: code, code, color: '#6B7280' }
       }))
       .sort((a, b) => b.count - a.count);
   }, [overview]);
 
-  const topCountry = countryList[0] || { meta: { name: 'India', flag: '🇮🇳', code: 'IN' }, percentage: 65.2 };
+  const topCountry = countryList[0] || { meta: { name: 'India', code: 'IN' }, percentage: 65.2 };
 
   const trendPoints = overview?.recentTrend || [];
   const maxViews = Math.max(...trendPoints.map(p => p.views), 100);
@@ -521,15 +521,15 @@ export default function AnalyticsDashboard({ articles }) {
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border-medium)', background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}>
                 <th style={{ padding: '0.75rem 1rem' }}>Country Territory</th>
-                <th style={{ padding: '0.75rem 1rem' }}>Total Views 👁️</th>
-                <th style={{ padding: '0.75rem 1rem' }}>Total Likes ❤️</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Total Views</th>
+                <th style={{ padding: '0.75rem 1rem' }}>Total Likes</th>
                 <th style={{ padding: '0.75rem 1rem' }}>Engagement Rate %</th>
                 <th style={{ padding: '0.75rem 1rem' }}>Volume Share</th>
               </tr>
             </thead>
             <tbody>
               {countryDetailed.map((c) => {
-                const meta = COUNTRY_NAMES[c.country] || { name: c.country, flag: '🌐', code: c.country, color: '#3B82F6' };
+                const meta = COUNTRY_NAMES[c.country] || { name: c.country, code: c.country, color: '#3B82F6' };
                 const totalViewsAll = countryDetailed.reduce((acc, item) => acc + item.views, 0) || 1;
                 const viewSharePct = parseFloat(((c.views / totalViewsAll) * 100).toFixed(1));
 
@@ -537,7 +537,19 @@ export default function AnalyticsDashboard({ articles }) {
                   <tr key={c.country} style={{ borderBottom: '1px solid var(--border-light)' }}>
                     <td style={{ padding: '0.75rem 1rem', fontWeight: '700' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                        <span style={{ fontSize: '1.4rem' }}>{meta.flag || '🌐'}</span>
+                        <span style={{ 
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          background: 'var(--bg-tertiary, #f1f5f9)',
+                          color: 'var(--text-main, #0f172a)',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          letterSpacing: '0.05em',
+                          border: '1px solid var(--border-medium, #cbd5e1)'
+                        }}>{meta.code || c.country}</span>
                         <div>
                           <div style={{ color: 'var(--text-main)', fontSize: '0.9rem' }}>{meta.name} ({c.country})</div>
                           <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>Geo IP Resolved</div>

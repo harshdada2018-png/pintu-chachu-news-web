@@ -20,7 +20,8 @@ This document maintains an honest, project-specific record of implemented & veri
 | **Multi-Language Translation** | Yes (`/api/translate`) | None (Real Gemini `gemini-3.8-flash` translation) | Live & verified with persistent `(article_id, lang)` database cache & sha256 hash invalidation |
 | **Text-to-Speech (Audio Engine)** | Yes (Browser Native Web Speech API) | None | Pure native `window.speechSynthesis` with dynamic voice-availability auto-hiding |
 | **Team & Permissions** | No (Frontend `useState` in AdminWorkspace) | Yes (`usersList` in `AdminWorkspace.jsx`) | Create `GET/POST /api/users` & secure auth system |
-| **Ad Slot Placements** | No (Frontend `useState` in AdminWorkspace) | Yes (`adSlots` in `AdminWorkspace.jsx`) | Phase 2: Build `GET/POST /api/settings/ads` & banner manager |
+| **Google AdSense & Ad Placements** | No (Frontend `useState` in AdminWorkspace) | Yes (`adSlots` in `AdminWorkspace.jsx`) | Phase 2: Add `GET/POST /api/settings/ads`, publisher ID input, `/ads.txt` route, & policy pages |
+| **News SEO & Structured Data** | Partial (Static `index.html` tags) | Missing dynamic per-article metadata | Phase 5: Dynamic JSON-LD `NewsArticle` schema, Open Graph, `/sitemap.xml`, & `/robots.txt` |
 | **Public Opinion Poll** | No (Client `localStorage` only) | Initial vote counts hardcoded | Create `POST /api/poll/vote` with IP/session de-duplication |
 | **Article Live Blog Timeline** | No (Hardcoded in `mockData.js`) | Yes (`MOCK_LIVE_UPDATES`) | Create `GET/POST /api/articles/:id/updates` |
 | **Storage & Multi-DB Quotas** | Partial (RAM & in-memory caches real) | Quota figures for Supabase, Turso, R2 are estimated | Connect live cloud provider metrics APIs |
@@ -94,14 +95,16 @@ This document maintains an honest, project-specific record of implemented & veri
 
 ---
 
-### 2.8 Ad Slot Placements (PENDING INTEGRATION — PHASE 2)
+### 2.8 Google AdSense Monetization & Ad Placements (PENDING INTEGRATION — PHASE 2)
 - **Current State**: **MOCK / IN-MEMORY ONLY**.
 - **Frontend File**: [AdminWorkspace.jsx](file:///d:/my%20projects/pintu%20chachu%20news%20web/src/components/admin/AdminWorkspace.jsx#L395-L400) (`adSlots` in local `useState`).
 - **Why It Exists**: Placeholder for Phase 2 advertisement monetization engine.
-- **Required Replacement**:
-  1. Backend routes: `GET /api/settings/ads`, `POST /api/settings/ads`.
-  2. Persistent ad configuration in `settings.json` or database table.
-  3. Dynamic ad banner rendering component with Google AdSense script integration or direct advertiser image banners with UTM links.
+- **Required Replacement & AdSense Policy Prerequisites**:
+  1. Backend routes: `GET /api/settings/ads`, `POST /api/settings/ads` (saving Publisher ID `ca-pub-XXXXXXXXXXXXXXXX`, auto-ads toggle, and slot active states).
+  2. Public `ads.txt` served dynamically from backend `GET /ads.txt` and verified in `public/ads.txt`.
+  3. Mandatory AdSense Approval Pages: Privacy Policy (specifically disclosing Google AdSense and third-party advertising cookies), Terms of Service, About Us (editorial transparency & newsroom ownership), Contact Us (with Grievance Redressal Officer), and Disclaimer.
+  4. Non-intrusive ad placement slots clearly labeled "ADVERTISEMENT" (Header Leaderboard 728x90, Mid-Article Native 300x250, Sidebar Sticky 300x600, Sticky Mobile 320x50) that respect Google Publisher Policies (no layout shift, no misclicks).
+
 
 ---
 
@@ -141,3 +144,16 @@ This document maintains an honest, project-specific record of implemented & veri
   1. Implement a proper login endpoint `/api/auth/login`.
   2. Issue an `httpOnly`, `SameSite=Strict`, `Secure` session cookie or short-lived JWT.
   3. Validate session cookies on protected backend routes.
+
+---
+
+### 2.13 News SEO, Structured Data & Sitemaps (PENDING INTEGRATION — PHASE 5)
+- **Current State**: **STATIC TAGS ONLY IN `index.html`**.
+- **Why It Exists**: Basic `<title>` and `<link>` tags exist, but individual news articles do not generate dynamic search engine metadata or Google News rich snippets.
+- **Required Replacement**:
+  1. Dynamic Head Metadata: When viewing an article, inject headline `<title>`, summary `<meta name="description">`, canonical URL, and Open Graph / Twitter image tags.
+  2. Schema.org / JSON-LD: Inject `<script type="application/ld+json">` with `NewsArticle` schema (headline, image, datePublished, dateModified, author, publisher logo) for Google Discover and Google News carousels.
+  3. Dynamic Google News XML Sitemap: Backend endpoint `GET /sitemap.xml` serving published stories with `<news:news>` namespace.
+  4. Root `robots.txt`: Direct search engines to index news stories and prevent indexing of admin workspace endpoints.
+  5. Multilingual `hreflang`: Link translated versions of articles across all 19 supported languages.
+

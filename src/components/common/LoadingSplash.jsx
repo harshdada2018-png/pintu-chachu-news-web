@@ -4,18 +4,20 @@ import { Newspaper, Flame, ShieldCheck, Radio } from 'lucide-react';
 export default function LoadingSplash({ onFinished }) {
   const [progress, setProgress] = useState(15);
   const [isExiting, setIsExiting] = useState(false);
+  const onFinishedRef = React.useRef(onFinished);
+  onFinishedRef.current = onFinished;
 
   useEffect(() => {
-    const timer1 = setTimeout(() => setProgress(45), 200);
-    const timer2 = setTimeout(() => setProgress(80), 600);
+    const timer1 = setTimeout(() => setProgress(45), 150);
+    const timer2 = setTimeout(() => setProgress(80), 450);
     const timer3 = setTimeout(() => {
       setProgress(100);
       setIsExiting(true);
-    }, 1100);
+    }, 750);
 
     const timer4 = setTimeout(() => {
-      if (onFinished) onFinished();
-    }, 1700);
+      if (onFinishedRef.current) onFinishedRef.current();
+    }, 1050);
 
     return () => {
       clearTimeout(timer1);
@@ -23,7 +25,7 @@ export default function LoadingSplash({ onFinished }) {
       clearTimeout(timer3);
       clearTimeout(timer4);
     };
-  }, [onFinished]);
+  }, []);
 
   return (
     <div style={{
@@ -31,14 +33,13 @@ export default function LoadingSplash({ onFinished }) {
       inset: 0,
       zIndex: 9999,
       backgroundColor: isExiting ? 'transparent' : 'var(--bg-primary, #FAF8F5)',
-      backdropFilter: isExiting ? 'blur(0px)' : 'blur(12px)',
-      WebkitBackdropFilter: isExiting ? 'blur(0px)' : 'blur(12px)',
+      opacity: isExiting ? 0 : 1,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       padding: '2rem',
-      transition: 'background-color 0.6s cubic-bezier(0.16, 1, 0.3, 1), backdrop-filter 0.6s ease',
+      transition: 'opacity 0.5s ease, background-color 0.5s ease',
       pointerEvents: isExiting ? 'none' : 'auto'
     }}>
       {/* Animated Flying Masthead Logo */}

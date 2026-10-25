@@ -349,7 +349,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Hindi',
     native: 'हिंदी',
     region: 'भारत / National',
-    flag: '🇮🇳',
     headline: 'अंतरिक्ष एवं विज्ञान में भारत की ऐतिहासिक छलांग — नए कृषि उपग्रह ग्रिड का सफल प्रक्षेपण',
     excerpt: 'भारतीय अंतरिक्ष अनुसंधान संगठन (इसरो) ने अत्याधुनिक मौसम एवं फसल निगरानी उपग्रहों का नेटवर्क सफलतापूर्वक स्थापित किया है। इससे देश भर के लाखों किसानों को वास्तविक समय में सटीक मौसमी जानकारियां और सूखा चेतावनी मिल सकेंगी।',
     isRtl: false
@@ -359,7 +358,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'English',
     native: 'English',
     region: 'Global / International',
-    flag: '🌐',
     headline: 'ISRO Milestone: Indigenous Satellite Grid Deployed into Polar Orbit for Agricultural Monitoring',
     excerpt: 'The Indian Space Research Organisation has successfully placed its next-generation climate and crop observation array into sun-synchronous orbit, delivering high-resolution soil moisture telemetry directly to rural agricultural collectives.',
     isRtl: false
@@ -369,7 +367,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Bengali',
     native: 'বাংলা',
     region: 'পশ্চিমবঙ্গ ও ত্রিপুরা',
-    flag: '🇧🇩',
     headline: 'মহাকাশ গবেষণায় ঐতিহাসিক মাইলফলক — নয়া কৃষি উপগ্রহ নেটওয়ার্কের সফল উৎক্ষেপণ',
     excerpt: 'ভারতীয় মহাকাশ গবেষণা সংস্থা সফলভাবে নতুন প্রজন্মের কৃষি ও পরিবেশ পর্যবেক্ষণ উপগ্রহ কক্ষপথে স্থাপন করেছে। এর মাধ্যমে দেশের লক্ষাধিক কৃষক সরাসরি আবহাওয়া ও ফসলের তথ্য পাবেন।',
     isRtl: false
@@ -379,7 +376,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Marathi',
     native: 'मराठी',
     region: 'महाराष्ट्र',
-    flag: '🇮🇳',
     headline: 'अंतराळ क्षेत्रात ऐतिहासिक झेप — नवीन कृषी उपग्रह जाळ्याचे यशस्वी प्रक्षेपण',
     excerpt: 'भारतीय अंतराळ संशोधन संस्थेने हवामान आणि पीक संरक्षणासाठी आधुनिक उपग्रह प्रणाली यशस्वीरीत्या कक्षेत स्थापित केली आहे। यामुळे शेतकर्‍यांना अचूक पर्जन्य अंदाज आणि मातीची स्थिती समजू शकेल.',
     isRtl: false
@@ -389,7 +385,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Telugu',
     native: 'తెలుగు',
     region: 'ఆంధ్రప్రదేశ్ & తెలంగాణ',
-    flag: '🇮🇳',
     headline: 'అంతరిక్ష రంగంలో చారిత్రక ఘనత — కొత్త వ్యవసాయ ఉపగ్రహ నెట్‌వర్క్ విజయవంతం',
     excerpt: 'భారత అంతరిక్ష పరిశోధనా సంస్థ అత్యాధునిక వాతావరణ మరియు పంట పర్యవేక్షణ ఉపగ్రహాలను విజయవంతంగా ప్రయోగించింది. దీనితో రైతులకు నేరుగా సమగ్ర వాతావరణ సమాచారం అందుబాటులోకి వస్తుంది.',
     isRtl: false
@@ -399,7 +394,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Tamil',
     native: 'தமிழ்',
     region: 'தமிழ்நாடு & புதுச்சேரி',
-    flag: '🇮🇳',
     headline: 'விண்வெளித் துறையில் புதிய வரலாற்று சாதனை — அதிநவீன வேளாண் செயற்கைக்கோள் வெற்றி',
     excerpt: 'இந்திய விண்வெளி ஆராய்ச்சி நிறுவனம் புதிய தலைமுறை வானிலை மற்றும் பயிர் கண்காணிப்பு செயற்கைக்கோள்களை வெற்றிகரமாக விண்ணில் செலுத்தியுள்ளது. இது விவசாயிகளுக்கு நிகழ்நேர தகவல்களை வழங்கும்.',
     isRtl: false
@@ -409,7 +403,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Gujarati',
     native: 'ગુજરાતી',
     region: 'ગુજરાત',
-    flag: '🇮🇳',
     headline: 'અવકાશ સંશોધનમાં ભારતની ઐતિહાસિક સિદ્ધિ — નવા કૃષિ ઉપગ્રહનું સફળ પ્રક્ષેપણ',
     excerpt: 'ઇસરો દ્વારા હવામાન અને પાક નિરીક્ષણ માટે નવીનતમ ઉપગ્રહ પ્રણાલી સફળતાપૂર્વક કક્ષામાં સ્થાપિત કરવામાં આવી છે. આનાથી દેશના ખેડૂતોને સીધો સચોટ હવામાન અંદાજ મળશે.',
     isRtl: false
@@ -419,7 +412,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Kannada',
     native: 'ಕನ್ನಡ',
     region: 'ಕರ್ನಾಟಕ',
-    flag: '🇮🇳',
     headline: 'ಬಾಹ್ಯಾಕಾಶ ಕ್ಷೇತ್ರದಲ್ಲಿ ಐತಿಹಾಸಿಕ ಮೈಲಿಗಲ್ಲು — ನೂತನ ಕೃಷಿ ಉಪಗ್ರಹ ವ್ಯವಸ್ಥೆ ಯಶಸ್ವಿ',
     excerpt: 'ಭಾರತೀಯ ಬಾಹ್ಯಾಕಾಶ ಸಂಶೋಧನಾ ಸಂಸ್ಥೆಯು ಹವಾಮಾನ ಮತ್ತು ಕೃಷಿ ನಿಗಾ ಉಪಗ್ರಹಗಳನ್ನು ಯಶಸ್ವಿಯಾಗಿ ಕಕ್ಷೆಗೆ ಸೇರಿಸಿದೆ. ಇದರಿಂದ ದೇಶದ ರೈತರಿಗೆ ನೈಜ ಸಮಯದ ಮಣ್ಣಿನ ತೇವಾಂಶ ಮಾಹಿತಿ ಲಭ್ಯವಾಗಲಿದೆ.',
     isRtl: false
@@ -429,7 +421,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Malayalam',
     native: 'മലയാളം',
     region: 'കേരളം',
-    flag: '🇮🇳',
     headline: 'ബഹിരാകാശ രംഗത്ത് ചരിത്ര നേട്ടം — അത്യാധുനിക കാർഷിക ഉപഗ്രഹ വിക്ഷേപണം വിജയം',
     excerpt: 'ഐഎസ്ആർഒ കാലാവസ്ഥാ, കൃഷി നിരീക്ഷണ ഉപഗ്രഹങ്ങളുടെ പുതിയ ശൃംഖല വിജയകരമായി ഭ്രമണപഥത്തിലെത്തിച്ചു. കർഷകർക്ക് സമഗ്ര കാലാവസ്ഥാ വിവരങ്ങൾ ഇതിലൂടെ വേഗത്തിൽ ലഭ്യമാകും.',
     isRtl: false
@@ -439,7 +430,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Punjabi',
     native: 'ਪੰਜਾਬੀ',
     region: 'ਪੰਜਾਬ',
-    flag: '🇮🇳',
     headline: 'ਪੁਲਾੜ ਖੇਤਰ ਵਿੱਚ ਇਤਿਹਾਸਕ ਮੱਲ — ਨਵੇਂ ਖੇਤੀਬਾੜੀ ਉਪਗ੍ਰਹਿ ਨੈੱਟਵਰਕ ਦਾ ਸਫ਼ਲ ਪ੍ਰੀਖਣ',
     excerpt: 'ਭਾਰਤੀ ਪੁਲਾੜ ਖੋਜ ਸੰਸਥਾ ਨੇ ਮੌਸਮ ਅਤੇ ਫ਼ਸਲਾਂ ਦੀ ਨਿਗਰਾਨੀ ਲਈ ਨਵੀਂ ਤਕਨੀਕ ਵਾਲੇ ਉਪਗ੍ਰਹਿ ਸਫ਼ਲਤਾਪੂਰਵਕ ਛੱਡੇ ਹਨ। ਇਸ ਨਾਲ ਕਿਸਾਨਾਂ ਨੂੰ ਸਮੇਂ ਸਿਰ ਸਹੀ ਮੌਸਮੀ ਭਵਿੱਖਬਾਣੀ ਮਿਲੇਗੀ।',
     isRtl: false
@@ -449,7 +439,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Odia',
     native: 'ଓଡ଼ିଆ',
     region: 'ଓଡ଼ିଶା',
-    flag: '🇮🇳',
     headline: 'ମହାକାଶ ଗବେଷଣାରେ ଐତିହାସିକ ସଫଳତା — ନୂତନ କୃଷି ଉପଗ୍ରହର ସଫଳ ଉତକ୍ଷେପଣ',
     excerpt: 'ଭାରତୀୟ ମହାକାଶ ଗବେଷଣା ସଂସ୍ଥା ଦ୍ୱାରା ଅତ୍ୟାଧୁନିକ ପାଣିପାଗ ଏବଂ ଫସଲ ନିରୀକ୍ଷଣ ଉପଗ୍ରହ ସଫଳତାର ସହ କକ୍ଷପଥରେ ସ୍ଥାପିତ ହୋଇଛି। ଏହା କୃଷକମାନଙ୍କୁ ସମୟୋପଯୋଗୀ ସୂଚନା ଯୋଗାଇବ।',
     isRtl: false
@@ -459,7 +448,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Assamese',
     native: 'অসমীয়া',
     region: 'অসম',
-    flag: '🇮🇳',
     headline: 'মহাকাশ গৱেষণাত নতুন যুগ — অত্যাধুনিক কৃষি উপগ্ৰহৰ সফল উৎক্ষেপণ',
     excerpt: 'ইছৰোৰ উদ্যোগত জলবায়ু আৰু কৃষি নিৰীক্ষণ উপগ্ৰহ সফলভাৱে কক্ষপথত স্থাপন কৰা হৈছে। ইয়াৰ দ্বাৰা কৃষক সমাজে তৎক্ষণাৎ বতৰৰ তথ্য লাভ কৰিবলৈ সক্ষম হ\'ব।',
     isRtl: false
@@ -469,7 +457,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Urdu',
     native: 'اردو',
     region: 'قومی و علاقائی',
-    flag: '🇵🇰',
     headline: 'خلائی میدان میں تاریخی پیش رفت — جدید زرعی سیٹلائٹ نیٹ ورک کی کامیاب لانچنگ',
     excerpt: 'انڈین اسپیس ریسرچ آرگنائزیشن نے موسم اور زراعت کی براہ راست نگرانی کے لیے جدید ترین سیٹلائٹس کو مدار میں کامیابی سے بھیجا ہے، جس سے لاکھوں کسان مستفید ہوں گے۔',
     isRtl: true
@@ -479,7 +466,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Japanese',
     native: '日本語',
     region: '日本 / Tokyo',
-    flag: '🇯🇵',
     headline: '宇宙開発の新時代 — 先進的な次世代地球観測衛星網の軌道投入に成功',
     excerpt: '宇宙航空機関による最新鋭の気象および農業観測衛星コンステレーションが軌道投入に成功。高精度データがリアルタイムで農業現場に届けられます。',
     isRtl: false
@@ -489,7 +475,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Chinese',
     native: '繁體中文',
     region: 'Taiwan / HK',
-    flag: '🇹🇼',
     headline: '太空科技重大里程碑 — 全新農業氣象觀測衛星星座成功發射升空',
     excerpt: '太空科研機構成功將新一代環境與作物監測衛星送入預定軌道，為全國農業與防災體系提供高精準度的全天候土壤數據。',
     isRtl: false
@@ -499,7 +484,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'French',
     native: 'Français',
     region: 'France / Europe',
-    flag: '🇫🇷',
     headline: 'Nouvelle avancée spatiale : Déploiement réussi d\'une constellation satellitaire agricole',
     excerpt: 'L\'agence spatiale a placé en orbite polaire un réseau de satellites nouvelle génération, permettant une surveillance hydrique et climatique ultra-précise au service des agriculteurs.',
     isRtl: false
@@ -509,7 +493,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Italian',
     native: 'Italiano',
     region: 'Italia / Europa',
-    flag: '🇮🇹',
     headline: 'Storico successo spaziale: Lanciata la nuova rete di satelliti per il monitoraggio agricolo',
     excerpt: 'Completato con successo il dispiegamento dell\'innovativa costellazione orbitale per le previsioni agrometeorologiche ad altissima risoluzione.',
     isRtl: false
@@ -519,7 +502,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Indonesian',
     native: 'Bahasa Indonesia',
     region: 'Indonesia / Asia',
-    flag: '🇮🇩',
     headline: 'Terobosan Bersejarah Teknologi Antariksa: Satelit Pemantau Pertanian Berhasil Mengorbit',
     excerpt: 'Badan riset antariksa berhasil meluncurkan konstelasi satelit cuaca dan tanaman generasi terbaru untuk mendukung ketahanan pangan nasional secara real-time.',
     isRtl: false
@@ -529,7 +511,6 @@ export const LANGUAGE_PREVIEW_DATA = {
     name: 'Russian',
     native: 'Русский',
     region: 'Россия / International',
-    flag: '🇷🇺',
     headline: 'Исторический прорыв в космонавтике: Развернута спутниковая группировка мониторинга',
     excerpt: 'Космическое агентство успешно вывело на полярную орбиту спутниковую систему нового поколения для высокоточного аграрного и климатического прогнозирования в режиме реального времени.',
     isRtl: false
@@ -653,7 +634,6 @@ export default function VisualFontPicker({
             right: 0,
             zIndex: 1000,
             background: 'var(--bg-surface)',
-            backdropFilter: 'blur(16px)',
             border: '1px solid var(--border-medium)',
             borderRadius: 'var(--radius-md)',
             boxShadow: 'var(--shadow-lg)',
@@ -786,7 +766,7 @@ export default function VisualFontPicker({
           {/* Footer Info */}
           <div style={{ padding: '0.45rem 1rem', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border-light)', fontSize: '0.72rem', color: 'var(--text-subtle)', display: 'flex', justifyContent: 'space-between' }}>
             <span>Showing {filteredFonts.length} of {fontCatalog.length} fonts</span>
-            <span>✓ Rendered in real font face</span>
+            <span>Real font face preview</span>
           </div>
         </div>
       )}

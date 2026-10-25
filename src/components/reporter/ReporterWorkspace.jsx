@@ -35,6 +35,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
   const [mediaCredits, setMediaCredits] = useState(initialDraft?.mediaCredits || 'PublicSpark Bureau');
   const [isCompressing, setIsCompressing] = useState(false);
   const [isImageReady, setIsImageReady] = useState(!!initialDraft?.imagePreview);
+  const [imageStats, setImageStats] = useState(null);
 
   // Pre-Publish AI "In 30 Seconds" 2-3 Points & Hindi Spelling Verification
   const [highlights, setHighlights] = useState(initialDraft?.highlights || []);
@@ -117,7 +118,34 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
       setIsCompressing(true);
       setIsImageReady(false);
       const result = await compressImageToWebP(file, 200, 1200);
-      setImagePreview(result.dataUrl);
+      setImageStats({
+        originalKB: result.originalKB,
+        compressedKB: result.compressedKB,
+        savedPercent: Math.max(0, Math.round(((result.originalKB - result.compressedKB) / result.originalKB) * 100))
+      });
+
+      // Upload compressed WebP to backend for persistent standalone URL
+      let finalImageUrl = result.dataUrl;
+      try {
+        const uploadRes = await fetch('/api/upload/image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageBase64: result.dataUrl,
+            articleId: 'reporter'
+          })
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          if (uploadData && uploadData.url) {
+            finalImageUrl = uploadData.url;
+          }
+        }
+      } catch (uploadErr) {
+        console.warn('[Image Upload Backend Fallback to local DataURL]:', uploadErr.message);
+      }
+
+      setImagePreview(finalImageUrl);
       setIsImageReady(true);
       if (!imageCaption && title) {
         setImageCaption(title);
@@ -610,6 +638,11 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
                 {imagePreview && (
                   <div style={{ marginBottom: '0.75rem' }}>
                     <img src={imagePreview} alt="Preview" style={{ height: '140px', borderRadius: 'var(--radius-sm)', objectFit: 'cover' }} />
+                    {imageStats && (
+                      <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: '#047857', background: '#ECFDF5', padding: '0.25rem 0.6rem', borderRadius: '4px', border: '1px solid #A7F3D0', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                        <Check size={13} /> WebP संपीड़ित: {imageStats.compressedKB} KB (मूल: {imageStats.originalKB} KB — {imageStats.savedPercent}% हल्की)
+                      </div>
+                    )}
                   </div>
                 )}
 

@@ -31,14 +31,14 @@ function autoBackendPlugin() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './',
+  base: '/',
   plugins: [react(), autoBackendPlugin()],
   server: {
     host: '0.0.0.0', // Expose to all local IPs and Electron apps like ResponsivelyApp
     port: 5173,
     open: true,
     cors: true,
-    strictPort: true,
+    strictPort: false,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5000',
@@ -46,6 +46,16 @@ export default defineConfig({
         secure: false
       },
       '/uploads': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/sitemap.xml': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/robots.txt': {
         target: 'http://127.0.0.1:5000',
         changeOrigin: true,
         secure: false

@@ -1,5 +1,30 @@
 [
   {
+    "id": "art-3",
+    "title": "Clean Energy Transition: Renewable Generation Surpasses Fossil Fuel Share in Regional Grid",
+    "slug": "clean-energy-transition-renewable-surpasses-fossil-fuel",
+    "sub_title": "Solar and wind capacity additions over the past two quarters pushed renewable energy share past 52% of total daily output.",
+    "content": "A watershed moment for clean energy as wind-solar hybrid projects achieve unprecedented capacity factors across major industrial corridors.",
+    "summary": "Renewable energy output breaks historic threshold, exceeding fossil fuels in daily electricity grid generation.",
+    "format": "standard",
+    "featured_image": "https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=800&q=80",
+    "image_caption": "Wind farm turbines generating clean power at sunset.",
+    "media_credits": "Green Power Media",
+    "author": {
+      "name": "Sneha Verma",
+      "role": "Environment & Climate Lead",
+      "avatar": "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=200&q=80"
+    },
+    "category": "Science & Environment",
+    "category_slug": "science",
+    "status": "published",
+    "is_breaking": false,
+    "views_count": 6300,
+    "likes_count": 720,
+    "reading_time_mins": 3,
+    "published_at": "2 hours ago"
+  },
+  {
     "id": "art-1792336931463",
     "title": "BREAKING: उत्कृष्ट विद्यालय में लाइब्रेरियन अतिथि शिक्षक की ज्वाइनिंग पर उठे सवाल",
     "sub_title": "उमरिया के शासकीय उत्कृष्ट विद्यालय में लाइब्रेरियन अतिथि शिक्षक की नियुक्ति पर विवाद खड़ा हो गया है।",
@@ -83,30 +108,6 @@
     "views_count": 8900,
     "likes_count": 950,
     "published_at": "45 mins ago"
-  },
-  {
-    "id": "art-3",
-    "title": "Clean Energy Transition: Renewable Generation Surpasses Fossil Fuel Share in Regional Grid",
-    "slug": "clean-energy-transition-renewable-surpasses-fossil-fuel",
-    "sub_title": "Solar and wind capacity additions over the past two quarters pushed renewable energy share past 52%.",
-    "content": "A watershed moment for clean energy as wind-solar hybrid projects achieve unprecedented capacity factors across major industrial corridors.",
-    "summary": "Renewable energy output breaks historic threshold, exceeding fossil fuels in daily electricity grid generation.",
-    "format": "standard",
-    "featured_image": "https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=800&q=80",
-    "image_caption": "Wind farm turbines generating clean power at sunset.",
-    "media_credits": "Green Power Media",
-    "author": {
-      "name": "Sneha Verma",
-      "role": "Environment & Climate Lead",
-      "avatar": "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=200&q=80"
-    },
-    "category": "Science & Environment",
-    "category_slug": "science",
-    "status": "published",
-    "is_breaking": false,
-    "views_count": 6300,
-    "likes_count": 720,
-    "published_at": "2 hours ago"
   },
   {
     "id": "art-4",

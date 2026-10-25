@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Sun, Moon, Search, UserCheck, Flame, Newspaper, 
-  ShieldCheck, PenTool, CheckCircle, Settings, Languages, Bookmark, Menu, X, CloudSun, Play, Pause, Calendar
+  ShieldCheck, PenTool, CheckCircle, Settings, Languages, Bookmark, Menu, X, CloudSun, Play, Pause, Calendar, ChevronRight
 } from 'lucide-react';
 import { MOCK_CATEGORIES, MOCK_BREAKING_NEWS } from '../../services/mockData';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
@@ -26,6 +26,17 @@ export default function Header({
     const fromArticles = (articles || []).filter(a => a.is_breaking).map(a => a.title);
     return fromArticles.length > 0 ? fromArticles : MOCK_BREAKING_NEWS;
   }, [articles]);
+
+  // Public category filter: Only display categories with >= 1 published article (prevents AdSense empty category rejection)
+  const populatedCategories = useMemo(() => {
+    const rawCategories = categories || MOCK_CATEGORIES;
+    return rawCategories.filter(cat => {
+      return (articles || []).some(art => 
+        art.status === 'published' && 
+        (art.category_slug === cat.slug || art.category?.toLowerCase() === cat.name?.toLowerCase())
+      );
+    });
+  }, [categories, articles]);
 
   const [tickerIndex, setTickerIndex] = useState(0);
   const [isFading, setIsFading] = useState(false);
@@ -83,8 +94,77 @@ export default function Header({
 
   return (
     <header style={{ width: '100%' }}>
-      {/* Top Utility Masthead */}
-      <div className="masthead-top">
+      {/* Sovereign Compact Mobile App Bar (<= 768px Only) */}
+      <div className="mobile-app-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <button
+            className="mobile-hamburger-btn"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Open Newsroom Navigation Drawer"
+          >
+            <Menu size={20} />
+          </button>
+          <a 
+            href="#" 
+            onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
+            style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+          >
+            <img 
+              src="/logo.png" 
+              alt="PUBLIC SPARK" 
+              style={{ height: '32px', width: 'auto', objectFit: 'contain' }} 
+            />
+          </a>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          {/* Quick Mobile Language Select */}
+          <div className="mobile-lang-pill">
+            <Languages size={13} color="var(--accent-crimson)" />
+            <select 
+              value={currentLanguage} 
+              onChange={(e) => onLanguageChange(e.target.value)}
+              className="mobile-lang-select"
+              aria-label="Select Language"
+            >
+              <optgroup label="Regional">
+                {SUPPORTED_LANGUAGES.filter(l => !['fr', 'it', 'ja', 'id', 'zh-TW', 'ru', 'en'].includes(l.code)).map((lang) => (
+                  <option key={lang.code} value={lang.code}>{lang.native} ({lang.name})</option>
+                ))}
+                <option value="en">English</option>
+              </optgroup>
+              <optgroup label="Global">
+                {SUPPORTED_LANGUAGES.filter(l => ['fr', 'it', 'ja', 'id', 'zh-TW', 'ru'].includes(l.code)).map((lang) => (
+                  <option key={lang.code} value={lang.code}>{lang.native} ({lang.name})</option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+
+          {/* Quick Search */}
+          <button 
+            onClick={() => onNavigate('search')} 
+            className="mobile-action-icon"
+            title={t('search', currentLanguage)}
+            aria-label="Search"
+          >
+            <Search size={16} />
+          </button>
+
+          {/* Dark / Light Toggle */}
+          <button 
+            onClick={onToggleTheme} 
+            className="mobile-action-icon"
+            title="Toggle Dark/Light Mode"
+            aria-label="Toggle Theme"
+          >
+            {theme === 'dark' ? <Sun size={15} color="#F59E0B" /> : <Moon size={15} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Top Utility Masthead (Desktop Only) */}
+      <div className="masthead-top hide-on-mobile">
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8rem' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -195,8 +275,8 @@ export default function Header({
         </div>
       </div>
 
-      {/* Classic Newspaper Main Masthead */}
-      <div className="masthead-main" style={{ padding: '1.25rem 0' }}>
+      {/* Classic Newspaper Main Masthead (Desktop Only) */}
+      <div className="masthead-main hide-on-mobile" style={{ padding: '1.25rem 0' }}>
         <div className="container" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <a 
             href="#" 
@@ -284,9 +364,10 @@ export default function Header({
           </button>
           <button 
             onClick={handleNextTicker}
-            style={{ background: 'rgba(255,255,255,0.2)', color: 'white', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer', border: 'none' }}
+            style={{ background: 'rgba(255,255,255,0.2)', color: 'white', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
           >
-            {t('next', currentLanguage)} ❯
+            <span>{t('next', currentLanguage)}</span>
+            <ChevronRight size={12} />
           </button>
         </div>
       </div>
@@ -327,7 +408,7 @@ export default function Header({
               >
                 {t('topStories', currentLanguage)}
               </a>
-              {(categories || MOCK_CATEGORIES).map((cat) => (
+              {populatedCategories.map((cat) => (
                 <a 
                   key={cat.id} 
                   href="#"
@@ -353,83 +434,100 @@ export default function Header({
       {/* Mobile Drawer Overlay */}
       {isMobileMenuOpen && (
         <div 
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            justifyContent: 'flex-end'
-          }}
+          className="mobile-drawer-overlay"
           onClick={() => setIsMobileMenuOpen(false)}
         >
           <div 
-            style={{
-              width: '82%',
-              maxWidth: '320px',
-              height: '100%',
-              backgroundColor: 'var(--bg-primary)',
-              padding: '1.5rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '1.25rem',
-              overflowY: 'auto',
-              boxShadow: 'var(--shadow-lg)'
-            }}
+            className="mobile-drawer-sheet"
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
-              <span style={{ fontWeight: '800', fontSize: '1.1rem', fontFamily: 'var(--font-serif)' }}>Navigation</span>
-              <button onClick={() => setIsMobileMenuOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <img src="/logo.png" alt="PublicSpark" style={{ height: '24px', width: 'auto' }} />
+                <span style={{ fontWeight: '800', fontSize: '1rem', fontFamily: 'var(--font-serif)' }}>PUBLIC SPARK</span>
+              </div>
+              <button 
+                onClick={() => setIsMobileMenuOpen(false)} 
+                style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', padding: '0.25rem' }}
+                aria-label="Close menu"
+              >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Mobile View Switcher */}
+            {/* Quick Workspace Switcher for Newsroom & Readers */}
             <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-subtle)', display: 'block', marginBottom: '0.4rem' }}>Workspace Mode</label>
-              <select 
-                value={currentRole} 
-                onChange={(e) => { onRoleChange(e.target.value); setIsMobileMenuOpen(false); }}
-                style={{ width: '100%', padding: '0.5rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', background: 'var(--bg-surface)', color: 'var(--text-main)', fontWeight: '700' }}
-              >
-                <option value="visitor">Reader View</option>
-                <option value="reporter">Reporter Desk</option>
-                <option value="editor">Editor Desk</option>
-                <option value="admin">Newsroom Management</option>
-              </select>
+              <label style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.5rem' }}>
+                Workspace & Desks
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.4rem' }}>
+                <button
+                  onClick={() => { onRoleChange('visitor'); onNavigate('home'); setIsMobileMenuOpen(false); }}
+                  className={`btn ${currentRole === 'visitor' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
+                >
+                  <Newspaper size={15} /> {t('readerView', currentLanguage)}
+                </button>
+                <button
+                  onClick={() => { onRoleChange('reporter'); onNavigate('reporter'); setIsMobileMenuOpen(false); }}
+                  className={`btn ${currentRole === 'reporter' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
+                >
+                  <PenTool size={15} /> {t('reporterDesk', currentLanguage)}
+                </button>
+                <button
+                  onClick={() => { onRoleChange('editor'); onNavigate('editor'); setIsMobileMenuOpen(false); }}
+                  className={`btn ${currentRole === 'editor' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
+                >
+                  <CheckCircle size={15} /> {t('editorDesk', currentLanguage)}
+                </button>
+                <button
+                  onClick={() => { onRoleChange('admin'); onNavigate('admin'); setIsMobileMenuOpen(false); }}
+                  className={`btn ${currentRole === 'admin' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
+                >
+                  <Settings size={15} /> {t('newsroomMgmt', currentLanguage)}
+                </button>
+              </div>
             </div>
 
             {/* Mobile Categories */}
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-subtle)', display: 'block', marginBottom: '0.5rem' }}>News Categories</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.5rem' }}>
+                {t('topStories', currentLanguage)} & Sections
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 <button
                   onClick={() => { onSelectCategory('all'); onNavigate('home'); setIsMobileMenuOpen(false); }}
                   className={`btn ${activeCategory === 'all' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ justifyContent: 'flex-start', width: '100%' }}
+                  style={{ justifyContent: 'flex-start', width: '100%', padding: '0.45rem 0.75rem', fontSize: '0.825rem' }}
                 >
-                  Top Stories
+                  {t('topStories', currentLanguage)}
                 </button>
                 <button
                   onClick={() => { onSelectCategory('bookmarks'); onNavigate('home'); setIsMobileMenuOpen(false); }}
                   className={`btn ${activeCategory === 'bookmarks' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ justifyContent: 'flex-start', width: '100%', borderColor: '#f59e0b', color: activeCategory === 'bookmarks' ? '#fff' : '#d97706' }}
+                  style={{ justifyContent: 'flex-start', width: '100%', padding: '0.45rem 0.75rem', fontSize: '0.825rem', borderColor: '#f59e0b', color: activeCategory === 'bookmarks' ? '#fff' : '#d97706' }}
                 >
-                  <Bookmark size={15} /> Bookmarked News
+                  <Bookmark size={15} /> {t('savedBookmarks', currentLanguage)}
                 </button>
-                {(categories || MOCK_CATEGORIES).map((cat) => (
+                {populatedCategories.map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => { onSelectCategory(cat.slug); onNavigate('home'); setIsMobileMenuOpen(false); }}
                     className={`btn ${activeCategory === cat.slug ? 'btn-primary' : 'btn-outline'}`}
-                    style={{ justifyContent: 'flex-start', width: '100%' }}
+                    style={{ justifyContent: 'flex-start', width: '100%', padding: '0.45rem 0.75rem', fontSize: '0.825rem' }}
                   >
-                    {cat.name}
+                    {translateCategoryName(cat.name, currentLanguage)}
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Bottom Drawer Meta */}
+            <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+              <div>{currentDate} • {weather.temperature}</div>
             </div>
           </div>
         </div>

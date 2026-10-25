@@ -3,7 +3,7 @@ import {
   Settings, Users, FolderTree, DollarSign, Plus, Trash2, CheckCircle2,
   BarChart2, HardDrive, Share2, Send, Newspaper, Eye, EyeOff, Edit3,
   Radio, Search, Flame, Sparkles, X, RefreshCw, RotateCcw, Check, ExternalLink, ShieldAlert,
-  Type, Sliders, Globe, Languages, MapPin, Palette
+  Type, Sliders, Globe, Languages, MapPin, Palette, Monitor, Smartphone
 } from 'lucide-react';
 
 const WhatsAppIcon = ({ size = 16, color = '#25D366' }) => (
@@ -39,6 +39,7 @@ import AnalyticsDashboard from './AnalyticsDashboard';
 import StorageSettings from './StorageSettings';
 import VisualFontPicker, { DEFAULT_REGIONAL_FONTS, LANGUAGE_PREVIEW_DATA } from './VisualFontPicker';
 import ColorPaletteCustomizer from './ColorPaletteCustomizer';
+import MonetizationDesk from './MonetizationDesk';
 
 // Story Editor Modal Component
 function StoryEditorModal({ article, categories, onClose, onSave }) {
@@ -111,8 +112,7 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
       left: 0,
       right: 0,
       bottom: 0,
-      background: 'rgba(0, 0, 0, 0.7)',
-      backdropFilter: 'blur(10px)',
+      background: 'rgba(15, 23, 42, 0.72)',
       zIndex: 99999,
       display: 'flex',
       alignItems: 'center',
@@ -410,11 +410,14 @@ export default function AdminWorkspace({
       headingWeight: 700,
       bodySize: 16,
       bodyWeight: 400,
+      mobileHeadingScale: 85,
+      mobileBodySize: 15,
       regionalFonts: DEFAULT_REGIONAL_FONTS,
       ...(typography || {})
     };
   });
   const [hasUnsavedTypographyChanges, setHasUnsavedTypographyChanges] = useState(false);
+  const [deviceMode, setDeviceMode] = useState('desktop'); // 'desktop' | 'mobile'
 
   const [scopeMode, setScopeMode] = useState('global'); // 'global' | 'regional'
   const [selectedRegionalLang, setSelectedRegionalLang] = useState('hi'); // default to Hindi
@@ -427,6 +430,8 @@ export default function AdminWorkspace({
         ...typography,
         headingWeight: typography.headingWeight || prev.headingWeight || 700,
         bodyWeight: typography.bodyWeight || prev.bodyWeight || 400,
+        mobileHeadingScale: typography.mobileHeadingScale || prev.mobileHeadingScale || 85,
+        mobileBodySize: typography.mobileBodySize || prev.mobileBodySize || 15,
         regionalFonts: typography.regionalFonts || prev.regionalFonts || DEFAULT_REGIONAL_FONTS
       }));
       setHasUnsavedTypographyChanges(false);
@@ -500,7 +505,7 @@ export default function AdminWorkspace({
         if (data.items && data.items.length > 0) {
           setLiveFeedItems(data.items);
           if (onShowToast) {
-            onShowToast(`Fetched ${data.items.length} incoming live stories from news wire! ⚡`);
+            onShowToast(`Fetched ${data.items.length} incoming live stories from news wire!`);
           }
         } else {
           // Automatic fallback to Google Top Stories RSS if specific topic returns 0
@@ -509,9 +514,9 @@ export default function AdminWorkspace({
             .then(fallbackData => {
               if (fallbackData.items && fallbackData.items.length > 0) {
                 setLiveFeedItems(fallbackData.items);
-                if (onShowToast) onShowToast(`Fetched ${fallbackData.items.length} live stories! ⚡`);
+                if (onShowToast) onShowToast(`Fetched ${fallbackData.items.length} live stories!`);
               } else if (onShowToast) {
-                onShowToast('⚠️ Wire response received but no stories found.');
+                onShowToast('Wire response received but no stories found.');
               }
             });
         }
@@ -519,7 +524,7 @@ export default function AdminWorkspace({
       .catch(err => {
         console.warn('Live news fetch error:', err);
         if (onShowToast) {
-          onShowToast('⚠️ Connection issue: backend server busy ya unreachable. Please retry!');
+          onShowToast('Connection issue: backend server busy or unreachable. Please retry.');
         }
       })
       .finally(() => setIsLoadingLiveFeed(false));
@@ -820,14 +825,14 @@ export default function AdminWorkspace({
                     className={`btn ${filterStatus === 'published' ? 'btn-primary' : 'btn-outline'}`}
                     style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem' }}
                   >
-                    🟢 Live on Site ({articles.filter(a => a.status === 'published').length})
+                    Live on Site ({articles.filter(a => a.status === 'published').length})
                   </button>
                   <button
                     onClick={() => setFilterStatus('hidden')}
                     className={`btn ${filterStatus === 'hidden' ? 'btn-primary' : 'btn-outline'}`}
                     style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem' }}
                   >
-                    🔴 Hidden / Drafts ({articles.filter(a => a.status !== 'published').length})
+                    Hidden / Drafts ({articles.filter(a => a.status !== 'published').length})
                   </button>
                   <button
                     onClick={() => {
@@ -839,7 +844,7 @@ export default function AdminWorkspace({
                     className={`btn ${filterStatus === 'live_feed' ? 'btn-primary' : 'btn-outline'}`}
                     style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem', background: filterStatus === 'live_feed' ? 'var(--accent-indigo)' : undefined, color: filterStatus === 'live_feed' ? '#fff' : undefined }}
                   >
-                    ⚡ Incoming RSS Wire ({liveFeedItems.length})
+                    Incoming RSS Wire ({liveFeedItems.length})
                   </button>
                 </div>
 
@@ -865,7 +870,7 @@ export default function AdminWorkspace({
                         <Radio color="var(--accent-indigo)" size={20} /> Live Incoming External RSS Wire
                       </h3>
                       <span style={{ fontSize: '0.8rem', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--accent-indigo)', padding: '0.2rem 0.65rem', borderRadius: '20px', fontWeight: '700' }}>
-                        ⚡ {liveFeedItems.length} Stories Loaded
+                        {liveFeedItems.length} Stories Loaded
                       </span>
                     </div>
                     <p style={{ fontSize: '0.825rem', color: 'var(--text-subtle)', margin: 0 }}>
@@ -882,14 +887,14 @@ export default function AdminWorkspace({
                         onChange={(e) => { setWireStreamKey(e.target.value); fetchLiveNewsStream(e.target.value); }}
                         style={{ width: '100%', padding: '0.45rem 0.7rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.825rem', fontWeight: '700', background: 'var(--bg-surface)', color: 'var(--text-main)' }}
                       >
-                        <option value="google_hi">🇮🇳 India Headlines (Hindi)</option>
-                        <option value="google_en">🌐 India Headlines (English)</option>
-                        <option value="google_topic_entertainment">🎬 Entertainment & Cinema</option>
-                        <option value="google_topic_technology">💻 Technology & AI</option>
-                        <option value="google_topic_business">💼 Business & Economy</option>
-                        <option value="google_topic_sports">⚽ Sports</option>
-                        <option value="google_topic_science">🧬 Science & Climate</option>
-                        <option value="google_topic_world">🌍 World News</option>
+                        <option value="google_hi">India Headlines (Hindi)</option>
+                        <option value="google_en">India Headlines (English)</option>
+                        <option value="google_topic_entertainment">Entertainment & Cinema</option>
+                        <option value="google_topic_technology">Technology & AI</option>
+                        <option value="google_topic_business">Business & Economy</option>
+                        <option value="google_topic_sports">Sports</option>
+                        <option value="google_topic_science">Science & Climate</option>
+                        <option value="google_topic_world">World News</option>
                       </select>
                     </div>
 
@@ -900,7 +905,7 @@ export default function AdminWorkspace({
                       style={{ padding: '0.45rem 1.15rem', fontSize: '0.825rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap', fontWeight: '800' }}
                     >
                       <RefreshCw size={15} className={isLoadingLiveFeed ? 'spin' : ''} />
-                      {isLoadingLiveFeed ? 'Fetching Wire...' : '⚡ Refresh Wire'}
+                      {isLoadingLiveFeed ? 'Fetching Wire...' : 'Refresh Wire'}
                     </button>
                   </div>
 
@@ -933,7 +938,7 @@ export default function AdminWorkspace({
                               </span>
                             </div>
                             <span style={{ fontSize: '0.75rem', color: 'var(--accent-indigo)', fontWeight: '600' }}>
-                              👆 Tap card to Edit & Customize
+                              Click card to Edit & Customize
                             </span>
                           </div>
 
@@ -1000,7 +1005,7 @@ export default function AdminWorkspace({
                         style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
                       >
                         <RefreshCw size={15} className={isLoadingLiveFeed ? 'spin' : ''} />
-                        {isLoadingLiveFeed ? 'Fetching Live Wire...' : '⚡ Fetch Live News Wire Now'}
+                        {isLoadingLiveFeed ? 'Fetching Live Wire...' : 'Fetch Live News Wire Now'}
                       </button>
                     </div>
                   )}
@@ -1059,12 +1064,12 @@ export default function AdminWorkspace({
                                     background: isLive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                                     color: isLive ? 'var(--accent-emerald)' : 'var(--accent-crimson)'
                                   }}>
-                                    {isLive ? '🟢 LIVE ON SITE' : '🔴 HIDDEN (DRAFT)'}
+                                    {isLive ? 'LIVE ON SITE' : 'HIDDEN (DRAFT)'}
                                   </span>
 
                                   {art.is_breaking && (
                                     <span style={{ fontSize: '0.7rem', fontWeight: '800', padding: '0.15rem 0.4rem', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-crimson)' }}>
-                                      🔥 BREAKING
+                                      BREAKING
                                     </span>
                                   )}
 
@@ -1084,10 +1089,10 @@ export default function AdminWorkspace({
                                   onMouseEnter={(e) => e.currentTarget.style.color = 'var(--accent-indigo)'}
                                   onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-main)'}
                                 >
-                                  {art.title} <span style={{ fontSize: '0.75rem', color: 'var(--accent-indigo)', opacity: 0.8 }}>✏️ (Click to Edit)</span>
+                                  {art.title} <span style={{ fontSize: '0.75rem', color: 'var(--accent-indigo)', opacity: 0.8 }}>(Click to Edit)</span>
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.2rem' }}>
-                                  By {art.author?.name || 'Admin'} • Published {art.published_at} • 👁️ {art.views_count ? art.views_count.toLocaleString() : '120'} views
+                                  By {art.author?.name || 'Admin'} • Published {art.published_at} • {art.views_count ? art.views_count.toLocaleString() : '120'} views
                                 </div>
                               </div>
                             </div>
@@ -1244,83 +1249,73 @@ export default function AdminWorkspace({
               </form>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.85rem' }}>
-                {categories.map((cat) => (
-                  <div
-                    key={cat.id}
-                    style={{
-                      background: 'var(--bg-secondary)',
-                      padding: '0.9rem 1rem',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-light)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      minWidth: 0,
-                      overflow: 'hidden'
-                    }}
-                  >
-                    <div style={{ minWidth: 0, flex: 1, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                      <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: '1.3' }}>
-                        {cat.name}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--accent-blue)', marginTop: '0.25rem', fontWeight: '600' }}>
-                        Active Section
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCategory(cat.id)}
-                      title="Remove category"
+                {categories.map((cat) => {
+                  const publishedCount = articles.filter(a => 
+                    (a.category_slug === cat.slug || a.category?.toLowerCase() === cat.name?.toLowerCase()) && 
+                    a.status === 'published'
+                  ).length;
+
+                  return (
+                    <div
+                      key={cat.id}
                       style={{
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--text-subtle)',
-                        cursor: 'pointer',
-                        padding: '0.35rem',
-                        borderRadius: '6px',
+                        background: 'var(--bg-secondary)',
+                        padding: '0.9rem 1rem',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-light)',
                         display: 'flex',
+                        justifyContent: 'space-between',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'var(--transition-fast)',
-                        flexShrink: 0
+                        gap: '0.75rem',
+                        minWidth: 0,
+                        overflow: 'hidden'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = 'var(--accent-crimson)'}
-                      onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-subtle)'}
                     >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
+                      <div style={{ minWidth: 0, flex: 1, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                        <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: '1.3' }}>
+                          {cat.name}
+                        </div>
+                        {publishedCount > 0 ? (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', marginTop: '0.25rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <CheckCircle2 size={12} /> {publishedCount} {publishedCount === 1 ? 'Story' : 'Stories'} • Live on Website
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '0.75rem', color: '#d97706', marginTop: '0.25rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <ShieldAlert size={12} /> 0 Stories • Hidden from public until published
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(cat.id)}
+                        title="Remove category"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-subtle)',
+                          cursor: 'pointer',
+                          padding: '0.35rem',
+                          borderRadius: '6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'var(--transition-fast)',
+                          flexShrink: 0
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--accent-crimson)'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-subtle)'}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {activeTab === 'ads' && (
-            <div style={{ background: 'var(--bg-surface)', padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', marginBottom: '0.4rem' }}>Configurable Ad Slot Positions</h3>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-subtle)', marginBottom: '1.25rem' }}>
-                Configure ad placement slots for your news platform.
-              </p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {adSlots.map((slot) => (
-                  <div key={slot.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-sm)' }}>
-                    <div>
-                      <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>{slot.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>Position Key: {slot.position}</div>
-                    </div>
-                    <button
-                      onClick={() => handleToggleAdSlot(slot.id)}
-                      className={`btn ${slot.enabled ? 'btn-primary' : 'btn-outline'}`}
-                      style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem' }}
-                    >
-                      {slot.enabled ? 'Enabled' : 'Disabled'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <MonetizationDesk onShowToast={onShowToast} />
           )}
 
           {activeTab === 'social' && (
@@ -1537,6 +1532,8 @@ export default function AdminWorkspace({
                 headingWeight: 700,
                 bodySize: 16,
                 bodyWeight: 400,
+                mobileHeadingScale: 85,
+                mobileBodySize: 15,
                 regionalFonts: DEFAULT_REGIONAL_FONTS
               };
               setLocalTypography(defaults);
@@ -1546,7 +1543,7 @@ export default function AdminWorkspace({
             };
 
             return (
-              <div style={{ background: 'var(--bg-surface)', padding: '1.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
+              <div className="admin-tab-card">
                 {/* Top Header Row with Prominent Save & Reset Actions */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
                   <div>
@@ -1608,8 +1605,86 @@ export default function AdminWorkspace({
                   </div>
                 )}
 
+                {/* DEVICE VIEWPORT MODE SELECTOR: DESKTOP (BADI SCREEN) VS MOBILE (CHHOTI SCREEN) */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: 'var(--bg-secondary)',
+                  padding: '0.75rem 1rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-medium)',
+                  marginBottom: '1rem',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '900', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <Sliders size={16} color="var(--accent-indigo)" /> Screen Targeting Mode:
+                    </span>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)' }}>
+                      {deviceMode === 'desktop'
+                        ? 'बड़ी स्क्रीन / Desktop View (Laptops & Desktops > 768px)'
+                        : 'छोटी स्क्रीन / Mobile Phone View (Handheld Smartphones ≤ 768px)'}
+                    </span>
+                  </div>
+
+                  {/* Segmented Device Switcher Pills */}
+                  <div style={{
+                    display: 'inline-flex',
+                    background: 'var(--bg-surface)',
+                    padding: '3px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-medium)',
+                    gap: '3px'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setDeviceMode('desktop')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        padding: '0.45rem 1.15rem',
+                        borderRadius: '6px',
+                        fontSize: '0.82rem',
+                        fontWeight: deviceMode === 'desktop' ? '900' : '600',
+                        background: deviceMode === 'desktop' ? 'var(--accent-indigo)' : 'transparent',
+                        color: deviceMode === 'desktop' ? '#fff' : 'var(--text-muted)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        boxShadow: deviceMode === 'desktop' ? '0 2px 6px rgba(99, 102, 241, 0.25)' : 'none'
+                      }}
+                    >
+                      <Monitor size={15} /> Desktop / बड़ी स्क्रीन
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeviceMode('mobile')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        padding: '0.45rem 1.15rem',
+                        borderRadius: '6px',
+                        fontSize: '0.82rem',
+                        fontWeight: deviceMode === 'mobile' ? '900' : '600',
+                        background: deviceMode === 'mobile' ? 'var(--accent-indigo)' : 'transparent',
+                        color: deviceMode === 'mobile' ? '#fff' : 'var(--text-muted)',
+                        border: 'none',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        boxShadow: deviceMode === 'mobile' ? '0 2px 6px rgba(99, 102, 241, 0.25)' : 'none'
+                      }}
+                    >
+                      <Smartphone size={15} /> Mobile / छोटी स्क्रीन
+                    </button>
+                  </div>
+                </div>
+
                 {/* PRIMARY ACTIONS: 1-CLICK MAKE GLOBAL VS REGIONAL WISE LIST */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: '0.85rem', marginBottom: '1.5rem' }}>
+                <div className="typography-actions-layout">
                   {/* Action 1: Make Current Fonts Global across entire site */}
                   <button
                     type="button"
@@ -1646,7 +1721,7 @@ export default function AdminWorkspace({
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: '900', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        🌐 Make Current Fonts Global
+                        Make Current Fonts Global
                         <span style={{ fontSize: '0.7rem', background: 'var(--accent-indigo)', color: '#fff', padding: '0.1rem 0.45rem', borderRadius: '10px' }}>1-CLICK</span>
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.15rem' }}>
@@ -1689,7 +1764,7 @@ export default function AdminWorkspace({
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: '900', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        🗺️ Regional / Language-Wise List
+                        Regional / Language-Wise List
                         {scopeMode === 'regional' ? (
                           <span style={{ fontSize: '0.7rem', background: 'var(--accent-emerald)', color: '#fff', padding: '0.1rem 0.45rem', borderRadius: '10px' }}>OPEN</span>
                         ) : (
@@ -1704,7 +1779,7 @@ export default function AdminWorkspace({
                 </div>
 
                 {/* 2-COLUMN MAIN DESK */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '1.75rem', alignItems: 'start' }}>
+                <div className="typography-desk-layout">
                   
                   {/* LEFT COLUMN: Controls, Pickers, Language Selector & Sliders */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -1728,7 +1803,7 @@ export default function AdminWorkspace({
                             </div>
                           </div>
                           <span style={{ fontSize: '0.75rem', fontWeight: '800', background: 'var(--accent-emerald)', color: '#fff', padding: '0.2rem 0.6rem', borderRadius: '12px' }}>
-                            Currently Editing: {selectedLangData.flag} {selectedLangData.native} ({selectedLangData.name})
+                            Currently Editing: {selectedLangData.native} ({selectedLangData.name})
                           </span>
                         </div>
 
@@ -1784,7 +1859,7 @@ export default function AdminWorkspace({
                                   transition: 'all 0.15s ease'
                                 }}
                               >
-                                <span style={{ fontSize: '1rem' }}>{lang.flag}</span>
+                                <span style={{ fontSize: '0.72rem', fontWeight: '900', color: isSelected ? 'var(--accent-emerald)' : 'var(--text-subtle)', background: 'var(--bg-main)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>{lang.code.toUpperCase()}</span>
                                 <span style={{ fontWeight: '800', lineHeight: 1.1 }}>{lang.native}</span>
                                 <span style={{ fontSize: '0.66rem', color: 'var(--text-subtle)' }}>{lang.name}</span>
                               </button>
@@ -1799,8 +1874,8 @@ export default function AdminWorkspace({
                       <VisualFontPicker
                         label={
                           scopeMode === 'regional'
-                            ? `👑 Headline Font for: ${selectedLangData.flag} ${selectedLangData.native} (${selectedLangData.name})`
-                            : '👑 Headline & Title Font Family'
+                            ? `Headline Font for: ${selectedLangData.native} (${selectedLangData.name})`
+                            : 'Headline & Title Font Family'
                         }
                         subtitle={
                           scopeMode === 'regional'
@@ -1869,73 +1944,149 @@ export default function AdminWorkspace({
                           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-indigo)'; e.currentTarget.style.color = '#fff'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(99, 102, 241, 0.1)'; e.currentTarget.style.color = 'var(--accent-indigo)'; }}
                         >
-                          <Globe size={14} /> 🌐 Make Headline Font Global (All 18 Languages)
+                          <Globe size={14} /> Make Headline Font Global (All 18 Languages)
                         </button>
                       </div>
 
-                      {/* Heading Size Dual Controls: Preset Buttons + Slider */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                          <label style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)' }}>
-                            Headline Font Scale:
-                          </label>
-                          <span style={{ fontSize: '0.85rem', fontWeight: '900', color: 'var(--accent-indigo)', background: 'var(--bg-surface)', padding: '0.15rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-medium)' }}>
-                            {localTypography.headingScale || 100}% Scale
-                          </span>
-                        </div>
+                      {/* Heading Scale Controls (Responsive: Desktop vs Mobile) */}
+                      {deviceMode === 'desktop' ? (
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <Monitor size={15} color="var(--accent-indigo)" /> Desktop Headline Scale (बड़ी स्क्रीन):
+                            </label>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '900', color: 'var(--accent-indigo)', background: 'var(--bg-surface)', padding: '0.15rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-medium)' }}>
+                              {localTypography.headingScale || 100}% Scale
+                            </span>
+                          </div>
 
-                        {/* Quick Preset Buttons */}
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                          {[
-                            { label: 'Compact', val: 85 },
-                            { label: 'Standard', val: 100 },
-                            { label: 'Large', val: 115 },
-                            { label: 'Hero Bold', val: 130 },
-                            { label: 'Maximum', val: 145 }
-                          ].map((preset) => (
-                            <button
-                              key={preset.val}
-                              type="button"
-                              onClick={() => {
-                                setLocalTypography({ ...localTypography, headingScale: preset.val });
+                          {/* Quick Preset Buttons for Desktop */}
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                            {[
+                              { label: 'Compact', val: 85 },
+                              { label: 'Standard', val: 100 },
+                              { label: 'Large', val: 115 },
+                              { label: 'Hero Bold', val: 130 },
+                              { label: 'Maximum', val: 145 }
+                            ].map((preset) => (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => {
+                                  setLocalTypography({ ...localTypography, headingScale: preset.val });
+                                  setHasUnsavedTypographyChanges(true);
+                                }}
+                                style={{
+                                  padding: '0.35rem 0.75rem',
+                                  borderRadius: '20px',
+                                  fontSize: '0.78rem',
+                                  fontWeight: '700',
+                                  border: '1px solid',
+                                  borderColor: (localTypography.headingScale || 100) === preset.val ? 'var(--accent-indigo)' : 'var(--border-medium)',
+                                  background: (localTypography.headingScale || 100) === preset.val ? 'var(--accent-indigo)' : 'var(--bg-surface)',
+                                  color: (localTypography.headingScale || 100) === preset.val ? '#fff' : 'var(--text-main)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                {preset.label} ({preset.val}%)
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Precision Range Slider for Desktop */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>80%</span>
+                            <input
+                              type="range"
+                              min="80"
+                              max="150"
+                              step="5"
+                              value={localTypography.headingScale || 100}
+                              onChange={(e) => {
+                                setLocalTypography({ ...localTypography, headingScale: Number(e.target.value) });
                                 setHasUnsavedTypographyChanges(true);
                               }}
-                              style={{
-                                padding: '0.35rem 0.75rem',
-                                borderRadius: '20px',
-                                fontSize: '0.78rem',
-                                fontWeight: '700',
-                                border: '1px solid',
-                                borderColor: (localTypography.headingScale || 100) === preset.val ? 'var(--accent-indigo)' : 'var(--border-medium)',
-                                background: (localTypography.headingScale || 100) === preset.val ? 'var(--accent-indigo)' : 'var(--bg-surface)',
-                                color: (localTypography.headingScale || 100) === preset.val ? '#fff' : 'var(--text-main)',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
-                              }}
-                            >
-                              {preset.label} ({preset.val}%)
-                            </button>
-                          ))}
+                              style={{ flex: 1, accentColor: 'var(--accent-indigo)', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>150%</span>
+                          </div>
                         </div>
+                      ) : (
+                        <div>
+                          <div style={{
+                            background: 'rgba(99, 102, 241, 0.08)',
+                            borderLeft: '3px solid var(--accent-indigo)',
+                            padding: '0.45rem 0.75rem',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-main)',
+                            marginBottom: '0.65rem'
+                          }}>
+                            <strong>Mobile Headline Scale</strong> applies to mobile screens (≤ 768px). Prevents awkward line wrapping on compact phone screens.
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <Smartphone size={15} color="var(--accent-indigo)" /> Mobile Headline Scale (छोटी स्क्रीन):
+                            </label>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '900', color: 'var(--accent-indigo)', background: 'var(--bg-surface)', padding: '0.15rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-medium)' }}>
+                              {localTypography.mobileHeadingScale || 85}% Scale
+                            </span>
+                          </div>
 
-                        {/* Precision Range Slider */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>80%</span>
-                          <input
-                            type="range"
-                            min="80"
-                            max="150"
-                            step="5"
-                            value={localTypography.headingScale || 100}
-                            onChange={(e) => {
-                              setLocalTypography({ ...localTypography, headingScale: Number(e.target.value) });
-                              setHasUnsavedTypographyChanges(true);
-                            }}
-                            style={{ flex: 1, accentColor: 'var(--accent-indigo)', cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>150%</span>
+                          {/* Quick Preset Buttons for Mobile */}
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                            {[
+                              { label: 'Compact', val: 75 },
+                              { label: 'Standard', val: 85 },
+                              { label: 'Balanced', val: 90 },
+                              { label: 'Hero', val: 100 },
+                              { label: 'Maximum', val: 110 }
+                            ].map((preset) => (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => {
+                                  setLocalTypography({ ...localTypography, mobileHeadingScale: preset.val });
+                                  setHasUnsavedTypographyChanges(true);
+                                }}
+                                style={{
+                                  padding: '0.35rem 0.75rem',
+                                  borderRadius: '20px',
+                                  fontSize: '0.78rem',
+                                  fontWeight: '700',
+                                  border: '1px solid',
+                                  borderColor: (localTypography.mobileHeadingScale || 85) === preset.val ? 'var(--accent-indigo)' : 'var(--border-medium)',
+                                  background: (localTypography.mobileHeadingScale || 85) === preset.val ? 'var(--accent-indigo)' : 'var(--bg-surface)',
+                                  color: (localTypography.mobileHeadingScale || 85) === preset.val ? '#fff' : 'var(--text-main)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                {preset.label} ({preset.val}%)
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Precision Range Slider for Mobile */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>70%</span>
+                            <input
+                              type="range"
+                              min="70"
+                              max="115"
+                              step="5"
+                              value={localTypography.mobileHeadingScale || 85}
+                              onChange={(e) => {
+                                setLocalTypography({ ...localTypography, mobileHeadingScale: Number(e.target.value) });
+                                setHasUnsavedTypographyChanges(true);
+                              }}
+                              style={{ flex: 1, accentColor: 'var(--accent-indigo)', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>115%</span>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Headline Font Boldness / Weight Control - NO RAW NUMBERS */}
                       <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px dashed var(--border-medium)' }}>
@@ -2021,8 +2172,8 @@ export default function AdminWorkspace({
                       <VisualFontPicker
                         label={
                           scopeMode === 'regional'
-                            ? `📖 Body Font for: ${selectedLangData.flag} ${selectedLangData.native} (${selectedLangData.name})`
-                            : '📖 Body Copy & Article Reading Font'
+                            ? `Body Font for: ${selectedLangData.native} (${selectedLangData.name})`
+                            : 'Body Copy & Article Reading Font'
                         }
                         subtitle={
                           scopeMode === 'regional'
@@ -2091,73 +2242,149 @@ export default function AdminWorkspace({
                           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-emerald)'; e.currentTarget.style.color = '#fff'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(16, 185, 129, 0.1)'; e.currentTarget.style.color = 'var(--accent-emerald)'; }}
                         >
-                          <Globe size={14} /> 🌐 Make Article Font Global (All 18 Languages)
+                          <Globe size={14} /> Make Article Font Global (All 18 Languages)
                         </button>
                       </div>
 
-                      {/* Body Size Dual Controls: Preset Buttons + Slider */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                          <label style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)' }}>
-                            Base Article Font Size:
-                          </label>
-                          <span style={{ fontSize: '0.85rem', fontWeight: '900', color: 'var(--accent-emerald)', background: 'var(--bg-surface)', padding: '0.15rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-medium)' }}>
-                            {localTypography.bodySize || 16}px Base Size
-                          </span>
-                        </div>
+                      {/* Body Size Controls (Responsive: Desktop vs Mobile) */}
+                      {deviceMode === 'desktop' ? (
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <Monitor size={15} color="var(--accent-emerald)" /> Desktop Article Font Size (बड़ी स्क्रीन):
+                            </label>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '900', color: 'var(--accent-emerald)', background: 'var(--bg-surface)', padding: '0.15rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-medium)' }}>
+                              {localTypography.bodySize || 16}px Base Size
+                            </span>
+                          </div>
 
-                        {/* Quick Preset Buttons */}
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-                          {[
-                            { label: 'Compact', val: 14 },
-                            { label: 'Standard', val: 16 },
-                            { label: 'Editorial', val: 18 },
-                            { label: 'Comfort', val: 20 },
-                            { label: 'Large Read', val: 22 }
-                          ].map((preset) => (
-                            <button
-                              key={preset.val}
-                              type="button"
-                              onClick={() => {
-                                setLocalTypography({ ...localTypography, bodySize: preset.val });
+                          {/* Quick Preset Buttons for Desktop */}
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                            {[
+                              { label: 'Compact', val: 14 },
+                              { label: 'Standard', val: 16 },
+                              { label: 'Editorial', val: 18 },
+                              { label: 'Comfort', val: 20 },
+                              { label: 'Large Read', val: 22 }
+                            ].map((preset) => (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => {
+                                  setLocalTypography({ ...localTypography, bodySize: preset.val });
+                                  setHasUnsavedTypographyChanges(true);
+                                }}
+                                style={{
+                                  padding: '0.35rem 0.75rem',
+                                  borderRadius: '20px',
+                                  fontSize: '0.78rem',
+                                  fontWeight: '700',
+                                  border: '1px solid',
+                                  borderColor: (localTypography.bodySize || 16) === preset.val ? 'var(--accent-emerald)' : 'var(--border-medium)',
+                                  background: (localTypography.bodySize || 16) === preset.val ? 'var(--accent-emerald)' : 'var(--bg-surface)',
+                                  color: (localTypography.bodySize || 16) === preset.val ? '#fff' : 'var(--text-main)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                {preset.label} ({preset.val}px)
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Precision Range Slider for Desktop */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>12px</span>
+                            <input
+                              type="range"
+                              min="12"
+                              max="24"
+                              step="1"
+                              value={localTypography.bodySize || 16}
+                              onChange={(e) => {
+                                setLocalTypography({ ...localTypography, bodySize: Number(e.target.value) });
                                 setHasUnsavedTypographyChanges(true);
                               }}
-                              style={{
-                                padding: '0.35rem 0.75rem',
-                                borderRadius: '20px',
-                                fontSize: '0.78rem',
-                                fontWeight: '700',
-                                border: '1px solid',
-                                borderColor: (localTypography.bodySize || 16) === preset.val ? 'var(--accent-emerald)' : 'var(--border-medium)',
-                                background: (localTypography.bodySize || 16) === preset.val ? 'var(--accent-emerald)' : 'var(--bg-surface)',
-                                color: (localTypography.bodySize || 16) === preset.val ? '#fff' : 'var(--text-main)',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
-                              }}
-                            >
-                              {preset.label} ({preset.val}px)
-                            </button>
-                          ))}
+                              style={{ flex: 1, accentColor: 'var(--accent-emerald)', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>24px</span>
+                          </div>
                         </div>
+                      ) : (
+                        <div>
+                          <div style={{
+                            background: 'rgba(16, 185, 129, 0.08)',
+                            borderLeft: '3px solid var(--accent-emerald)',
+                            padding: '0.45rem 0.75rem',
+                            borderRadius: '4px',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-main)',
+                            marginBottom: '0.65rem'
+                          }}>
+                            <strong>Mobile Article Body Size</strong> applies to phone reading (≤ 768px). Calibrated for high legibility without overflowing screens.
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <label style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <Smartphone size={15} color="var(--accent-emerald)" /> Mobile Article Font Size (छोटी स्क्रीन):
+                            </label>
+                            <span style={{ fontSize: '0.85rem', fontWeight: '900', color: 'var(--accent-emerald)', background: 'var(--bg-surface)', padding: '0.15rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-medium)' }}>
+                              {localTypography.mobileBodySize || 15}px Base Size
+                            </span>
+                          </div>
 
-                        {/* Precision Range Slider */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>12px</span>
-                          <input
-                            type="range"
-                            min="12"
-                            max="24"
-                            step="1"
-                            value={localTypography.bodySize || 16}
-                            onChange={(e) => {
-                              setLocalTypography({ ...localTypography, bodySize: Number(e.target.value) });
-                              setHasUnsavedTypographyChanges(true);
-                            }}
-                            style={{ flex: 1, accentColor: 'var(--accent-emerald)', cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>24px</span>
+                          {/* Quick Preset Buttons for Mobile */}
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+                            {[
+                              { label: 'Compact', val: 13 },
+                              { label: 'Standard', val: 14 },
+                              { label: 'Editorial', val: 15 },
+                              { label: 'Comfort', val: 16 },
+                              { label: 'Large Read', val: 17 }
+                            ].map((preset) => (
+                              <button
+                                key={preset.val}
+                                type="button"
+                                onClick={() => {
+                                  setLocalTypography({ ...localTypography, mobileBodySize: preset.val });
+                                  setHasUnsavedTypographyChanges(true);
+                                }}
+                                style={{
+                                  padding: '0.35rem 0.75rem',
+                                  borderRadius: '20px',
+                                  fontSize: '0.78rem',
+                                  fontWeight: '700',
+                                  border: '1px solid',
+                                  borderColor: (localTypography.mobileBodySize || 15) === preset.val ? 'var(--accent-emerald)' : 'var(--border-medium)',
+                                  background: (localTypography.mobileBodySize || 15) === preset.val ? 'var(--accent-emerald)' : 'var(--bg-surface)',
+                                  color: (localTypography.mobileBodySize || 15) === preset.val ? '#fff' : 'var(--text-main)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                              >
+                                {preset.label} ({preset.val}px)
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Precision Range Slider for Mobile */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>12px</span>
+                            <input
+                              type="range"
+                              min="12"
+                              max="18"
+                              step="1"
+                              value={localTypography.mobileBodySize || 15}
+                              onChange={(e) => {
+                                setLocalTypography({ ...localTypography, mobileBodySize: Number(e.target.value) });
+                                setHasUnsavedTypographyChanges(true);
+                              }}
+                              style={{ flex: 1, accentColor: 'var(--accent-emerald)', cursor: 'pointer' }}
+                            />
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>18px</span>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Body Font Weight / Boldness Control - NO RAW NUMBERS */}
                       <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px dashed var(--border-medium)' }}>
@@ -2237,118 +2464,223 @@ export default function AdminWorkspace({
 
                   </div>
 
-                  {/* RIGHT COLUMN: STICKY LIVE INTERACTIVE PREVIEW DESK (DYNAMICS PER LANGUAGE) */}
+                  {/* RIGHT COLUMN: STICKY LIVE INTERACTIVE PREVIEW DESK (DYNAMICS PER LANGUAGE & DEVICE) */}
                   <div style={{
                     position: 'sticky',
                     top: '1.5rem',
                     background: 'var(--bg-main)',
                     border: scopeMode === 'regional' ? '2px dashed var(--accent-emerald)' : '2px dashed var(--accent-indigo)',
-                    padding: '1.5rem',
+                    padding: deviceMode === 'mobile' ? '1.25rem 0.75rem' : '1.5rem',
                     borderRadius: 'var(--radius-md)',
                     boxShadow: 'var(--shadow-sm)',
-                    transition: 'border-color 0.2s ease'
+                    transition: 'all 0.2s ease'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.6rem', flexWrap: 'wrap', gap: '0.4rem' }}>
                       <span style={{ fontSize: '0.8rem', fontWeight: '900', textTransform: 'uppercase', color: scopeMode === 'regional' ? 'var(--accent-emerald)' : 'var(--accent-indigo)', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        ⚡ Real-Time Live Preview ({scopeMode === 'regional' ? `${selectedLangData.flag} ${selectedLangData.native}` : '🌐 Global Default'})
+                        Real-Time Live Preview ({scopeMode === 'regional' ? selectedLangData.native : 'Global Default'})
                       </span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '700' }}>
-                        {currentDisplayHeadFont} ({localTypography.headingScale || 100}%, {getWeightLabel(localTypography.headingWeight || 700)}) • {currentDisplayBodyFont} ({localTypography.bodySize || 16}px, {getWeightLabel(localTypography.bodyWeight || 400)})
+
+                      {/* Mini Switcher on Top of Preview for Convenient One-Click Toggling */}
+                      <div style={{
+                        display: 'inline-flex',
+                        background: 'var(--bg-secondary)',
+                        padding: '2px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-medium)',
+                        gap: '2px'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => setDeviceMode('desktop')}
+                          style={{
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '4px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: deviceMode === 'desktop' ? 'var(--accent-indigo)' : 'transparent',
+                            color: deviceMode === 'desktop' ? '#fff' : 'var(--text-subtle)',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                          title="View Desktop Layout"
+                        >
+                          <Monitor size={12} /> Desktop
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeviceMode('mobile')}
+                          style={{
+                            padding: '0.2rem 0.55rem',
+                            borderRadius: '4px',
+                            fontSize: '0.72rem',
+                            fontWeight: '800',
+                            background: deviceMode === 'mobile' ? 'var(--accent-indigo)' : 'transparent',
+                            color: deviceMode === 'mobile' ? '#fff' : 'var(--text-subtle)',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                          title="View 390px Mobile Phone Layout"
+                        >
+                          <Smartphone size={12} /> Mobile
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Mode Metric Subtitle Badge */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      <span style={{ fontSize: '0.74rem', fontWeight: '800', padding: '0.15rem 0.5rem', borderRadius: '4px', background: deviceMode === 'mobile' ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg-secondary)', color: deviceMode === 'mobile' ? 'var(--accent-indigo)' : 'var(--text-main)', border: '1px solid var(--border-medium)' }}>
+                        {deviceMode === 'mobile' ? 'Mobile Phone Simulation (390px)' : 'Desktop Broadsheet View'}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: '700' }}>
+                        {deviceMode === 'desktop'
+                          ? `${currentDisplayHeadFont} (${localTypography.headingScale || 100}%, ${getWeightLabel(localTypography.headingWeight || 700)}) • ${currentDisplayBodyFont} (${localTypography.bodySize || 16}px, ${getWeightLabel(localTypography.bodyWeight || 400)})`
+                          : `${currentDisplayHeadFont} (${localTypography.mobileHeadingScale || 85}%) • ${currentDisplayBodyFont} (${localTypography.mobileBodySize || 15}px)`}
                       </span>
                     </div>
 
-                    {/* Regional / Language Headline or Global Hindi Headline */}
-                    <div style={{ marginBottom: '1.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: '800', background: scopeMode === 'regional' ? 'var(--accent-emerald)' : 'var(--accent-crimson)', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '4px', textTransform: 'uppercase' }}>
-                          {scopeMode === 'regional' ? `BREAKING NEWS • ${selectedLangData.name.toUpperCase()}` : 'BREAKING HINDI HEADLINE'}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', fontStyle: 'italic' }}>
-                          Font: {currentDisplayHeadFont} ({getWeightLabel(localTypography.headingWeight || 700)})
-                        </span>
-                      </div>
-                      <h2
-                        dir={selectedLangData.isRtl && scopeMode === 'regional' ? 'rtl' : 'ltr'}
-                        style={{
-                          fontFamily: `'${currentDisplayHeadFont}', serif`,
-                          fontSize: `calc(1.65rem * ${(localTypography.headingScale || 100) / 100})`,
-                          fontWeight: localTypography.headingWeight || 700,
-                          color: 'var(--text-main)',
-                          lineHeight: '1.25',
-                          marginTop: '0.4rem',
-                          marginBottom: '0.35rem',
-                          textAlign: selectedLangData.isRtl && scopeMode === 'regional' ? 'right' : 'left',
-                          transition: 'font-size 0.2s ease, font-family 0.2s ease, font-weight 0.2s ease'
-                        }}
-                      >
-                        {scopeMode === 'regional'
-                          ? selectedLangData.headline
-                          : 'चंद्रयान और सौर मिशन की सफलता पर पूरे देश में गर्व — विज्ञान का नया स्वर्णिम दौर'}
-                      </h2>
-                    </div>
+                    {/* PREVIEW CONTAINER: Adapts between standard card on desktop and authentic phone chassis on mobile */}
+                    <div style={{
+                      maxWidth: deviceMode === 'mobile' ? '390px' : '100%',
+                      margin: deviceMode === 'mobile' ? '0 auto' : '0',
+                      background: 'var(--bg-surface)',
+                      border: deviceMode === 'mobile' ? '2px solid var(--border-dark)' : '1px solid var(--border-light)',
+                      borderRadius: deviceMode === 'mobile' ? '28px' : 'var(--radius-sm)',
+                      padding: deviceMode === 'mobile' ? '1.15rem 1rem 1rem' : '1.25rem',
+                      boxShadow: deviceMode === 'mobile' ? '0 12px 36px rgba(0, 0, 0, 0.12)' : 'none',
+                      transition: 'all 0.25s ease'
+                    }}>
+                      {/* Simulated Phone Top Speaker & Notch (Visible only in Mobile Mode) */}
+                      {deviceMode === 'mobile' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '1rem' }}>
+                          <div style={{
+                            width: '48px',
+                            height: '4px',
+                            background: 'var(--border-medium)',
+                            borderRadius: '3px'
+                          }} />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.62rem', color: 'var(--text-subtle)', fontWeight: '700', marginTop: '0.35rem', padding: '0 0.25rem' }}>
+                            <span>9:41</span>
+                            <span>5G ●●● 100%</span>
+                          </div>
+                        </div>
+                      )}
 
-                    {/* Secondary Headline (English Global or Language Region Info) */}
-                    <div style={{ marginBottom: '1.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: '800', background: 'var(--accent-blue)', color: '#fff', padding: '0.15rem 0.5rem', borderRadius: '4px', textTransform: 'uppercase' }}>
-                          {scopeMode === 'regional' ? `REGIONAL COVERAGE • ${selectedLangData.region}` : 'ENGLISH GLOBAL HEADLINE'}
-                        </span>
+                      {/* Regional / Language Headline or Global Hindi Headline */}
+                      <div style={{ marginBottom: deviceMode === 'mobile' ? '0.85rem' : '1.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: '800', background: scopeMode === 'regional' ? 'var(--accent-emerald)' : 'var(--accent-crimson)', color: '#fff', padding: '0.15rem 0.45rem', borderRadius: '4px', textTransform: 'uppercase' }}>
+                            {scopeMode === 'regional' ? `BREAKING NEWS • ${selectedLangData.name.toUpperCase()}` : 'BREAKING HINDI HEADLINE'}
+                          </span>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', fontStyle: 'italic' }}>
+                            {currentDisplayHeadFont}
+                          </span>
+                        </div>
+                        <h2
+                          dir={selectedLangData.isRtl && scopeMode === 'regional' ? 'rtl' : 'ltr'}
+                          style={{
+                            fontFamily: `'${currentDisplayHeadFont}', serif`,
+                            fontSize: deviceMode === 'mobile'
+                              ? `calc(1.3rem * ${(localTypography.mobileHeadingScale || 85) / 100})`
+                              : `calc(1.65rem * ${(localTypography.headingScale || 100) / 100})`,
+                            fontWeight: localTypography.headingWeight || 700,
+                            color: 'var(--text-main)',
+                            lineHeight: deviceMode === 'mobile' ? '1.3' : '1.25',
+                            marginTop: '0.35rem',
+                            marginBottom: '0.35rem',
+                            textAlign: selectedLangData.isRtl && scopeMode === 'regional' ? 'right' : 'left',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          {scopeMode === 'regional'
+                            ? selectedLangData.headline
+                            : 'चंद्रयान और सौर मिशन की सफलता पर पूरे देश में गर्व — विज्ञान का नया स्वर्णिम दौर'}
+                        </h2>
                       </div>
-                      <h3
-                        style={{
-                          fontFamily: `'${currentDisplayHeadFont}', serif`,
-                          fontSize: `calc(1.2rem * ${(localTypography.headingScale || 100) / 100})`,
-                          fontWeight: Math.max(400, (localTypography.headingWeight || 700) - 100),
-                          color: 'var(--text-main)',
-                          lineHeight: '1.3',
-                          marginTop: '0.4rem',
-                          marginBottom: '0.35rem',
-                          transition: 'font-size 0.2s ease, font-family 0.2s ease, font-weight 0.2s ease'
-                        }}
-                      >
-                        ISRO Milestone: Indigenous Satellite Grid Deployed into Polar Orbit for Agricultural Monitoring
-                      </h3>
-                    </div>
 
-                    {/* Live Body Excerpt in Selected Language */}
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: '800', background: 'var(--bg-secondary)', color: 'var(--text-subtle)', padding: '0.15rem 0.5rem', borderRadius: '4px', textTransform: 'uppercase', display: 'inline-block' }}>
-                          {scopeMode === 'regional' ? `ARTICLE BODY TEXT (${selectedLangData.native})` : 'ARTICLE BODY TEXT'}
-                        </span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', fontStyle: 'italic' }}>
-                          Font: {currentDisplayBodyFont} ({localTypography.bodySize || 16}px, {getWeightLabel(localTypography.bodyWeight || 400)})
-                        </span>
+                      {/* Secondary Headline (English Global or Language Region Info) */}
+                      <div style={{ marginBottom: deviceMode === 'mobile' ? '0.85rem' : '1.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: '800', background: 'var(--accent-blue)', color: '#fff', padding: '0.15rem 0.45rem', borderRadius: '4px', textTransform: 'uppercase' }}>
+                            {scopeMode === 'regional' ? `REGIONAL COVERAGE • ${selectedLangData.region}` : 'ENGLISH GLOBAL HEADLINE'}
+                          </span>
+                        </div>
+                        <h3
+                          style={{
+                            fontFamily: `'${currentDisplayHeadFont}', serif`,
+                            fontSize: deviceMode === 'mobile'
+                              ? `calc(1rem * ${(localTypography.mobileHeadingScale || 85) / 100})`
+                              : `calc(1.2rem * ${(localTypography.headingScale || 100) / 100})`,
+                            fontWeight: Math.max(400, (localTypography.headingWeight || 700) - 100),
+                            color: 'var(--text-main)',
+                            lineHeight: '1.3',
+                            marginTop: '0.35rem',
+                            marginBottom: '0.35rem',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          ISRO Milestone: Indigenous Satellite Grid Deployed into Polar Orbit for Agricultural Monitoring
+                        </h3>
                       </div>
-                      <div
-                        dir={selectedLangData.isRtl && scopeMode === 'regional' ? 'rtl' : 'ltr'}
-                        style={{
-                          fontFamily: `'${currentDisplayBodyFont}', sans-serif`,
-                          fontSize: `${localTypography.bodySize || 16}px`,
-                          fontWeight: localTypography.bodyWeight || 400,
-                          color: 'var(--text-muted)',
-                          lineHeight: '1.65',
-                          background: 'var(--bg-secondary)',
-                          padding: '1.1rem',
-                          borderRadius: 'var(--radius-sm)',
-                          borderLeft: scopeMode === 'regional' ? '4px solid var(--accent-emerald)' : '4px solid var(--accent-indigo)',
-                          textAlign: selectedLangData.isRtl && scopeMode === 'regional' ? 'right' : 'left',
-                          transition: 'font-size 0.2s ease, font-family 0.2s ease, font-weight 0.2s ease'
-                        }}
-                      >
-                        {scopeMode === 'regional'
-                          ? selectedLangData.excerpt
-                          : 'देश भर में आधुनिक वैज्ञानिक तकनीकों और डिजिटल मीडिया क्रांति के साथ विश्वसनीय सूचना का आदान-प्रदान अब और अधिक सुगम हो गया है। Readers across all 18 supported regional languages can now experience authentic editorial reporting with crystal-clear typography tailored precisely to their reading comfort.'}
+
+                      {/* Live Body Excerpt in Selected Language */}
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: '800', background: 'var(--bg-secondary)', color: 'var(--text-subtle)', padding: '0.15rem 0.45rem', borderRadius: '4px', textTransform: 'uppercase', display: 'inline-block' }}>
+                            {scopeMode === 'regional' ? `ARTICLE BODY TEXT (${selectedLangData.native})` : 'ARTICLE BODY TEXT'}
+                          </span>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', fontStyle: 'italic' }}>
+                            {deviceMode === 'mobile' ? `${localTypography.mobileBodySize || 15}px` : `${localTypography.bodySize || 16}px`}
+                          </span>
+                        </div>
+                        <div
+                          dir={selectedLangData.isRtl && scopeMode === 'regional' ? 'rtl' : 'ltr'}
+                          style={{
+                            fontFamily: `'${currentDisplayBodyFont}', sans-serif`,
+                            fontSize: deviceMode === 'mobile'
+                              ? `${localTypography.mobileBodySize || 15}px`
+                              : `${localTypography.bodySize || 16}px`,
+                            fontWeight: localTypography.bodyWeight || 400,
+                            color: 'var(--text-muted)',
+                            lineHeight: deviceMode === 'mobile' ? '1.58' : '1.65',
+                            background: 'var(--bg-secondary)',
+                            padding: deviceMode === 'mobile' ? '0.85rem' : '1.1rem',
+                            borderRadius: 'var(--radius-sm)',
+                            borderLeft: scopeMode === 'regional' ? '4px solid var(--accent-emerald)' : '4px solid var(--accent-indigo)',
+                            textAlign: selectedLangData.isRtl && scopeMode === 'regional' ? 'right' : 'left',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          {scopeMode === 'regional'
+                            ? selectedLangData.excerpt
+                            : 'देश भर में आधुनिक वैज्ञानिक तकनीकों और डिजिटल मीडिया क्रांति के साथ विश्वसनीय सूचना का आदान-प्रदान अब और अधिक सुगम हो गया है। Readers across all 18 supported regional languages can now experience authentic editorial reporting with crystal-clear typography tailored precisely to their reading comfort.'}
+                        </div>
                       </div>
+
+                      {/* Phone Bottom Home Bar Indicator (Visible only in Mobile Mode) */}
+                      {deviceMode === 'mobile' && (
+                        <div style={{
+                          width: '110px',
+                          height: '4px',
+                          background: 'var(--border-medium)',
+                          borderRadius: '2px',
+                          margin: '1.25rem auto 0.25rem'
+                        }} />
+                      )}
                     </div>
 
                     {/* Informative footer pill */}
-                    <div style={{ marginTop: '1.25rem', padding: '0.65rem 0.85rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.73rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span>💡</span>
+                    <div style={{ marginTop: '1rem', padding: '0.65rem 0.85rem', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '0.73rem', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Sparkles size={14} color="var(--accent-indigo)" />
                       <span>
-                        {scopeMode === 'regional'
-                          ? `When website visitors choose "${selectedLangData.name}" in the top language dropdown, this exact headline and body typography will automatically render across all news stories!`
-                          : 'Global fonts apply as the universal default when a specific regional language does not have a customized font override.'}
+                        {deviceMode === 'mobile'
+                          ? `Mobile phone mode simulates screen width ≤ 768px. Mobile headline scale (${localTypography.mobileHeadingScale || 85}%) & mobile body size (${localTypography.mobileBodySize || 15}px) apply live across phones.`
+                          : `Desktop broadsheet mode simulates computer screens > 768px. Desktop scale (${localTypography.headingScale || 100}%) & body size (${localTypography.bodySize || 16}px) apply on laptops.`}
                       </span>
                     </div>
 

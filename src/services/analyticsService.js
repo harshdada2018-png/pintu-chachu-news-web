@@ -59,9 +59,15 @@ export async function sendHeartbeat(sessionId, scrollDepth = 0) {
  * @param {number} readDurationSeconds 
  * @param {number} scrollDepth 
  */
-export function endViewSession(sessionId, readDurationSeconds = 0, scrollDepth = 0) {
+export function endViewSession(sessionId, readDurationSeconds = 0, scrollDepth = 0, articleId = null, articleTitle = null) {
   if (!sessionId) return;
-  const payload = JSON.stringify({ sessionId, readDurationSeconds, scrollDepth });
+  const payload = JSON.stringify({
+    sessionId,
+    readDurationSeconds,
+    scrollDepth,
+    articleId: articleId ? String(articleId) : null,
+    articleTitle: articleTitle ? String(articleTitle) : null
+  });
   
   if (navigator.sendBeacon) {
     const blob = new Blob([payload], { type: 'application/json' });

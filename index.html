@@ -3,18 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <script>
-      // Auto-redirect to local dev server if double-clicked from Windows File Explorer
+      // If user opened file directly via Windows Explorer, display prominent navigation button
       if (window.location.protocol === 'file:') {
-        window.location.href = 'http://localhost:5173/';
+        window.addEventListener('DOMContentLoaded', function() {
+          document.body.innerHTML = `
+            <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FAF8F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 2rem;">
+              <img src="logo.png" style="height: 85px; margin-bottom: 1.5rem;" />
+              <div style="background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 12px; padding: 2rem; max-width: 520px; box-shadow: 0 10px 25px rgba(0,0,0,0.06);">
+                <h2 style="color: #C5221F; margin: 0 0 0.75rem 0; font-size: 1.4rem;">Vite Server Address Required</h2>
+                <p style="color: #4B5563; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem;">
+                  Aapne <code>index.html</code> ko Windows File Explorer se direct open kiya hai.<br>
+                  Modern React apps ke liye local server zaroori hota hai.
+                </p>
+                <a href="http://localhost:5173/" style="display: inline-block; background: #C5221F; color: #FFFFFF; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 1.05rem; box-shadow: 0 4px 14px rgba(197,34,31,0.35);">
+                  🚀 Open: http://localhost:5173/
+                </a>
+              </div>
+            </div>
+          `;
+        });
       }
     </script>
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PUBLIC SPARK - Independent Digital Newsroom</title>
-    <!-- Comprehensive Google Fonts Suite: Royal, Editorial, Hindi/Regional, Sans, Display & 18-Language Indian/Global Scripts -->
+    <!-- Comprehensive Google Fonts Suite: Asynchronous non-blocking loading for 0ms initial render -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Cinzel:wght@600;700;800&family=Crimson+Pro:ital,wght@0,400;0,700;1,400&family=DM+Serif+Display&family=Hind:wght@400;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600&family=Kalam:wght@400;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700;800&family=Mukta:wght@400;600;700;800&family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Arabic:wght@400;600;700&family=Noto+Sans+Bengali:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&family=Noto+Sans+Gujarati:wght@400;600;700&family=Noto+Sans+Gurmukhi:wght@400;600;700&family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+Kannada:wght@400;600;700&family=Noto+Sans+Malayalam:wght@400;600;700&family=Noto+Sans+Oriya:wght@400;600;700&family=Noto+Sans+TC:wght@400;700&family=Noto+Sans+Tamil:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&family=Noto+Serif+Bengali:wght@400;700&family=Noto+Serif+Devanagari:wght@400;600;700&family=Noto+Serif+Gujarati:wght@400;700&family=Noto+Serif+Gurmukhi:wght@400;700&family=Noto+Serif+Kannada:wght@400;700&family=Noto+Serif+Malayalam:wght@400;700&family=Noto+Serif+Tamil:wght@400;700&family=Noto+Serif+Telugu:wght@400;700&family=Oswald:wght@500;600;700&family=Outfit:wght@400;600;700;800&family=PT+Serif:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,600..900;1,600..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Poppins:wght@300;400;500;600;700;800;900&family=Prata&family=Raleway:wght@500;600;700;800&family=Roboto:ital,wght@0,400;0,500;0,700;1,400&family=Rozha+One&family=Yatra+One&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Cinzel:wght@600;700;800&family=Crimson+Pro:ital,wght@0,400;0,700;1,400&family=DM+Serif+Display&family=Hind:wght@400;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600&family=Kalam:wght@400;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700;800&family=Mukta:wght@400;600;700;800&family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Arabic:wght@400;600;700&family=Noto+Sans+Bengali:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&family=Noto+Sans+Gujarati:wght@400;600;700&family=Noto+Sans+Gurmukhi:wght@400;600;700&family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+Kannada:wght@400;600;700&family=Noto+Sans+Malayalam:wght@400;600;700&family=Noto+Sans+Oriya:wght@400;600;700&family=Noto+Sans+TC:wght@400;700&family=Noto+Sans+Tamil:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&family=Noto+Serif+Bengali:wght@400;700&family=Noto+Serif+Devanagari:wght@400;600;700&family=Noto+Serif+Gujarati:wght@400;700&family=Noto+Serif+Gurmukhi:wght@400;700&family=Noto+Serif+Kannada:wght@400;700&family=Noto+Serif+Malayalam:wght@400;700&family=Noto+Serif+Tamil:wght@400;700&family=Noto+Serif+Telugu:wght@400;700&family=Oswald:wght@500;600;700&family=Outfit:wght@400;600;700;800&family=PT+Serif:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,600..900;1,600..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Poppins:wght@300;400;500;600;700;800;900&family=Prata&family=Raleway:wght@500;600;700;800&family=Roboto:ital,wght@0,400;0,500;0,700;1,400&family=Rozha+One&family=Yatra+One&display=swap" media="print" onload="this.media='all'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Cinzel:wght@600;700;800&family=Crimson+Pro:ital,wght@0,400;0,700;1,400&family=DM+Serif+Display&family=Hind:wght@400;600;700&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600&family=Kalam:wght@400;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@400;600;700;800&family=Mukta:wght@400;600;700;800&family=Noto+Nastaliq+Urdu:wght@400;700&family=Noto+Sans+Arabic:wght@400;600;700&family=Noto+Sans+Bengali:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&family=Noto+Sans+Gujarati:wght@400;600;700&family=Noto+Sans+Gurmukhi:wght@400;600;700&family=Noto+Sans+JP:wght@400;700&family=Noto+Sans+Kannada:wght@400;600;700&family=Noto+Sans+Malayalam:wght@400;600;700&family=Noto+Sans+Oriya:wght@400;600;700&family=Noto+Sans+TC:wght@400;700&family=Noto+Sans+Tamil:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&family=Noto+Serif+Bengali:wght@400;700&family=Noto+Serif+Devanagari:wght@400;600;700&family=Noto+Serif+Gujarati:wght@400;700&family=Noto+Serif+Gurmukhi:wght@400;700&family=Noto+Serif+Kannada:wght@400;700&family=Noto+Serif+Malayalam:wght@400;700&family=Noto+Serif+Tamil:wght@400;700&family=Noto+Serif+Telugu:wght@400;700&family=Oswald:wght@500;600;700&family=Outfit:wght@400;600;700;800&family=PT+Serif:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@0,600..900;1,600..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Poppins:wght@300;400;500;600;700;800;900&family=Prata&family=Raleway:wght@500;600;700;800&family=Roboto:ital,wght@0,400;0,500;0,700;1,400&family=Rozha+One&family=Yatra+One&display=swap"></noscript>
   </head>
   <body>
     <div id="root">
@@ -36,9 +53,46 @@
       <div class="preloader-bg">
         <img src="/logo.png" alt="PUBLIC SPARK" style="height: 85px; width: auto;" />
         <div class="preloader-spinner"></div>
-        <p style="margin-top: 1rem; color: #6B7280; font-weight: 600; font-size: 0.9rem;">Opening Independent Newsroom...</p>
+        <p id="preloader-status" style="margin-top: 1rem; color: #6B7280; font-weight: 600; font-size: 0.9rem;">Opening Independent Newsroom...</p>
       </div>
     </div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      // 3.5s Timeout Watchdog if React takes longer to mount
+      setTimeout(function() {
+        var status = document.getElementById('preloader-status');
+        if (status && document.querySelector('.preloader-bg')) {
+          status.innerHTML = 'Taking longer than expected... <br>' +
+            '<button onclick="localStorage.clear(); sessionStorage.clear(); window.location.reload();" style="margin-top: 10px; background: #C5221F; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer;">Force Fresh Reload</button>' +
+            '<div style="font-size: 0.72rem; color: #9CA3AF; margin-top: 8px; font-family: monospace;">URL: ' + window.location.href + '</div>' +
+            (window.location.protocol === 'file:' ? '<br><a href="http://localhost:5173/" style="display:inline-block;margin-top:6px;color:#C5221F;font-weight:bold;">👉 Click here to switch to http://localhost:5173/</a>' : '');
+        }
+      }, 3500);
+    </script>
+    <script type="module">
+      const preStatus = document.getElementById('preloader-status');
+      if (preStatus) preStatus.innerText = 'Initializing Newsroom scripts...';
+
+      import('/src/main.jsx')
+        .then(() => {
+          console.log('[PublicSpark main.jsx loaded cleanly]');
+        })
+        .catch((err) => {
+          console.error('[PublicSpark Startup Error]:', err);
+          const bg = document.querySelector('.preloader-bg');
+          if (bg) {
+            bg.innerHTML = '<img src="/logo.png" alt="PUBLIC SPARK" style="height: 70px; margin-bottom: 1rem;" />' +
+              '<div style="background: #FEF2F2; border: 2px solid #EF4444; padding: 1.5rem; border-radius: 8px; max-width: 600px; text-align: left; color: #991B1B;">' +
+                '<h3 style="margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #B91C1C;">Startup Error Detected</h3>' +
+                '<p style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;">' + (err?.message || 'Module script failed to load') + '</p>' +
+                '<pre style="background: #FFF; padding: 0.75rem; border-radius: 4px; font-size: 0.8rem; overflow-x: auto; color: #DC2626; border: 1px solid #FCA5A5;">' + (err?.stack || String(err)) + '</pre>' +
+                '<div style="margin-top: 1rem; display: flex; gap: 0.5rem;">' +
+                  '<button onclick="localStorage.clear(); sessionStorage.clear(); window.location.reload();" style="background: #C5221F; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; cursor: pointer;">' +
+                    'Reset Cache & Reload' +
+                  '</button>' +
+                '</div>' +
+              '</div>';
+          }
+        });
+    </script>
   </body>
 </html>

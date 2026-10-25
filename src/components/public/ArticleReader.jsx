@@ -3,6 +3,7 @@ import { Clock, Eye, Share2, Bookmark, ArrowLeft, ShieldCheck, Flame, Radio, Lan
 import TextToSpeech from './TextToSpeech';
 import VideoEmbedPlayer from './VideoEmbedPlayer';
 import MarkdownRenderer from '../../utils/markdownRenderer';
+import PartnerUnit from '../common/PartnerUnit';
 import { MOCK_LIVE_UPDATES } from '../../services/mockData';
 import { startViewSession, sendHeartbeat, endViewSession, toggleArticleLike, fetchArticleLikes } from '../../services/analyticsService';
 import { translateArticle, SUPPORTED_LANGUAGES } from '../../services/translationService';
@@ -82,17 +83,12 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
     startTimeRef.current = Date.now();
     maxScrollRef.current = 0;
 
+    // Session Start: register article view
     startViewSession(article.id).then(data => {
       if (data && data.sessionId) {
         sessionIdRef.current = data.sessionId;
       }
     });
-
-    const heartbeatInterval = setInterval(() => {
-      if (sessionIdRef.current) {
-        sendHeartbeat(sessionIdRef.current, maxScrollRef.current);
-      }
-    }, 5000);
 
     const handleScroll = () => {
       const docHeight = document.documentElement.scrollHeight - window.innerHeight;
@@ -106,16 +102,21 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
 
+    let hasEnded = false;
     const handleUnload = () => {
-      if (sessionIdRef.current) {
-        const durationSecs = Math.round((Date.now() - startTimeRef.current) / 1000);
-        endViewSession(sessionIdRef.current, durationSecs, maxScrollRef.current);
+      if (!hasEnded && sessionIdRef.current) {
+        hasEnded = true;
+        const rawDuration = Math.round((Date.now() - startTimeRef.current) / 1000);
+        // Cap single session at 30 minutes (1800s) to prevent abandoned background tab skew
+        const durationSecs = Math.max(1, Math.min(1800, rawDuration));
+        const artTitle = article?.title ? `"${article.title.slice(0, 32)}..."` : 'Article';
+        console.log(`%c[Analytics] ⏱️ Article [${article?.id || 'unknown'} - ${artTitle}] closed: ${durationSecs}s read, ${maxScrollRef.current}% scrolled`, 'color: #00ff88; font-weight: bold;');
+        endViewSession(sessionIdRef.current, durationSecs, maxScrollRef.current, article?.id, article?.title);
       }
     };
     window.addEventListener('beforeunload', handleUnload);
 
     return () => {
-      clearInterval(heartbeatInterval);
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('beforeunload', handleUnload);
       handleUnload();
@@ -223,13 +224,13 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
   const activeLang = showOriginal ? 'hi' : currentLanguage;
 
   const fontSizeStyle = {
-    sm: { fontSize: '0.92rem', lineHeight: '1.62', subTitleSize: '1.05rem', headlineSize: '2.15rem' },
-    md: { fontSize: '1.15rem', lineHeight: '1.75', subTitleSize: '1.2rem', headlineSize: '2.5rem' },
-    lg: { fontSize: '1.42rem', lineHeight: '1.9', subTitleSize: '1.38rem', headlineSize: '2.85rem' }
-  }[fontSizeMode] || { fontSize: '1.15rem', lineHeight: '1.75', subTitleSize: '1.2rem', headlineSize: '2.5rem' };
+    sm: { fontSize: '0.92rem', lineHeight: '1.65', subTitleSize: '1.05rem', headlineSize: 'clamp(1.25rem, 4.5vw, 2.15rem)' },
+    md: { fontSize: 'clamp(0.95rem, 3.8vw, 1.05rem)', lineHeight: '1.72', subTitleSize: '1.12rem', headlineSize: 'clamp(1.4rem, 5.2vw, 2.45rem)' },
+    lg: { fontSize: 'clamp(1.08rem, 4.4vw, 1.2rem)', lineHeight: '1.8', subTitleSize: '1.25rem', headlineSize: 'clamp(1.6rem, 6vw, 2.75rem)' }
+  }[fontSizeMode] || { fontSize: 'clamp(0.95rem, 3.8vw, 1.05rem)', lineHeight: '1.72', subTitleSize: '1.12rem', headlineSize: 'clamp(1.4rem, 5.2vw, 2.45rem)' };
 
   return (
-    <article className="container" style={{ padding: '2rem 1.25rem', maxWidth: '840px', position: 'relative' }}>
+    <article className="container reader-article-container" style={{ maxWidth: '840px', position: 'relative' }}>
       {/* Top Reading Progress Bar */}
       <div 
         style={{ 
@@ -246,16 +247,18 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
       />
 
       {/* Top Controls Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+      <div className="reader-top-controls">
         <button 
           onClick={handleBackNavigation} 
-          className="btn btn-outline" 
-          style={{ padding: '0.4rem 0.8rem', fontSize: '0.825rem' }}
+          className="btn btn-outline reader-back-btn" 
+          style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', flexShrink: 0 }}
         >
-          <ArrowLeft size={15} /> {t('backToTopStories', currentLanguage)}
+          <ArrowLeft size={15} /> 
+          <span className="hide-on-mobile">{t('backToTopStories', currentLanguage)}</span>
+          <span className="show-on-mobile-inline">{t('back', currentLanguage) || 'वापस'}</span>
         </button>
 
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="reader-actions-group" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
           {/* Font Scaler Toggle */}
           <div style={{ display: 'inline-flex', alignItems: 'center', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', padding: '0.15rem 0.3rem', gap: '0.2rem', border: '1px solid var(--border-light)' }} title={t('adjustTextSize', currentLanguage)}>
             <Type size={13} color="var(--text-subtle)" style={{ marginLeft: '0.2rem' }} />
@@ -303,33 +306,33 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
           <button
             onClick={handleShareClick}
             className="btn btn-outline"
-            style={{ padding: '0.4rem 0.75rem', fontSize: '0.825rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}
+            style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}
             title={t('share', currentLanguage)}
           >
-            <Share2 size={15} /> {t('share', currentLanguage)}
+            <Share2 size={14} /> <span className="hide-on-mobile">{t('share', currentLanguage)}</span>
           </button>
 
           <button
             onClick={handleBookmarkToggle}
             className="btn"
             style={{ 
-              padding: '0.4rem 0.75rem', 
-              fontSize: '0.825rem', 
+              padding: '0.35rem 0.65rem', 
+              fontSize: '0.8rem', 
               borderRadius: 'var(--radius-md)',
               border: isBookmarked ? '1px solid #f59e0b' : '1px solid var(--border-medium)',
               background: isBookmarked ? '#f59e0b' : 'var(--bg-surface)',
               color: isBookmarked ? '#ffffff' : 'var(--text-main)',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.35rem',
+              gap: '0.3rem',
               cursor: 'pointer',
               fontWeight: '700',
               transition: 'all 0.2s ease'
             }}
             title={isBookmarked ? t('saved', currentLanguage) : t('bookmark', currentLanguage)}
           >
-            <Bookmark size={15} fill={isBookmarked ? '#ffffff' : 'none'} color={isBookmarked ? '#ffffff' : 'currentColor'} />
-            {isBookmarked ? t('saved', currentLanguage) : t('bookmark', currentLanguage)}
+            <Bookmark size={14} fill={isBookmarked ? '#ffffff' : 'none'} color={isBookmarked ? '#ffffff' : 'currentColor'} />
+            <span className="hide-on-mobile">{isBookmarked ? t('saved', currentLanguage) : t('bookmark', currentLanguage)}</span>
           </button>
         </div>
       </div>
@@ -363,7 +366,7 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
 
       <div>
           {/* Category Badge & Breaking Flag */}
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
             <span className="story-category-tag">{translateCategoryName(activeArticle.category, currentLanguage)}</span>
             {activeArticle.is_breaking && (
               <span className="badge badge-live">
@@ -376,67 +379,59 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
           </div>
 
           {/* Main Editorial Headline with Dynamic Font Size & Weight */}
-          <h1 className="headline" style={{ fontSize: fontSizeStyle.headlineSize, fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.2', marginBottom: '1rem', transition: 'font-size 0.2s ease, font-weight 0.2s ease' }}>
+          <h1 className="headline reader-headline" style={{ fontSize: fontSizeStyle.headlineSize, fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.28', marginBottom: '0.85rem', transition: 'font-size 0.2s ease, font-weight 0.2s ease' }}>
             {activeArticle.title}
           </h1>
 
           {/* Subheading / Standfirst with Dynamic Font Size */}
           {activeArticle.sub_title && (
-            <p className="story-excerpt" style={{ fontSize: fontSizeStyle.subTitleSize, color: 'var(--text-muted)', marginBottom: '1.5rem', fontWeight: '500', transition: 'font-size 0.2s ease' }}>
+            <p className="story-excerpt" style={{ fontSize: fontSizeStyle.subTitleSize, color: 'var(--text-muted)', marginBottom: '1.25rem', fontWeight: '500', transition: 'font-size 0.2s ease' }}>
               {activeArticle.sub_title}
             </p>
           )}
 
           {/* Author Byline & Timestamps Bar */}
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            padding: '1rem 0',
-            borderTop: '1px solid var(--border-light)',
-            borderBottom: '1px solid var(--border-light)',
-            marginBottom: '1.5rem'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div className="reader-byline-bar">
+            <div className="reader-byline-author" style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
               {activeArticle.author?.avatar && (
                 <img 
                   src={activeArticle.author.avatar} 
                   alt={activeArticle.author.name}
-                  style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover' }} 
+                  style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' }} 
                 />
               )}
               <div>
-                <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>{activeArticle.author?.name || 'PublicSpark Desk'}</div>
-                <div style={{ fontSize: '0.775rem', color: 'var(--text-subtle)' }}>{activeArticle.author?.role || 'Staff Reporter'}</div>
+                <div style={{ fontWeight: '700', fontSize: '0.9rem' }}>{activeArticle.author?.name || 'PublicSpark Desk'}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>{activeArticle.author?.role || 'Staff Reporter'}</div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center', fontSize: '0.8rem', color: 'var(--text-subtle)', flexWrap: 'wrap' }}>
+            <div className="reader-byline-meta">
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                <Clock size={14} /> {activeArticle.published_at} ({activeArticle.reading_time_mins} {t('minsRead', currentLanguage)})
+                <Clock size={13} /> {activeArticle.published_at} ({activeArticle.reading_time_mins} {t('minsRead', currentLanguage)})
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: '600', color: 'var(--text-main)' }}>
-                <Eye size={14} color="var(--accent-crimson)" /> {(viewsCount || 1240).toLocaleString()} {t('views', currentLanguage)}
+                <Eye size={13} color="var(--accent-crimson)" /> {(viewsCount || 1240).toLocaleString()} {t('views', currentLanguage)}
               </span>
               <button
                 onClick={handleLikeToggle}
                 className="btn"
                 style={{
-                  padding: '0.35rem 0.75rem',
-                  fontSize: '0.8rem',
+                  padding: '0.3rem 0.65rem',
+                  fontSize: '0.78rem',
                   borderRadius: '20px',
                   border: isLiked ? '1px solid #ef4444' : '1px solid var(--border-medium)',
                   background: isLiked ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-surface)',
                   color: isLiked ? '#ef4444' : 'var(--text-main)',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.4rem',
+                  gap: '0.35rem',
                   fontWeight: '700',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease'
                 }}
               >
-                <Heart size={15} fill={isLiked ? '#ef4444' : 'none'} color={isLiked ? '#ef4444' : 'currentColor'} />
+                <Heart size={14} fill={isLiked ? '#ef4444' : 'none'} color={isLiked ? '#ef4444' : 'currentColor'} />
                 <span>{likesCount.toLocaleString()} {likesCount === 1 ? t('like', currentLanguage) : t('likes', currentLanguage)}</span>
               </button>
             </div>
@@ -533,6 +528,7 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
               fontSize={fontSizeStyle.fontSize} 
               fontSizeMode={fontSizeMode} 
               lineHeight={fontSizeStyle.lineHeight} 
+              adComponent={<PartnerUnit position="in_article" />}
             />
           </div>
         </div>
@@ -636,36 +632,14 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
       {/* Interactive Share Modal Dialog */}
       {isShareModalOpen && (
         <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.65)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '1rem'
-          }}
+          className="share-modal-backdrop"
           onClick={() => setIsShareModalOpen(false)}
         >
           <div 
-            style={{
-              background: 'var(--bg-surface)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-              padding: '1.75rem',
-              maxWidth: '480px',
-              width: '100%',
-              border: '1px solid var(--border-medium)',
-              color: 'var(--text-main)',
-              position: 'relative'
-            }}
+            className="share-modal-card"
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="sheet-drag-handle"></div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
                 <Share2 size={18} color="var(--accent-crimson)" /> {t('share', currentLanguage)}
