@@ -90,10 +90,11 @@ export async function compressImageToWebP(file, maxKB = 200, maxWidth = 1200) {
  * @returns {string|null} - 11-character YouTube video ID
  */
 export function extractYouTubeId(url) {
-  if (!url) return null;
-  if (url.length === 11 && !url.includes('/')) return url; // Already an ID
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (trimmed.length === 11 && !trimmed.includes('/') && !trimmed.includes('.')) return trimmed; // Raw ID
 
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
+  const regExp = /^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|shorts\/|live\/|watch\?v=|&v=)([^#&?]*).*/i;
+  const match = trimmed.match(regExp);
   return match && match[2].length === 11 ? match[2] : null;
 }

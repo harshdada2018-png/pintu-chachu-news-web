@@ -15,7 +15,8 @@
 
 | Task / Feature | Status | Details |
 | :--- | :--- | :--- |
-| Default UI Redesign & Baseline Foundation | In Progress | Setting up baseline default UI for public site prior to admin overrides |
+| Default UI Redesign & Baseline Foundation | Completed | Editorial broadsheet tokens, masthead multiply blend, low-profile ticker, crisp category tabs, conditional YouTube video engine, and unified desk styling |
+| YouTube Video Coverage & Conditional Reel | Completed | Strictly conditional YouTube video embeds in ArticleReader, Video Reel section, Reporter/Editor/Admin integration with zero empty space when absent |
 | :--- | :--- | :--- |
 | Project Planning & Governance Initialization | Completed | Created planning documents and mistake tracking |
 | Multi-Language Typography & Google Fonts Research | Completed | Selected fonts for 18 languages |

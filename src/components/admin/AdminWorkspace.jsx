@@ -55,6 +55,7 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
     status: article?.status || 'published',
     is_breaking: article?.is_breaking || false,
     featured_image: article?.featured_image || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80',
+    video_url: article?.video_url || '',
     image_caption: article?.image_caption || '',
     media_credits: article?.media_credits || 'PublicSpark News',
     author_name: article?.author?.name || 'Newsroom Admin',
@@ -92,6 +93,8 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
       ...article,
       ...formData,
       category_slug,
+      format: formData.video_url?.trim() ? 'video' : (article?.format || 'standard'),
+      video_url: formData.video_url?.trim() || null,
       author: {
         name: formData.author_name,
         role: formData.author_role,
@@ -313,6 +316,23 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
                 <img src={formData.featured_image} alt="Cover preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             )}
+          </div>
+
+          <div style={{ opacity: formData.originalLanguage ? 1 : 0.55 }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: '800', display: 'block', marginBottom: '0.35rem', color: 'var(--text-main)' }}>
+              YouTube Video URL (Optional)
+            </label>
+            <input
+              type="url"
+              value={formData.video_url}
+              disabled={!formData.originalLanguage}
+              onChange={(e) => setFormData({ ...formData, video_url: e.target.value })}
+              placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/..."
+              style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.85rem', background: 'var(--bg-main)', color: 'var(--text-main)', cursor: formData.originalLanguage ? 'text' : 'not-allowed' }}
+            />
+            <span style={{ fontSize: '0.725rem', color: 'var(--text-subtle)', display: 'block', marginTop: '0.2rem' }}>
+              Leave blank if no video. When provided, an interactive video player embeds inside the article and marks the card with video play badge.
+            </span>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', opacity: formData.originalLanguage ? 1 : 0.55 }}>
@@ -733,70 +753,93 @@ export default function AdminWorkspace({
 
       <div className="workspace-grid">
         {/* Sidebar Nav */}
-        <div className="workspace-sidebar">
-          <button
-            onClick={() => setActiveTab('curation')}
-            className={`sidebar-nav-link ${activeTab === 'curation' ? 'active' : ''}`}
-            style={{ width: '100%' }}
-          >
-            <Newspaper size={16} /> Live News Control ({articles.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`sidebar-nav-link ${activeTab === 'analytics' ? 'active' : ''}`}
-            style={{ width: '100%' }}
-          >
-            <BarChart2 size={16} /> Analytics & Traffic
-          </button>
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`sidebar-nav-link ${activeTab === 'users' ? 'active' : ''}`}
-            style={{ width: '100%' }}
-          >
-            <Users size={16} /> Team & Permissions ({usersList.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('categories')}
-            className={`sidebar-nav-link ${activeTab === 'categories' ? 'active' : ''}`}
-            style={{ width: '100%' }}
-          >
-            <FolderTree size={16} /> Categories ({categories.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('ads')}
-            className={`sidebar-nav-link ${activeTab === 'ads' ? 'active' : ''}`}
-            style={{ width: '100%' }}
-          >
-            <DollarSign size={16} /> Ad Slot Placements
-          </button>
-          <button
-            onClick={() => setActiveTab('storage')}
-            className={`sidebar-nav-link ${activeTab === 'storage' ? 'active' : ''}`}
-            style={{ width: '100%' }}
-          >
-            <HardDrive size={16} /> Storage & Cache
-          </button>
-          <button
-            onClick={() => setActiveTab('typography')}
-            className={`sidebar-nav-link ${activeTab === 'typography' ? 'active' : ''}`}
-            style={{ width: '100%' }}
-          >
-            <Type size={16} /> Typography & Fonts
-          </button>
-          <button
-            onClick={() => setActiveTab('theme')}
-            className={`sidebar-nav-link ${activeTab === 'theme' ? 'active' : ''}`}
-            style={{ width: '100%' }}
-          >
-            <Palette size={16} /> Color Harmonies & Themes
-          </button>
-          <button
-            onClick={() => setActiveTab('social')}
-            className={`sidebar-nav-link ${activeTab === 'social' ? 'active' : ''}`}
-            style={{ width: '100%' }}
-          >
-            <Share2 size={16} /> Social Channels Links
-          </button>
+        <div className="workspace-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div>
+            <div style={{ fontSize: '0.7rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-subtle)', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>
+              Editorial & Content
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <button
+                onClick={() => setActiveTab('curation')}
+                className={`sidebar-nav-link ${activeTab === 'curation' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <Newspaper size={16} /> Live News Control ({articles.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('categories')}
+                className={`sidebar-nav-link ${activeTab === 'categories' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <FolderTree size={16} /> Categories ({categories.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`sidebar-nav-link ${activeTab === 'analytics' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <BarChart2 size={16} /> Analytics & Traffic
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.7rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-subtle)', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>
+              Design & Brand Identity
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <button
+                onClick={() => setActiveTab('typography')}
+                className={`sidebar-nav-link ${activeTab === 'typography' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <Type size={16} /> Typography & Fonts
+              </button>
+              <button
+                onClick={() => setActiveTab('theme')}
+                className={`sidebar-nav-link ${activeTab === 'theme' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <Palette size={16} /> Color Harmonies & Themes
+              </button>
+              <button
+                onClick={() => setActiveTab('social')}
+                className={`sidebar-nav-link ${activeTab === 'social' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <Share2 size={16} /> Social Channels Links
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.7rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-subtle)', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>
+              Operations & Monetization
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <button
+                onClick={() => setActiveTab('ads')}
+                className={`sidebar-nav-link ${activeTab === 'ads' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <DollarSign size={16} /> Ad Slot Placements
+              </button>
+              <button
+                onClick={() => setActiveTab('storage')}
+                className={`sidebar-nav-link ${activeTab === 'storage' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <HardDrive size={16} /> Storage & Cache
+              </button>
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`sidebar-nav-link ${activeTab === 'users' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <Users size={16} /> Team & Permissions ({usersList.length})
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Tab Content */}

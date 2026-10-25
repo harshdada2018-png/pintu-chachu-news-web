@@ -23,11 +23,12 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
   // Language Gate: Mandatory selection before writing
   const [originalLanguage, setOriginalLanguage] = useState(initialDraft?.originalLanguage || '');
 
-  // Strict 5 Form Fields per User Specification with Draft Persistence
+  // Strict 5 Form Fields per User Specification with Draft Persistence + Optional Video
   const [title, setTitle] = useState(initialDraft?.title || '');
   const [content, setContent] = useState(initialDraft?.content || '');
   const [category, setCategory] = useState(initialDraft?.category || activeCategories[0]?.name || 'National');
   const [tags, setTags] = useState(initialDraft?.tags || 'News, Ground Report, Verified');
+  const [videoUrl, setVideoUrl] = useState(initialDraft?.videoUrl || '');
   
   // Image with Caption & Credit
   const [imagePreview, setImagePreview] = useState(initialDraft?.imagePreview || null);
@@ -47,7 +48,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
 
   // Real-time draft auto-save to localStorage
   useEffect(() => {
-    if (originalLanguage || title.trim() || content.trim() || imagePreview) {
+    if (originalLanguage || title.trim() || content.trim() || imagePreview || videoUrl) {
       try {
         localStorage.setItem(DRAFT_KEY, JSON.stringify({
           originalLanguage,
@@ -55,6 +56,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
           content,
           category,
           tags,
+          videoUrl,
           imagePreview: imagePreview && imagePreview.length < 500000 ? imagePreview : null,
           imageCaption,
           mediaCredits,
@@ -65,7 +67,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
         console.warn('Draft auto-save error:', e);
       }
     }
-  }, [originalLanguage, title, content, category, tags, imagePreview, imageCaption, mediaCredits, highlights]);
+  }, [originalLanguage, title, content, category, tags, videoUrl, imagePreview, imageCaption, mediaCredits, highlights]);
 
   const handleDiscardDraft = () => {
     if (window.confirm('क्या आप सचमुच इस अनसेव्ड ड्राफ्ट को हटाना चाहते हैं?')) {
@@ -75,6 +77,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
       setOriginalLanguage('');
       setTitle('');
       setContent('');
+      setVideoUrl('');
       setImageCaption('');
       setImagePreview(null);
       setIsImageReady(false);
@@ -258,7 +261,8 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
       summary: finalHighlights[0] || content.slice(0, 140) + '...',
       highlights: finalHighlights,
       tags: tagList,
-      format: 'standard',
+      format: videoUrl.trim() ? 'video' : 'standard',
+      video_url: videoUrl.trim() || null,
       featured_image: imagePreview || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=80',
       image_caption: imageCaption || title,
       media_credits: mediaCredits || 'PublicSpark Bureau',
@@ -295,6 +299,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
     setStatusMessage('समाचार समीक्षा के लिए Editor Desk पर भेज दिया गया है! एडिटर के अप्रूव करते ही यह लाइव हो जाएगा।');
     setTitle('');
     setContent('');
+    setVideoUrl('');
     setImageCaption('');
     setMediaCredits('PublicSpark Bureau');
     setTags('News, Ground Report, Verified');
@@ -708,6 +713,24 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
                     style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.9rem', cursor: originalLanguage ? 'text' : 'not-allowed' }}
                   />
                 </div>
+              </div>
+
+              {/* Optional YouTube Video Embed URL */}
+              <div style={{ marginBottom: '1.75rem', opacity: originalLanguage ? 1 : 0.55 }}>
+                <label style={{ display: 'block', fontWeight: '700', fontSize: '0.875rem', marginBottom: '0.4rem', color: 'var(--text-main)' }}>
+                  यूट्यूब वीडियो लिंक (YouTube Video URL — ऐच्छिक / Optional)
+                </label>
+                <input 
+                  type="url"
+                  value={videoUrl}
+                  disabled={!originalLanguage}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=... या https://youtu.be/..."
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.875rem', cursor: originalLanguage ? 'text' : 'not-allowed', background: originalLanguage ? 'var(--bg-surface)' : 'var(--bg-secondary)' }}
+                />
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', display: 'block', marginTop: '0.3rem' }}>
+                  यदि इस समाचार की वीडियो कवरेज है, तो यूट्यूब लिंक यहाँ डालें। वीडियो न होने पर इसे खाली छोड़ दें।
+                </span>
               </div>
 
               {/* Publish Action Button */}

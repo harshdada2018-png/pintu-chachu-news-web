@@ -809,35 +809,42 @@ export default function App() {
                     <div className="story-card-hero" onClick={() => handleSelectArticle(heroArticle)} style={{ cursor: 'pointer' }}>
                       <div className="img-container">
                         <img src={heroArticle.featured_image} alt={heroArticle.title} />
+                        {heroArticle.video_url && (
+                          <div style={{ position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(197, 34, 31, 0.92)', color: '#fff', padding: '0.25rem 0.65rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.35rem', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+                            <Play size={12} fill="#fff" /> VIDEO
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                           <span className="story-category-tag">{translateCategoryName(heroArticle.category, currentLanguage)}</span>
                           {heroArticle.is_breaking && (
                             <span className="badge badge-live"><Flame size={12} /> {t('breaking', currentLanguage)}</span>
                           )}
-                          <span className="badge badge-verified"><ShieldCheck size={12} /> {t('factChecked', currentLanguage)}</span>
                         </div>
 
                         {/* 1-Click Audio Reader Trigger */}
                         <button 
                           onClick={(e) => handleQuickAudioRead(e, heroArticle)}
                           className="btn btn-outline"
-                          style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                          style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                           title={t('listenToStory', currentLanguage)}
                         >
-                          {playingArticleId === heroArticle.id ? <Pause size={13} color="var(--accent-crimson)" /> : <Volume2 size={13} color="var(--accent-crimson)" />}
+                          {playingArticleId === heroArticle.id ? <Pause size={12} color="var(--accent-crimson)" /> : <Volume2 size={12} color="var(--accent-crimson)" />}
                           {playingArticleId === heroArticle.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
                         </button>
                       </div>
 
                       <h2 className="story-card-title">{heroArticle.title}</h2>
-                      <div className="story-meta" style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span>{t('byAuthor', currentLanguage)} {heroArticle.author?.name}</span>
+                      {(heroArticle.summary || heroArticle.sub_title || heroArticle.excerpt) && (
+                        <p className="story-excerpt" style={{ margin: '0.25rem 0 0.5rem 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {heroArticle.summary || heroArticle.sub_title || heroArticle.excerpt}
+                        </p>
+                      )}
+                      <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8rem' }}>
+                        <span style={{ fontWeight: '700', color: 'var(--text-main)' }}>{t('byAuthor', currentLanguage)} {heroArticle.author?.name || 'Staff Reporter'}</span>
                         <span>• {heroArticle.published_at}</span>
                         <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((heroArticle.content?.split(/\s+/).length || 320) / 180))} {t('minsRead', currentLanguage)}</span>
-                        <span style={{ color: 'var(--accent-crimson)', fontWeight: '600' }}>• <Eye size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> {heroArticle.views_count ? heroArticle.views_count.toLocaleString() : '14.2K'} {t('views', currentLanguage)}</span>
-                        <span style={{ color: '#ef4444', fontWeight: '600' }}>• <Heart size={12} style={{ display: 'inline', verticalAlign: 'middle' }} fill="#ef4444" /> {heroArticle.likes_count ? heroArticle.likes_count.toLocaleString() : '1.8K'} {t('likes', currentLanguage)}</span>
                       </div>
                     </div>
 
@@ -848,26 +855,29 @@ export default function App() {
                           <div className="secondary-card-img-wrap">
                             <div className="img-container">
                               <img src={art.featured_image} alt={art.title} loading="lazy" />
+                              {art.video_url && (
+                                <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(197, 34, 31, 0.9)', color: '#fff', padding: '0.15rem 0.45rem', borderRadius: '3px', fontSize: '0.65rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  <Play size={10} fill="#fff" />
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="secondary-card-content">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
                               <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
                               <button 
                                 onClick={(e) => handleQuickAudioRead(e, art)}
                                 className="btn btn-outline"
-                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                                style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                               >
-                                {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
+                                {playingArticleId === art.id ? <Pause size={11} /> : <Volume2 size={11} />}
                                 {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
                               </button>
                             </div>
                             <h3 className="story-card-title">{art.title}</h3>
-                            <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <div className="story-meta" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.35rem', fontSize: '0.75rem' }}>
                               <span>{art.published_at}</span>
                               <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
-                              <span>• <Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '8.9K'} {t('views', currentLanguage)}</span>
-                              <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '950'} {t('likes', currentLanguage)}</span>
                             </div>
                           </div>
                         </div>
@@ -875,33 +885,33 @@ export default function App() {
                     </div>
 
                     {/* Opinion & Trending Column */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                       <div className="opinion-box">
                         <div className="opinion-header">
-                          <Sparkles size={15} /> {t('editorsSpotlight', currentLanguage)}
+                          <Sparkles size={14} /> {t('editorsSpotlight', currentLanguage)}
                         </div>
-                        <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.35', cursor: 'pointer', marginBottom: '0.75rem' }} onClick={() => handleSelectArticle(publishedArticles[3] || heroArticle)}>
+                        <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.15rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.35', cursor: 'pointer', marginBottom: '0.6rem' }} onClick={() => handleSelectArticle(publishedArticles[3] || heroArticle)}>
                           {(publishedArticles[3] || heroArticle)?.title}
                         </h3>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', fontWeight: '600' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '600' }}>
                           {t('byAuthor', currentLanguage)} {(publishedArticles[3] || heroArticle)?.author?.name || 'Kabir Roy, Editor-in-Chief'}
                         </div>
                       </div>
 
                       <div className="trending-widget">
-                        <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--accent-crimson)', letterSpacing: '0.08em' }}>
-                          <TrendingUp size={16} /> {t('topTrendingStories', currentLanguage)}
+                        <h4 style={{ fontSize: '0.8rem', fontWeight: '900', textTransform: 'uppercase', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-crimson)', letterSpacing: '0.08em' }}>
+                          <TrendingUp size={15} /> {t('topTrendingStories', currentLanguage)}
                         </h4>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           {publishedArticles.slice(1, 4).map((art, idx) => (
                             <div key={art.id} className="trending-item" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
                               <span className="trending-rank">0{idx + 1}</span>
                               <div>
-                                <div style={{ fontSize: '0.875rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.3' }}>{art.title}</div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.2rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                  <span><Eye size={11} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '8.9K'} {t('views', currentLanguage)}</span>
-                                  <span>• <Heart size={11} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '950'} {t('likes', currentLanguage)}</span>
-                                  <span>• {art.published_at}</span>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.3' }}>{art.title}</div>
+                                <div style={{ fontSize: '0.725rem', color: 'var(--text-subtle)', marginTop: '0.2rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                  <span>{translateCategoryName(art.category, currentLanguage)}</span>
+                                  <span>•</span>
+                                  <span>{art.published_at}</span>
                                 </div>
                               </div>
                             </div>
@@ -1049,20 +1059,29 @@ export default function App() {
                             <div className="secondary-card-content">
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                                 <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
-                                <button 
-                                  onClick={(e) => handleQuickAudioRead(e, art)}
-                                  className="btn btn-outline"
-                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                                >
-                                  {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                                  {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
-                                </button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  {art.video_url && (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'var(--accent-crimson)', color: '#fff', fontSize: '0.65rem', fontWeight: '800', padding: '2px 6px', borderRadius: 'var(--radius-sm)', textTransform: 'uppercase' }}>
+                                      <Play size={10} fill="#fff" /> Video
+                                    </span>
+                                  )}
+                                  <button 
+                                    onClick={(e) => handleQuickAudioRead(e, art)}
+                                    className="btn btn-outline"
+                                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                                  >
+                                    {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
+                                    {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
+                                  </button>
+                                </div>
                               </div>
                               <h3 className="story-card-title">{art.title}</h3>
                               <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span>{art.author?.name || 'Staff Reporter'}</span>
+                                <span>•</span>
+                                <span>{art.published_at}</span>
+                                <span>•</span>
                                 <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
-                                <span>• <Eye size={12} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '6.3K'} {t('views', currentLanguage)}</span>
-                                <span>• <Heart size={12} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '720'} {t('likes', currentLanguage)}</span>
                               </div>
                             </div>
                           </div>
@@ -1071,6 +1090,46 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                {/* Editorial Video Reel Section (Strictly Conditional: Renders ONLY if articles have video_url) */}
+                {(() => {
+                  const videoArticles = (publishedArticles || []).filter(a => a.video_url && a.video_url.trim());
+                  if (videoArticles.length === 0) return null;
+                  return (
+                    <section className="video-reel-section" style={{ margin: '2.5rem 0' }}>
+                      <div className="video-reel-header">
+                        <h3 className="video-reel-title">
+                          <Play size={18} fill="var(--accent-crimson)" color="var(--accent-crimson)" />
+                          <span>{currentLanguage === 'hi' ? 'वीडियो रिपोर्ट व विशेष कवरेज' : 'Video Coverage & Ground Reports'}</span>
+                        </h3>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', fontWeight: '700' }}>
+                          {videoArticles.length} {currentLanguage === 'hi' ? 'वीडियो उपलब्ध' : 'Videos Available'}
+                        </span>
+                      </div>
+                      <div className="video-grid">
+                        {videoArticles.map((art) => (
+                          <div key={art.id} className="video-card" onClick={() => handleSelectArticle(art)}>
+                            <div className="video-thumbnail-wrap">
+                              <img src={art.featured_image} alt={art.title} loading="lazy" />
+                              <div className="video-play-overlay">
+                                <Play size={18} fill="#FFFFFF" color="#FFFFFF" style={{ marginLeft: '2px' }} />
+                              </div>
+                            </div>
+                            <div>
+                              <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
+                              <h4 style={{ fontFamily: 'var(--font-serif)', fontSize: '1rem', fontWeight: '800', lineHeight: '1.35', marginTop: '0.35rem', color: 'var(--text-main)' }}>
+                                {art.title}
+                              </h4>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.35rem' }}>
+                                {art.author?.name || 'PublicSpark Desk'} • {art.published_at}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })()}
 
                 {/* Remaining Grid Stories */}
                 {remainingArticles.length > 0 && (
@@ -1089,20 +1148,29 @@ export default function App() {
                           <div className="secondary-card-content">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                               <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
-                              <button 
-                                onClick={(e) => handleQuickAudioRead(e, art)}
-                                className="btn btn-outline"
-                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                              >
-                                {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                                {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
-                              </button>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                {art.video_url && (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'var(--accent-crimson)', color: '#fff', fontSize: '0.65rem', fontWeight: '800', padding: '2px 6px', borderRadius: 'var(--radius-sm)', textTransform: 'uppercase' }}>
+                                    <Play size={10} fill="#fff" /> Video
+                                  </span>
+                                )}
+                                <button 
+                                  onClick={(e) => handleQuickAudioRead(e, art)}
+                                  className="btn btn-outline"
+                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                                >
+                                  {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
+                                  {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
+                                </button>
+                              </div>
                             </div>
                             <h3 className="story-card-title">{art.title}</h3>
                             <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span>{art.author?.name || 'Staff Reporter'}</span>
+                              <span>•</span>
+                              <span>{art.published_at}</span>
+                              <span>•</span>
                               <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
-                              <span>• <Eye size={12} style={{ display: 'inline' }} /> {art.views_count ? art.views_count.toLocaleString() : '6.3K'} {t('views', currentLanguage)}</span>
-                              <span>• <Heart size={12} style={{ display: 'inline' }} fill="#ef4444" color="#ef4444" /> {art.likes_count ? art.likes_count.toLocaleString() : '720'} {t('likes', currentLanguage)}</span>
                             </div>
                           </div>
                         </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle, Flame, Sparkles, XCircle, Clock, Eye, Edit3, ShieldAlert, Languages } from 'lucide-react';
+import { CheckCircle, Flame, Sparkles, XCircle, Clock, Eye, Edit3, ShieldAlert, Languages, Video, Play } from 'lucide-react';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
 
 export default function EditorWorkspace({ pendingArticles, onApproveArticle, onRejectArticle }) {
@@ -62,11 +62,21 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
         {/* Submissions Queue List */}
         <div className="workspace-sidebar">
           <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: '0.75rem', letterSpacing: '0.05em' }}>
-            Pending Review
+            Pending Review ({pendingArticles.length})
           </h4>
           {pendingArticles.length === 0 ? (
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-subtle)', fontStyle: 'italic', padding: '1rem 0' }}>
-              No pending articles in review queue.
+            <div style={{ 
+              fontSize: '0.85rem', 
+              color: 'var(--text-subtle)', 
+              padding: '2rem 1rem', 
+              textAlign: 'center', 
+              background: 'var(--bg-surface)', 
+              borderRadius: 'var(--radius-sm)', 
+              border: '1px solid var(--border-light)' 
+            }}>
+              <CheckCircle size={24} color="var(--accent-emerald)" style={{ margin: '0 auto 0.5rem auto' }} />
+              <div style={{ fontWeight: '700', color: 'var(--text-main)', marginBottom: '0.2rem' }}>Review Queue Clear</div>
+              <div>All reporter submissions have been reviewed and dispatched.</div>
             </div>
           ) : (
             pendingArticles.map((art) => (
@@ -83,8 +93,15 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
                   borderLeft: selectedArticle?.id === art.id ? '3px solid var(--accent-crimson)' : '1px solid var(--border-light)'
                 }}
               >
-                <div style={{ fontSize: '0.75rem', color: 'var(--accent-crimson)', fontWeight: '700', textTransform: 'uppercase' }}>
-                  {art.category}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--accent-crimson)', fontWeight: '700', textTransform: 'uppercase' }}>
+                    {art.category}
+                  </div>
+                  {art.video_url && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', background: 'var(--accent-crimson)', color: '#fff', fontSize: '0.6rem', fontWeight: '800', padding: '1px 4px', borderRadius: '2px' }}>
+                      <Play size={8} fill="#fff" /> Video
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontWeight: '700', fontSize: '0.9rem', margin: '0.2rem 0 0.4rem 0', lineHeight: '1.3' }}>
                   {art.title}
@@ -108,6 +125,23 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
                   <Clock size={12} /> Pending Approval
                 </span>
               </div>
+
+              {/* Attached Video Coverage Indicator */}
+              {selectedArticle.video_url && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1.25rem', background: 'rgba(239, 68, 68, 0.08)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: '700', color: 'var(--accent-crimson)' }}>
+                    <Video size={16} /> Attached YouTube Coverage
+                  </div>
+                  <a 
+                    href={selectedArticle.video_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    style={{ fontSize: '0.75rem', color: 'var(--accent-crimson)', textDecoration: 'underline', fontWeight: '700' }}
+                  >
+                    View Original Video ↗
+                  </a>
+                </div>
+              )}
 
               {/* Original / Source Language Selector */}
               <div style={{ marginBottom: '1.25rem', background: 'var(--bg-secondary)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)' }}>
@@ -221,8 +255,16 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
               </div>
             </div>
           ) : (
-            <div style={{ background: 'var(--bg-surface)', padding: '3rem', borderRadius: 'var(--radius-md)', textAlign: 'center', color: 'var(--text-subtle)' }}>
-              Select a story from the left queue to review and publish.
+            <div style={{ background: 'var(--bg-surface)', padding: '3.5rem 2rem', borderRadius: 'var(--radius-md)', textAlign: 'center', border: '1px solid var(--border-light)' }}>
+              <div style={{ display: 'inline-flex', padding: '0.75rem', borderRadius: '50%', background: 'rgba(197, 34, 31, 0.08)', color: 'var(--accent-crimson)', marginBottom: '1rem' }}>
+                <Edit3 size={28} />
+              </div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--text-main)', marginBottom: '0.4rem', fontFamily: 'var(--font-serif)' }}>
+                Editorial Review Desk
+              </h3>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto' }}>
+                Select any pending story from the left queue to inspect facts, fine-tune headlines, review video/media, and approve for instant publication.
+              </p>
             </div>
           )}
         </div>

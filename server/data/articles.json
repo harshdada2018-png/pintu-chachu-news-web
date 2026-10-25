@@ -68,7 +68,7 @@
     "sub_title": "The polar satellite launch vehicle successfully injected three payloads into sun-synchronous orbit.",
     "content": "Sriharikota — In a stellar demonstration of space technology, ISRO successfully launched its latest satellite constellation designed to provide high-resolution multispectral imagery for national agricultural monitoring.\n\nThe spacecraft, carrying state-of-the-art synthetic aperture radar, separated cleanly from the four-stage vehicle 18 minutes after liftoff. \n\n\"This mission ensures our farming communities receive accurate soil moisture forecasts, drought early-warnings, and flood impact metrics directly on their mobile devices,\" stated ISRO Chairman.",
     "summary": "ISRO launches advanced agricultural satellite constellation offering all-weather sub-meter resolution crop and disaster monitoring.",
-    "format": "standard",
+    "format": "video",
     "featured_image": "https://images.unsplash.com/photo-1517976487492-5750f3195933?auto=format&fit=crop&w=1200&q=80",
     "image_caption": "ISRO PSLV rocket lifting off from Sriharikota launch pad.",
     "media_credits": "ISRO / Space Media",
@@ -83,7 +83,8 @@
     "is_breaking": true,
     "views_count": 14200,
     "likes_count": 1840,
-    "published_at": "10 mins ago"
+    "published_at": "10 mins ago",
+    "video_url": "https://www.youtube.com/watch?v=1bVb3Kj868g"
   },
   {
     "id": "art-2",

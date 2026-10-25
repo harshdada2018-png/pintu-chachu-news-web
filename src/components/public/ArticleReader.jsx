@@ -419,7 +419,7 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
                 style={{
                   padding: '0.3rem 0.65rem',
                   fontSize: '0.78rem',
-                  borderRadius: '20px',
+                  borderRadius: 'var(--radius-sm)',
                   border: isLiked ? '1px solid #ef4444' : '1px solid var(--border-medium)',
                   background: isLiked ? 'rgba(239, 68, 68, 0.1)' : 'var(--bg-surface)',
                   color: isLiked ? '#ef4444' : 'var(--text-main)',
@@ -472,11 +472,11 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
             <div style={{
               background: 'var(--bg-secondary)',
               border: '1px solid var(--border-medium)',
-              borderLeft: '4px solid var(--accent-indigo)',
-              borderRadius: 'var(--radius-md)',
+              borderLeft: '4px solid var(--accent-crimson)',
+              borderRadius: 'var(--radius-sm)',
               padding: '1.25rem 1.5rem',
               margin: '1.75rem 0',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.03)'
+              boxShadow: 'var(--shadow-sm)'
             }}>
               <div style={{ 
                 display: 'flex', 
@@ -569,7 +569,7 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
             style={{
               padding: '0.45rem 1rem',
               fontSize: '0.85rem',
-              borderRadius: '20px',
+              borderRadius: 'var(--radius-sm)',
               border: isLiked ? '1px solid #ef4444' : '1px solid var(--border-medium)',
               background: isLiked ? '#ef4444' : 'var(--bg-surface)',
               color: isLiked ? '#ffffff' : 'var(--text-main)',
@@ -591,7 +591,7 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
             style={{
               padding: '0.45rem 1rem',
               fontSize: '0.85rem',
-              borderRadius: '20px',
+              borderRadius: 'var(--radius-sm)',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.45rem',
@@ -607,7 +607,7 @@ export default function ArticleReader({ article, onBack, onSelectArticle, curren
             style={{
               padding: '0.45rem 1rem',
               fontSize: '0.85rem',
-              borderRadius: '20px',
+              borderRadius: 'var(--radius-sm)',
               border: isBookmarked ? '1px solid #f59e0b' : '1px solid var(--border-medium)',
               background: isBookmarked ? '#f59e0b' : 'var(--bg-surface)',
               color: isBookmarked ? '#ffffff' : 'var(--text-main)',

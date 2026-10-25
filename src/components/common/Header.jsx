@@ -276,7 +276,7 @@ export default function Header({
       </div>
 
       {/* Classic Newspaper Main Masthead (Desktop Only) */}
-      <div className="masthead-main hide-on-mobile" style={{ padding: '1.25rem 0' }}>
+      <div className="masthead-main hide-on-mobile" style={{ padding: '0.85rem 0', borderBottom: '1px solid var(--border-medium)' }}>
         <div className="container" style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <a 
             href="#" 
@@ -288,58 +288,20 @@ export default function Header({
               src="/logo.png" 
               alt="PUBLIC SPARK News Logo" 
               style={{ 
-                height: '95px', 
+                height: '75px', 
                 width: 'auto', 
                 maxWidth: '90vw',
                 objectFit: 'contain',
-                filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.08))',
+                mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
+                background: theme === 'dark' ? '#FFFFFF' : 'transparent',
+                padding: theme === 'dark' ? '4px 14px' : '0',
+                borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0',
                 transition: 'transform 0.2s ease'
               }} 
             />
           </a>
-          <div className="masthead-tagline" style={{ marginTop: '0.4rem', textAlign: 'center' }}>
+          <div className="masthead-tagline" style={{ marginTop: '0.35rem', textAlign: 'center', fontSize: '0.75rem', letterSpacing: '0.18em', color: 'var(--text-subtle)' }}>
             {t('tagline', currentLanguage)}
-          </div>
-
-          {/* Newsroom Quick Link Buttons */}
-          <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '0.5rem', marginTop: '1rem' }}>
-            <button 
-              onClick={() => onNavigate('home')} 
-              className={`btn ${activeView === 'home' ? 'btn-primary' : 'btn-outline'}`}
-              style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', borderRadius: '30px' }}
-            >
-              <Newspaper size={14} /> {t('publicNews', currentLanguage)}
-            </button>
-
-            {(currentRole === 'reporter' || currentRole === 'admin') && (
-              <button 
-                onClick={() => onNavigate('reporter')} 
-                className={`btn ${activeView === 'reporter' ? 'btn-primary' : 'btn-outline'}`}
-                style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', borderRadius: '30px' }}
-              >
-                <PenTool size={14} /> {t('reporterDesk', currentLanguage)}
-              </button>
-            )}
-
-            {(currentRole === 'editor' || currentRole === 'admin') && (
-              <button 
-                onClick={() => onNavigate('editor')} 
-                className={`btn ${activeView === 'editor' ? 'btn-primary' : 'btn-outline'}`}
-                style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', borderRadius: '30px' }}
-              >
-                <CheckCircle size={14} /> {t('editorDesk', currentLanguage)}
-              </button>
-            )}
-
-            {currentRole === 'admin' && (
-              <button 
-                onClick={() => onNavigate('admin')} 
-                className={`btn ${activeView === 'admin' ? 'btn-primary' : 'btn-outline'}`}
-                style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', borderRadius: '30px' }}
-              >
-                <Settings size={14} /> {t('newsroomMgmt', currentLanguage)}
-              </button>
-            )}
           </div>
         </div>
       </div>
