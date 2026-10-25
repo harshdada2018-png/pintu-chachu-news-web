@@ -55,10 +55,10 @@ export default function Header({
       .catch(err => console.warn('[Weather API] Offline fallback:', err));
   }, []);
 
-  // Sticky header on scroll detection (triggers as soon as masthead-top scrolls away)
+  // Sticky header on scroll detection (triggers smoothly once masthead-top has scrolled past)
   useEffect(() => {
     const handleScroll = () => {
-      setIsSticky(window.scrollY > 40);
+      setIsSticky(window.scrollY > 70);
     };
     handleScroll(); // Execute once on mount so page refreshes while scrolled stay sticky
     window.addEventListener('scroll', handleScroll, { passive: true });
@@ -275,24 +275,24 @@ export default function Header({
       {/* Classic Newspaper Main Masthead (Desktop Only - Fixed at top: 0 when scrolled like BBC) */}
       <div 
         className="masthead-main-wrapper hide-on-mobile"
-        style={{ minHeight: isSticky ? '118px' : 'auto' }}
+        style={{ minHeight: isSticky ? '118px' : 'auto', transition: 'min-height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)' }}
       >
         <div 
           className={`masthead-main ${isSticky ? 'is-sticky' : ''}`}
         >
-        <div 
-          className="container" 
-          style={{ 
-            position: 'relative', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            minHeight: isSticky ? '46px' : 'auto'
-          }}
-        >
-          {/* Left Quick Actions (Revealed when sticky, exactly like BBC ≡ Q) */}
-          {isSticky && (
+          <div 
+            className="container" 
+            style={{ 
+              position: 'relative', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              minHeight: isSticky ? '46px' : 'auto',
+              transition: 'min-height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)'
+            }}
+          >
+            {/* Left Quick Actions (Smoothly glides and fades in like BBC ≡ Q) */}
             <div 
               style={{ 
                 position: 'absolute', 
@@ -300,7 +300,11 @@ export default function Header({
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: '0.4rem',
-                zIndex: 2
+                zIndex: 2,
+                opacity: isSticky ? 1 : 0,
+                transform: isSticky ? 'translateX(0)' : 'translateX(-12px)',
+                pointerEvents: isSticky ? 'auto' : 'none',
+                transition: 'opacity 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)'
               }}
             >
               <button
@@ -344,41 +348,51 @@ export default function Header({
                 <Search size={16} />
               </button>
             </div>
-          )}
 
-          {/* Centered Logo (Locks to top wall and smoothly scales down when scrolling) */}
-          <a 
-            href="#" 
-            onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
-            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
-            title="PublicSpark Home"
-          >
-            <img 
-              src="/logo.png" 
-              alt="PUBLIC SPARK News Logo" 
+            {/* Centered Logo (Smoothly scales down over 0.45s like luxury broadsheets) */}
+            <a 
+              href="#" 
+              onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
+              title="PublicSpark Home"
+            >
+              <img 
+                src="/logo.png" 
+                alt="PUBLIC SPARK News Logo" 
+                style={{ 
+                  height: isSticky ? '44px' : '75px', 
+                  width: 'auto', 
+                  maxWidth: '90vw',
+                  objectFit: 'contain',
+                  mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
+                  background: theme === 'dark' ? '#FFFFFF' : 'transparent',
+                  padding: theme === 'dark' ? (isSticky ? '3px 10px' : '4px 14px') : '0',
+                  borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0',
+                  transition: 'height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), padding 0.45s ease'
+                }} 
+              />
+            </a>
+
+            {/* Hindi Tagline (Gently fades out and folds up rather than vanishing abruptly) */}
+            <div 
+              className="masthead-tagline" 
               style={{ 
-                height: isSticky ? '44px' : '75px', 
-                width: 'auto', 
-                maxWidth: '90vw',
-                objectFit: 'contain',
-                mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
-                background: theme === 'dark' ? '#FFFFFF' : 'transparent',
-                padding: theme === 'dark' ? (isSticky ? '3px 10px' : '4px 14px') : '0',
-                borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0',
-                transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
-              }} 
-            />
-          </a>
-
-          {/* Hindi Tagline (Visible at top, smoothly hidden when sticky like BBC) */}
-          {!isSticky && (
-            <div className="masthead-tagline" style={{ marginTop: '0.35rem', textAlign: 'center', fontSize: '0.75rem', letterSpacing: '0.18em', color: 'var(--text-subtle)' }}>
+                marginTop: isSticky ? '0' : '0.35rem', 
+                textAlign: 'center', 
+                fontSize: '0.75rem', 
+                letterSpacing: '0.18em', 
+                color: 'var(--text-subtle)',
+                opacity: isSticky ? 0 : 1,
+                maxHeight: isSticky ? '0px' : '24px',
+                overflow: 'hidden',
+                pointerEvents: isSticky ? 'none' : 'auto',
+                transition: 'opacity 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), max-height 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), margin 0.45s ease'
+              }}
+            >
               {t('tagline', currentLanguage)}
             </div>
-          )}
 
-          {/* Right Quick Actions (Revealed when sticky: Quick Language & Theme Switcher) */}
-          {isSticky && (
+            {/* Right Quick Actions (Smoothly glides and fades in) */}
             <div 
               style={{ 
                 position: 'absolute', 
@@ -386,7 +400,11 @@ export default function Header({
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: '0.45rem',
-                zIndex: 2
+                zIndex: 2,
+                opacity: isSticky ? 1 : 0,
+                transform: isSticky ? 'translateX(0)' : 'translateX(12px)',
+                pointerEvents: isSticky ? 'auto' : 'none',
+                transition: 'opacity 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1)'
               }}
             >
               {/* Quick Language Pill */}
@@ -423,10 +441,9 @@ export default function Header({
                 {theme === 'dark' ? <Sun size={14} color="#F59E0B" /> : <Moon size={14} color="#1E293B" />}
               </button>
             </div>
-          )}
+          </div>
         </div>
       </div>
-    </div>
 
       {/* Live Breaking News Ticker Bar */}
       <div className="ticker-bar">
