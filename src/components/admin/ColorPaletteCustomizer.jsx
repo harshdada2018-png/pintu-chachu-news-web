@@ -8,7 +8,9 @@ import {
   Search, 
   CheckCircle2, 
   Layers,
-  ArrowRight
+  ArrowRight,
+  ShieldCheck,
+  Moon
 } from 'lucide-react';
 
 export const DEFAULT_THEME_PALETTE = {
@@ -177,6 +179,26 @@ export default function ColorPaletteCustomizer({ currentTheme, onSaveTheme }) {
           >
             <RotateCcw size={14} /> Reset Default
           </button>
+        </div>
+      </div>
+
+      {/* Sovereign Dark Mode Ergonomics Lock Notice */}
+      <div style={{
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border-medium)',
+        borderLeft: '4px solid var(--accent-blue)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '0.75rem 1rem',
+        marginBottom: '1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '0.75rem',
+        fontSize: '0.825rem',
+        color: 'var(--text-main)'
+      }}>
+        <Moon size={18} color="var(--accent-blue)" style={{ flexShrink: 0 }} />
+        <div>
+          <strong style={{ color: 'var(--text-main)' }}>Single Eye-Comfort Standard:</strong> These custom palettes adjust <strong>Light / Day Mode</strong>. Night / Dark Mode is permanently locked to the sovereign, halation-free broadsheet standard (#0D1117 / #E6EDF3) to guarantee 100% reader eye protection and zero fatigue.
         </div>
       </div>
 

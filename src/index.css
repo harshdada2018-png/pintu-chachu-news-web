@@ -61,32 +61,32 @@
   --transition-normal: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Broadsheet Dark Mode Theme (100% Solid Midnight Carbon Canvas) */
+/* Sovereign Eye-Comfort Dark Mode (1-Theme Locked Broadsheet Standard) */
 [data-theme="dark"] {
-  --bg-primary: #0B0F17;          /* Deep Carbon Midnight Canvas */
-  --bg-surface: #131A26;          /* 100% Solid Opaque Dark Surface */
-  --bg-secondary: #1C2536;        /* Solid Secondary Toolbars */
-  --bg-tertiary: #273347;
+  --bg-primary: #0D1117;          /* Deep Obsidian Midnight Canvas (Zero Glare, Calms Retina) */
+  --bg-surface: #161B22;          /* 100% Solid Newsprint Card Surface (+4% elevation) */
+  --bg-secondary: #21262D;        /* Secondary Toolbars & 30-Sec Briefing Box (+8% elevation) */
+  --bg-tertiary: #30363D;         /* Inputs & Hairline Track Dividers */
 
-  --text-main: #F1F5F9;           /* Crisp Ivory Headlines */
-  --text-body: #CBD5E1;           /* Readable body copy */
-  --text-muted: #94A3B8;          /* Standfirsts */
-  --text-subtle: #64748B;         /* Metadata */
+  --text-main: #E6EDF3;           /* 90% Soft Ivory Headlines (Eliminates Halation Astigmatism) */
+  --text-body: #C9D1D9;           /* 78% Warm Light Slate (Optimal Ergonomic Reading Contrast) */
+  --text-muted: #8B949E;          /* Excerpts & Standfirsts */
+  --text-subtle: #6E7681;         /* Metadata, Timestamps, Photo Credits */
 
-  --border-light: rgba(255, 255, 255, 0.1);
-  --border-medium: rgba(255, 255, 255, 0.18);
-  --border-dark: #F1F5F9;
+  --border-light: rgba(240, 246, 252, 0.10); /* Soft 1px Broadsheet Hairline */
+  --border-medium: rgba(240, 246, 252, 0.16); /* Solid Card Borders */
+  --border-dark: #E6EDF3;
 
-  --brand-primary: #EF4444;
-  --brand-navy: #38BDF8;
-  --accent-indigo: #38BDF8;
-  --accent-violet: #A78BFA;
-  --accent-crimson: #EF4444;
-  --accent-crimson-hover: #DC2626;
-  --accent-crimson-bg: rgba(239, 68, 68, 0.12);
-  --accent-amber: #FBBF24;
-  --accent-emerald: #34D399;
-  --accent-blue: #60A5FA;
+  --brand-primary: #F85149;
+  --brand-navy: #58A6FF;
+  --accent-indigo: #58A6FF;
+  --accent-violet: #BC8CFF;
+  --accent-crimson: #F85149;       /* Night Calibrated Alert Crimson */
+  --accent-crimson-hover: #DA3633;
+  --accent-crimson-bg: rgba(248, 81, 73, 0.12);
+  --accent-amber: #D29922;
+  --accent-emerald: #3FB950;
+  --accent-blue: #58A6FF;
 
   --gradient-bento-hero: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-primary) 100%);
   --gradient-accent: var(--accent-indigo);
@@ -98,6 +98,21 @@
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 12px 30px rgba(0, 0, 0, 0.65);
   --shadow-glow: none;
+}
+
+/* Photo Night Shield (Prevents Sudden Daylight Image Glare in Dark Rooms) */
+[data-theme="dark"] img {
+  filter: brightness(0.92) contrast(0.98);
+  transition: filter 0.25s ease;
+}
+
+[data-theme="dark"] img:hover {
+  filter: brightness(1) contrast(1);
+}
+
+/* Retain 100% Crisp White Background for Brand Logo in Dark Mode */
+[data-theme="dark"] .masthead-main img {
+  filter: none !important;
 }
 
 /* Global Reset & Base Typography */

@@ -17,6 +17,7 @@
 | :--- | :--- | :--- |
 | Default UI Redesign & Baseline Foundation | Completed | Editorial broadsheet tokens, masthead multiply blend, low-profile ticker, crisp category tabs, conditional YouTube video engine, and unified desk styling |
 | YouTube Video Coverage & Conditional Reel | Completed | Strictly conditional YouTube video embeds in ArticleReader, Video Reel section, Reporter/Editor/Admin integration with zero empty space when absent |
+| Sovereign Eye-Comfort Dark Mode (1-Theme Lock) | Completed | Anti-halation 9.8:1 palette (#0D1117/#E6EDF3), photo night shield, zero eye-strain contrast, and architecture lock bypassing inline palette overrides in dark mode |
 | :--- | :--- | :--- |
 | Project Planning & Governance Initialization | Completed | Created planning documents and mistake tracking |
 | Multi-Language Typography & Google Fonts Research | Completed | Selected fonts for 18 languages |

@@ -210,8 +210,27 @@ export default function App() {
 
   // Apply dynamic color palette live to document root CSS variables and body element
   useEffect(() => {
-    if (!themePalette) return;
     const root = document.documentElement;
+
+    // SINGLE-THEME LOCK: In Dark Mode, remove all inline style overrides so the single,
+    // scientifically calibrated Sovereign Eye-Comfort Dark Theme in CSS ([data-theme="dark"])
+    // has 100% full authority without being polluted by day-mode customizations.
+    if (theme === 'dark') {
+      const propertiesToClear = [
+        '--accent-indigo', '--gradient-accent', '--bg-primary', '--bg-surface',
+        '--glass-bg', '--bg-secondary', '--gradient-bento-hero', '--text-main',
+        '--border-dark', '--text-muted', '--text-subtle', '--accent-crimson',
+        '--accent-crimson-hover', '--accent-crimson-bg', '--accent-blue',
+        '--border-light', '--glass-border', '--border-medium'
+      ];
+      propertiesToClear.forEach(p => root.style.removeProperty(p));
+      document.body.style.backgroundColor = '';
+      document.body.style.color = '';
+      return;
+    }
+
+    // In Light / Day Mode: Apply custom or default theme palette
+    if (!themePalette) return;
     if (themePalette.primary) {
       root.style.setProperty('--accent-indigo', themePalette.primary);
       root.style.setProperty('--gradient-accent', themePalette.primary);
@@ -246,7 +265,7 @@ export default function App() {
       root.style.setProperty('--glass-border', themePalette.borderLight);
     }
     if (themePalette.borderMedium) root.style.setProperty('--border-medium', themePalette.borderMedium);
-  }, [themePalette]);
+  }, [themePalette, theme]);
 
   const handleUpdateTheme = (updatedTheme) => {
     setThemePalette(updatedTheme);

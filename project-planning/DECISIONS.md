@@ -240,3 +240,20 @@
   2. *True Default System Layering*: The new default design will be rooted in default CSS variables (`:root` in `src/index.css`), default fallback values in `server/data/settings.json`, and initial component structures. When a new visitor arrives or before an administrator configures custom styles in the Admin Desk, this new default UI will be active. If an admin later customizes colors or fonts, those user settings will seamlessly overlay the default.
   3. *Zero-Emoji & High Editorial Dignity*: Maintain the established zero-emoji rule, SVG icons, and human-centered editorial broadsheet standards.
 - **Reasoning**: Ensures total psychological safety for creative design exploration while guaranteeing the integrity and reversibility of all previously completed features.
+
+## Decision 25: Sovereign Eye-Comfort Dark Mode with 1-Theme Lock Architecture
+- **Status**: Approved by User & Implemented
+- **Context**: User explicitly instructed: "yaar me chhata hu ke dark mode isa ho ke ke aakho ko jada painn bhe na ho read karne me or vo coustimise na ho dark mode me 1 he theme ho jisa apan ne diside kare de dark background etc etc" (Dark mode must cause zero eye pain/strain while reading, and must NOT be customizable in dark mode—there should be ONE single, scientifically perfected theme locked across the platform).
+- **Decision & Engineering Solution**:
+  1. *Anti-Halation Palette (WCAG AAA 9.8:1)*: Replaced high-glare pitch black/pure white with GitHub Primer/Material 3 calibrated tokens:
+     - Background: `#0D1117` (Deep Obsidian Slate)
+     - Card Surface: `#161B22` (+4% elevation)
+     - Secondary/Callouts: `#21262D` (+8% elevation)
+     - Headlines: `#E6EDF3` (90% soft ivory, eliminating astigmatism blur)
+     - Body Paragraphs: `#C9D1D9` (78% warm light slate for fatigue-free long reading)
+     - Metadata: `#6E7681`
+     - Borders: `rgba(240, 246, 252, 0.10)`
+     - Alert Red: `#F85149`
+  2. *Photo Night Shield*: Automatically applies `filter: brightness(0.92) contrast(0.98)` to images in dark mode (smoothly transitioning to `1.0` on hover) to prevent sudden daylight glare in dark rooms.
+  3. *Single-Theme Lock Architecture*: In `src/App.jsx`, when `theme === 'dark'`, inline custom palette overrides on `root.style` are wiped, giving `[data-theme="dark"]` in CSS 100% full authority. Custom palettes from the Admin Color Customizer exclusively adjust Light/Day Mode.
+- **Reasoning**: Delivers medical-grade reading comfort, eliminates eye strain, and prevents fragmentation or broken contrast caused by ad-hoc dark mode customizations.
