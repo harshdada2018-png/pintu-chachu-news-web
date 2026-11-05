@@ -782,3 +782,44 @@
      - Zero emojis across all code and CSS (Mistake 46 compliance).
      - Verified via 4 automated unit tests (`scratch/test_task_27_subtopic_a.mjs`), `npm run build` (702ms, exit code 0), and `npm run lint` (0 errors).
 - **Reasoning**: Provides a crisp, high-performance broadsheet reading feedback line that elevates reader immersion across all device form factors.
+
+## Decision 51: Dynamic Multi-Lingual Master Article Resolution via Mandatory `originalLanguage` (Planned / Recorded)
+- **Status**: Recorded / Deferred for Future Execution (Per User Instruction)
+- **Context**: The user identified a critical architectural refinement: In the Reporter Desk and Story Editor, `originalLanguage` (primary language) is already a mandatory selection for journalists and writers. Currently, backend Master Article Resolution assumes the source language is default Hindi if not explicitly passed. When a reporter files an investigative piece originally written in English, Tamil, Marathi, or Bengali, the backend should dynamically resolve `source_lang = targetArticle.originalLanguage` rather than hardcoding a Hindi fallback.
+- **Planned Solution (To be implemented later)**:
+  1. In `server/server.js` (`POST /api/translate`), when `article_id` is supplied:
+     - Read `targetArticle.originalLanguage` from `server/data/articles.json`.
+     - Set `sourceLanguage = (targetArticle.originalLanguage || source_lang || 'hi').toLowerCase()`.
+  2. If `targetLanguage === sourceLanguage`, immediately return `targetArticle` as-is with zero AI calls.
+  3. Feed `sourceLanguage` into `translateWithGemini` so Gemini precisely translates from the true original source language (e.g. Tamil -> English, or English -> Marathi) rather than assuming Hindi as the pivot.
+- **Reasoning**: Honors the newsroom's multi-lingual authoring capability where journalists file native reports in their respective regional languages.
+
+## Decision 52: Comprehensive Multilingual Translation Pipeline Bug Audit & Forensic Log (Recorded / Deferred)
+- **Status**: Recorded / Deferred for Dedicated Deep-Dive Phase (Per User Instruction)
+- **Context**: Live user testing revealed a mixed-language visual defect on the article page (e.g. viewing in Tamil displays: Tamil UI chrome + English headline + Hindi 30s summary bullet + Hindi article body). A thorough forensic code audit across frontend state, backend Gemini bridge, and browser storage identified four interconnected root causes.
+- **Documented Bugs & Forensic Findings**:
+  1. *Bug 1 - Frontend State Mutation (`App.jsx` -> `ArticleReader.jsx`)*:
+     - When the user selects a language (e.g. English) on the homepage, `translateHeadlinesOnly` modifies `art.title` on `publishedArticles` cards.
+     - When a reader clicks a story, `handleSelectArticle(art)` passes the card object from `publishedArticles` directly to `ArticleReader`. This object has an English title but un-translated Hindi content and summary.
+     - Solution: `handleSelectArticle` must always resolve the pristine master article from `baseArticles` by ID (`baseArticles.find(a => a.id === art.id)`), guaranteeing zero field pollution.
+  2. *Bug 2 - Missing Translation of `summary` and `sub_title` (`server.js`)*:
+     - In `articles.json`, `highlights` is often empty (`[]`), but `summary` contains Hindi text.
+     - `server/server.js` sends `highlights: []` to Gemini, so Gemini returns `highlights: []`.
+     - In `ArticleReader.jsx`, the 30-second bullet fallback renders `activeArticle.summary`. Because `summary` was never passed to Gemini, it remains in Hindi even though the box header ("30 வினாடிகளில்: முக்கியக் குறிப்புகள்") is in Tamil.
+     - Solution: In `server/server.js`, if `highlights` is empty, automatically bridge `[targetArticle.summary]` as the highlight input for Gemini, and return translated `summary` and `sub_title`.
+  3. *Bug 3 - Browser LocalStorage Poisoning & False-Positive Cache (`translationService.js`)*:
+     - When a translation request encounters temporary rate-limiting (429) or network timeout, the fallback article (English title + Hindi content) gets stored in `localStorage` (`ps_art_obj_${id}_${lang}`).
+     - `getCachedArticleObject` retrieves this corrupted cached object on subsequent visits without verifying if `content` is actually in the target language or still in Hindi, ignoring complete valid translations (e.g. 12,908 chars Tamil copy) already saved on the backend server.
+     - Solution: Strict cache validation in `getCachedArticleObject` that automatically purges entries where `targetLang !== 'hi'` but body content remains in original Hindi.
+  4. *Bug 4 - Lack of Clean Reader Skeleton / Loading State (`ArticleReader.jsx`)*:
+     - While `translateArticle` is in progress, the reader immediately renders `displayArticle` with raw un-translated text, creating an unsightly flash of mixed languages before translation completes.
+     - Solution: Render a clean broadsheet skeleton placeholder in the reader until the target translation is resolved.
+- **Execution Strategy**: Per user direction, all 4 bugs are fully documented here and in `CHECKLIST.md` (Task 33) to be solved together in a dedicated future translation overhaul session.
+
+## Decision 53: Two-Stage Deployment Lifecycle (Cloudflare Launch -> Personal VPS at Scale)
+- **Status**: Approved by User & Formally Adopted
+- **Context**: The project owner confirmed the production deployment lifecycle: launch immediately on the 100% free Cloudflare sovereign stack (Zero Credit Card, Pages + Workers + D1), and subsequently migrate backend and database to a dedicated Personal VPS once traffic scales to high volumes.
+- **Approved Roadmap**:
+  1. *Stage 1 (Launch & Initial Audience)*: Cloudflare Pages (Frontend) + Cloudflare Workers (API with Edge Caching & Telemetry Batching) + Cloudflare D1 SQL. Incurs zero costs, zero credit card requirements, zero maintenance, and handles initial district-wide readers effortlessly.
+  2. *Stage 2 (High Traffic Scaling)*: When traffic explodes into tens of thousands of daily active readers, cleanly migrate the backend and database to a Personal Linux VPS (Hostinger India / UPI-paid, ₹250-₹350/mo) for un-metered compute, complete self-hosted ownership, and automated nightly backups.
+- **Reasoning**: Combines immediate zero-cost launch speed with enterprise-grade future scalability and zero risk of vendor lock-in. Full playbook recorded in `project-planning/HOSTING_PLAN.md`.

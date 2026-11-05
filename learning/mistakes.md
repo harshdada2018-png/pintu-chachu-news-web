@@ -645,3 +645,18 @@ This document records significant mistakes, root causes, verified solutions, and
   4. Increased frontend `translateArticle` timeout from 30s to 75s to accommodate deep-dive investigative stories.
   5. Verified live translation of article `art-1793864819037` into Tamil (`ta`): generated 12,908 characters of fluent Tamil journalistic copy and verified persistence in `server/data/translations.json`.
 - **Prevention Method**: In AI-driven backend services, always ensure fallback chains continue on 503/429 demand errors rather than only 404. In linguistic validation, never assume non-English target languages will retain ASCII/Arabic digits in their grammar.
+
+### Mistake 51: Frontend State Pollution & LocalStorage Cache Poisoning Causing Multi-Language Frankenstein Screen
+- **Mistake**: Viewing an article after language switching displayed a chaotic mixture of three languages: Tamil UI header/buttons, English headline, Hindi 30-second bullet summary, and Hindi body paragraph.
+- **Root Cause**:
+  1. Frontend State Mutation: Homepage headline translation (`translateHeadlinesOnly`) modified `art.title` on `publishedArticles` cards. When an article was clicked, `handleSelectArticle(art)` passed the mutated card object rather than resolving the pristine master article from `baseArticles` by ID.
+  2. Summary Untranslated: In `articles.json`, `highlights` was empty (`[]`), causing Gemini to return `highlights: []`. `ArticleReader` fell back to `activeArticle.summary`, which was never sent to Gemini or translated, leaving the 30-second bullet permanently in Hindi.
+  3. LocalStorage Cache Poisoning: When translation timed out or aborted during peak load, fallback objects (`title: English, body: Hindi`) were stored in `localStorage` (`ps_art_obj_${id}_${lang}`). `getCachedArticleObject` served these stale fallback objects on every future visit without verifying whether the body was actually translated into the target language.
+  4. Reader Flash: While `translateArticle` was pending, `ArticleReader` immediately rendered the raw un-translated article without a skeleton loading state.
+- **Actual Impact**: Degraded reader trust by showing broken mixed-language text instead of seamless broadsheet translation.
+- **Verified Solution Plan (Deferred for Dedicated Phase per User Instruction)**:
+  1. `App.jsx`: Update `handleSelectArticle` to always resolve `baseArticles.find(a => a.id === art.id)`.
+  2. `server/server.js`: If `highlights` is empty, automatically bridge `[targetArticle.summary]` to Gemini and return translated `summary` and `sub_title`.
+  3. `translationService.js`: Add strict cache validator in `getCachedArticleObject` to discard entries where `targetLang !== 'hi'` but body content remains identical to Hindi master.
+  4. `ArticleReader.jsx`: Introduce sovereign broadsheet skeleton shimmer while translation is resolving.
+- **Prevention Method**: Never pass mutated presentation-layer card objects into detailed view readers; always pass canonical master state. Never cache fallback/error responses as successful translation artifacts.

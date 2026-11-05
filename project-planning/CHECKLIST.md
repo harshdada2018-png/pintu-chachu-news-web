@@ -9,9 +9,10 @@
 
 ## Status Summary
 
-- **Currently In Progress**: Task 25: Fact-Check & Source Credibility Box (Subtopics A & B).
+- **Currently In Progress**: Task 27: Hairline Reading Progress Bar & "X Min Read" Badge (Subtopic B: Calculated reading duration badge).
 - **Current Blockers / Dependencies**: None.
-- **Next Step**: Implement Fact-Check verification badges and Source Citations box.
+- **Reference Architecture Docs**: `project-planning/HOSTING_PLAN.md` (Cloudflare Pages + Workers + D1 Blueprint & Future VPS Roadmap).
+- **Next Step**: Implement Task 27 Subtopic B ("X Min Read" reading duration badge).
 
 ---
 
@@ -141,6 +142,13 @@
 - [ ] **Task 30: Google News Specialized XML Feed (`news-sitemap.xml`) & RSS 2.0** `Planned`
   - [ ] *Subtopic A*: Google News `<news:news>` XML specification generator.
   - [ ] *Subtopic B*: Standard RSS 2.0 automated syndication feed.
+- [ ] **Task 32: Dynamic Multi-Lingual Master Article Resolution via Mandatory `originalLanguage`** `Planned (Postponed for later)`
+  - [ ] *Subtopic A*: Backend resolution to read `article.originalLanguage` from database and dynamically use it as the source language for Gemini translation instead of static Hindi fallback.
+- [ ] **Task 33: Multilingual Translation Pipeline Overhaul & Bug Resolution Suite** `Planned (Postponed for later)`
+  - [ ] *Subtopic A*: Pure master article state resolution in `App.jsx` (`handleSelectArticle`) preventing card headline translation pollution from spilling into reader.
+  - [ ] *Subtopic B*: Backend automatic summary-to-highlights bridge & `summary`/`sub_title` translation in `server/server.js` ensuring 30s bullets are translated.
+  - [ ] *Subtopic C*: LocalStorage translation cache strict integrity validator in `src/services/translationService.js` purging false-positive Hindi fallbacks.
+  - [ ] *Subtopic D*: Sovereign broadsheet skeleton shimmer loading state in `ArticleReader.jsx` during translation fetch.
 
 ---
 
