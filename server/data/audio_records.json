@@ -205,5 +205,50 @@
     "size_bytes": 191808,
     "status": "done",
     "created_at": "2026-10-22T05:55:01.118Z"
+  },
+  "art-3:mr:clip_1_intro": {
+    "article_id": "art-3",
+    "lang": "mr",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-3_mr_clip_1_intro.mp3",
+    "size_bytes": 31765,
+    "status": "done",
+    "created_at": "2026-10-29T04:19:11.150Z"
+  },
+  "art-3:mr:clip_2_body": {
+    "article_id": "art-3",
+    "lang": "mr",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-3_mr_clip_2_body.mp3",
+    "size_bytes": 37094,
+    "status": "done",
+    "created_at": "2026-10-29T04:19:21.182Z"
+  },
+  "art-3:ja:clip_1_intro": {
+    "article_id": "art-3",
+    "lang": "ja",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-3_ja_clip_1_intro.mp3",
+    "size_bytes": 29675,
+    "status": "done",
+    "created_at": "2026-10-29T04:20:02.527Z"
+  },
+  "art-1792336931463:or:clip_1_intro": {
+    "article_id": "art-1792336931463",
+    "lang": "or",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1792336931463_or_clip_1_intro.mp3",
+    "size_bytes": 91115,
+    "status": "done",
+    "created_at": "2026-11-05T07:45:32.143Z"
+  },
+  "art-1793864819037:mr:clip_1_intro": {
+    "article_id": "art-1793864819037",
+    "lang": "mr",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1793864819037_mr_clip_1_intro.mp3",
+    "size_bytes": 79935,
+    "status": "done",
+    "created_at": "2026-11-05T07:50:29.734Z"
   }
 }

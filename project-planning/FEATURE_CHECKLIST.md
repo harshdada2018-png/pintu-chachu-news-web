@@ -5,7 +5,7 @@
 
 ---
 
-## 📋 Master Feature Checklist
+##  Master Feature Checklist
 
 ### 1. Core Frontend & Framework Architecture
 - [x] **Vite + React Core**: Lightning-fast compilation (447ms production bundle, zero bloat).
@@ -175,6 +175,6 @@
 
 ---
 
-## 🔮 Pending / Next Step Tasks
+##  Pending / Next Step Tasks
 - [ ] **Ad Placement Customizer (Phase 2)**: Add visual AdSense banner toggles and custom banner upload slots in `AdminWorkspace.jsx` and public layouts.
 - [ ] **Cloud Deployment (Phase 3)**: Deploy Frontend to Cloudflare Pages (free) and Backend to Render Web Service (free).

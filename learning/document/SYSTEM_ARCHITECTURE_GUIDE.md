@@ -1,4 +1,4 @@
-# 🏗️ PublicSpark — System Architecture & Step-by-Step Implementation Guide
+#  PublicSpark — System Architecture & Step-by-Step Implementation Guide
 
 Document Version: `1.0.0`  
 Target Architecture: **Zero-Cost Hybrid Cloud & Edge Architecture (as per Mermaid Blueprint)**  
@@ -6,7 +6,7 @@ Last Updated: September 2026
 
 ---
 
-## 📌 Table of Contents
+##  Table of Contents
 1. [Overview & How System Works](#1-overview--how-system-works)
 2. [Database & Storage Selection Strategy (Which DB Where?)](#2-database--storage-selection-strategy-which-db-where)
 3. [Component-by-Component Working Mechanism](#3-component-by-component-working-mechanism)
@@ -15,7 +15,7 @@ Last Updated: September 2026
 
 ---
 
-## 1. 🌟 Overview & How System Works
+## 1.  Overview & How System Works
 
 PublicSpark is designed as an **Independent, High-Performance Digital News Portal** capable of delivering breaking news, 18-language instant translations, and 1-Click TTS audio reading at **₹0 direct monthly infrastructure cost**.
 
@@ -39,7 +39,7 @@ PublicSpark is designed as an **Independent, High-Performance Digital News Porta
 
 ---
 
-## 2. 🗄️ Database & Storage Selection Strategy (Kon Sa DB Kaha Best Rahe Ga?)
+## 2.  Database & Storage Selection Strategy (Kon Sa DB Kaha Best Rahe Ga?)
 
 To maintain maximum speed, zero cost, and strict data safety, we split storage across 4 specific tiers:
 
@@ -52,9 +52,9 @@ To maintain maximum speed, zero cost, and strict data safety, we split storage a
 
 ---
 
-## 3. 🧩 Component-by-Component Working Mechanism
+## 3.  Component-by-Component Working Mechanism
 
-### A. 🎧 1-Click Audio (TTS Master)
+### A.  1-Click Audio (TTS Master)
 1. User clicks **Play Audio** on an article.
 2. Frontend sends request: `POST /api/tts` with `article_id`, `language`, and `voice_id`.
 3. Proxy checks **Cloudflare R2** storage for `audio/article_id_lang.mp3`.
@@ -65,21 +65,21 @@ To maintain maximum speed, zero cost, and strict data safety, we split storage a
      - Save generated MP3 to Cloudflare R2.
      - Release Lock & Return MP3 to user.
 
-### B. 🌐 18-Language Translation Engine
+### B.  18-Language Translation Engine
 1. User selects language (e.g., Hindi `hi`, Bengali `bn`, French `fr`).
 2. Frontend generates MD5/SHA256 hash of article content.
 3. Proxy checks **Turso Edge DB** for matching `content_hash + target_lang`.
    - **Cache Hit**: Returns translated text instantly.
    - **Cache Miss**: Calls translation provider (Google Translate API / Fallbacks) -> Stores translation in Turso DB -> Returns translated text.
 
-### C. 📊 Real-Time Analytics & Heartbeat
+### C.  Real-Time Analytics & Heartbeat
 1. Reader opens article -> Frontend sends `POST /api/views/start`.
 2. Every 15s of active reading sends heartbeat -> updates `scrollDepth` and `readDuration`.
 3. Server updates `article_stats_daily` atomically (`view_count + 1`) in Supabase.
 
 ---
 
-## 4. 📝 Step-by-Step Implementation Roadmap (Procedure)
+## 4.  Step-by-Step Implementation Roadmap (Procedure)
 
 ### Phase 1: Environment & Secrets Setup
 - [ ] Create `.env` file with Supabase, Cloudflare R2, and AI credentials.
@@ -108,7 +108,7 @@ To maintain maximum speed, zero cost, and strict data safety, we split storage a
 
 ---
 
-## 5. 🧹 Automatic Storage Cleanup & Safeguards
+## 5.  Automatic Storage Cleanup & Safeguards
 
 To ensure Cloudflare R2 storage remains strictly within the ₹0 Free Tier (10 GB):
 
@@ -126,7 +126,7 @@ Is R2 Usage > 85%?
 
 ---
 
-## 🎯 Summary Checklist
+##  Summary Checklist
 - **Supabase**: Primary Database + Auth + Real-Time
 - **Turso**: Fast Translation Cache
 - **Cloudflare R2**: Free File & Audio MP3 Storage

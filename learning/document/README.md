@@ -1,10 +1,10 @@
-# 📰 PublicSpark — Independent Digital Newsroom Platform Documentation
+#  PublicSpark — Independent Digital Newsroom Platform Documentation
 
 Welcome to the central documentation directory for **PublicSpark Digital Newsroom Platform**.
 
 ---
 
-## 📑 Complete Document Directory
+##  Complete Document Directory
 
 | Document Name | File Path | Description |
 | :--- | :--- | :--- |
@@ -21,7 +21,7 @@ Welcome to the central documentation directory for **PublicSpark Digital Newsroo
 
 ---
 
-## 🚀 Quick Commands Summary
+##  Quick Commands Summary
 
 - **Backend Proxy Server**: `npm run server` (runs on `http://localhost:5000`)
 - **Frontend Dev Server**: `npm run dev` (runs on `http://localhost:5173`)

@@ -1,5 +1,87 @@
 # Architecture & Feature Decisions
 
+## Decision 36: Article Future Publishing Timer & Editorial RBAC Gate (Task 20)
+- **Status**: Implemented & Verified
+- **Context**: In institutional journalism, news stories are written in advance (e.g. night coverage scheduled for 7:00 AM release, embargoed press releases, or planned weekend feature drops). Furthermore, standard newsroom hierarchy dictates that field reporters cannot directly publish live or schedule releases—their submissions must stay in `draft` for review. Only Editors and Admins hold sovereign editorial clearance to publish live or schedule future auto-publishing.
+- **Decision**:
+  1. Built dual-layer server-side auto-publish engine in `server/server.js`:
+     - Layer A: 20-second active background heartbeat cron checking `scheduledPublishTime <= Date.now()`.
+     - Layer B: On-demand evaluation on every article read request, ensuring zero lag even across server sleeps/reboots.
+  2. Integrated Public Reader Embargo Shield:
+     - Public API `GET /api/articles` filters out `scheduled` (whose time has not yet arrived) and `draft` stories.
+     - SSR prerender gateway `/article/:slug` restricts pre-rendering to published articles only, preventing crawler leaks of embargoed news.
+     - Frontend `displayedArticles` in `App.jsx` enforces the embargo shield on the reader homepage.
+  3. Enforced Editorial RBAC Gate:
+     - In `StoryEditorModal.jsx` and `AdminWorkspace.jsx`, the Reporter role is locked to `draft` / `Submitted for Review` with a clear educational notice: `Editorial Gate: Reporters submit drafts. Only Editors and Admins can publish live or schedule future publication.`
+     - In `POST /api/articles/update`, backend intercepts requests from `userRole === 'reporter'` and overrides `status = 'draft'`, blocking any unauthorized direct publishing.
+  4. Scheduled Stories Desk & 1-Click Controls:
+     - Added dedicated ` Scheduled (N)` toolbar filter in `AdminWorkspace.jsx`.
+     - Article cards display clear broadsheet scheduled badges with formatted release timestamps (`SCHEDULED: 4 Nov, 07:00 AM`).
+     - Added 1-click `[  Publish Now ]` bypass button for Editors/Admins to release scheduled stories immediately if breaking events occur.
+- **Reasoning**: Guarantees authentic journalistic governance, automated temporal publishing without manual midnight interventions, and complete embargo protection against leaks.
+
+## Decision 35: Poster Aspect Ratio Lock & Dimension Guard (Task 16.6)
+- **Status**: Implemented & Verified
+- **Context**: Direct sponsors often submit posters of arbitrary dimensions (e.g. 1080×1920 portrait flyers, square Instagram posts, or tall promotional banners). Without strict dimension guards and aspect ratio locks, these images stretch or blow up the broadsheet newspaper layout, pushing editorial headlines down, breaking reading flow in articles, or obscuring screen contents on mobile phones.
+- **Decision**:
+  1. Centralized IAB industry dimension standards and vertical clamping bounds in `SLOT_DIMENSION_GUARDS` and `getSlotDimensionGuard(slotKey, isMobile)` inside `src/services/monetizationService.js`.
+  2. Enforced maximum vertical bounds per slot (Header: 100px desktop / 110px mobile; In-Article: 280px; Sidebar: 600px desktop / 300px mobile; Home Feed: 120px desktop / 110px mobile; Footer: 100px desktop / 80px mobile; Mobile Sticky Footer: 60px).
+  3. Engineered clean letterboxing using `object-fit: contain`, `background: var(--bg-secondary)`, and `max-height` constraints on both anchor container and `<img>` element in `PartnerUnit.jsx`, backed by slot-specific CSS rules in `src/index.css`.
+  4. Added dynamic dimension guidance badges (e.g., `Recommended: 728×90 Leaderboard (8:1) • Max Clamp: 100px`) and live clamped previews in `MonetizationDesk.jsx` (Placement Accordion, Re-Run Clone Modal, and Edit Campaign Modal).
+- **Reasoning**: Guarantees zero broadsheet layout deformation regardless of what image aspect ratio an advertiser provides, protects Cumulative Layout Shift (CLS), and provides clear visual sizing guidance for administrators during ad creation and editing.
+
+## Decision 34: Real-Time Auto-Switch Timer & Zero-Reload Live Transition (Task 16.5)
+- **Status**: Implemented & Verified
+- **Context**: When an ad campaign reaches its scheduled start or expiry time, readers currently reading an article or viewing the page shouldn't be forced to reload their browser to see the ad change, nor should the text jump abruptly (avoiding Cumulative Layout Shift penalties). In addition, mobile readers who lock and unlock their phones need immediate inventory synchronization.
+- **Decision**:
+  1. Enhanced backend `evaluateActiveAds()` to supply predictive timestamps (`nextStartsAt` and `expiresAt`) across active, scheduled, and fallback slots.
+  2. Implemented client-side precision sleep timer (`scheduleTransition`) in `PartnerUnit.jsx` that schedules millisecond-accurate `setTimeout` callbacks executing at exact `startsAt` and `expiresAt` timestamps.
+  3. Engineered zero layout shift (CLS) crossfade: executes a 300ms CSS fade-out (`opacity: 1 -> 0`), pulls the updated ad decision from `/api/ads/active`, and smoothly fades back in (`opacity: 0 -> 1`), preserving fixed slot geometry.
+  4. Added `document.visibilitychange` and `window.focus` listeners to instantly re-sync ad inventory the moment a reader returns to the tab or unlocks their phone.
+- **Reasoning**: Guarantees seamless, zero-reload temporal ad transitions, eliminates layout shifts, and ensures advertisers' start/end schedules are respected down to the exact second.
+
+## Decision 33: Minimalist Broadsheet Newsroom UI Polish (Task 31)
+- **Status**: Implemented & Verified
+- **Context**: To eliminate any generic "AI-generated" or toy template look (cluttered badges, neon pill dropdowns, bouncy cards, fake views/likes on cards) while preserving 100% of all existing functional features (Audio, 19 Languages, Polls, Search, Monetization, Newsroom Desks).
+- **Decision**:
+  1. Streamlined the top utility bar into a calm, dignified 32px line with clean calendar, dynamic local weather, verified shield badge, and refined multi-language dropdown.
+  2. Discretely integrated Newsroom Staff access (`Reader View` vs ` Reporter / Editor / Admin`) so the public frontend looks like a credible, institutional media publication rather than an AI scaffold.
+  3. Purged fake social counters (`6.3K views • 720 likes`) from front-page cards, keeping real analytics in the admin dashboard and reader view.
+  4. Eliminated distracting hover zoom animations (`scale(1.04)`) and bouncy elevations (`translateY(-2px)`), adopting flat broadsheet paper surfaces with crisp 1px hairline dividers.
+  5. Refined the Breaking Ticker badge into an authoritative journalistic alert strip without cartoon flame icons.
+- **Reasoning**: Delivers an authentic, high-prestige newspaper aesthetic (comparable to *The New York Times*, *Reuters*, or *The Hindu*) while keeping every single feature 100% functional and accessible.
+
+## Decision 32: 1-Tap WhatsApp Sponsor Connect & Local Advertiser Mode (Roadmap Task 16.4)
+- **Status**: Implemented & Verified
+- **Context**: In local Indian journalism and regional commerce, advertisers (retail stores, schools/coaching institutes, doctors, banquet halls, local services) primarily conduct business and capture inquiries via WhatsApp rather than formal HTTPS websites.
+- **Decision**:
+  1. Built dual-layer phone detection (`parseSponsorTargetUrl` on frontend and `resolveSponsorTargetUrl` on backend) that automatically recognizes 10-digit Indian mobile numbers, `0`-prefixed numbers, `+91` numbers, and `wa.me` links.
+  2. Formulated structured deep links `https://wa.me/91XXXXXXXXXX?text=...` embedding a polite, pre-filled business enquiry message referencing the sponsor's name and PublicSpark News attribution.
+  3. Integrated subtle broadsheet WhatsApp badge (`WhatsApp Connect` pill with Lucide `<MessageCircle size={11} />`) on direct sponsor banners in `PartnerUnit.jsx`, alerting readers that clicking opens WhatsApp directly.
+  4. Added real-time visual detection badges and instant `[  Test Link ↗ ]` buttons in both the main Placement Form and the Edit Campaign Modal inside `MonetizationDesk.jsx`.
+  5. Kept full telemetry compatibility with `trackAdClick` (via `sendBeacon` and `keepalive: true`) so that WhatsApp chats are recorded in advertiser performance analytics.
+- **Reasoning**: Drastically increases campaign conversion rates for local advertisers who lack dedicated websites, eliminates manual link formatting errors by the admin, and delivers an authentic mobile experience for readers.
+
+## Decision 31: Ad Scope, Campaign Dates & Auto-Expiry Rules Architecture (Roadmap A1 & A2)
+- **Status**: Approved by User & Implemented
+- **Context**: In line with `PublicSpark_ ads UPDATES.md` (Sections A1 & A2), sponsor campaigns required flexible scope control (Global vs Category vs Single Article), campaign run-time start & end dates, and an automatic fallback waterfall so that expired or mismatched campaigns seamlessly fall back to Google AdSense without throwing empty space or requiring manual intervention.
+- **Decision**: 
+  1. Extended ad slot state schema with `scope` ('global' | 'category' | 'article'), `targetCategory`, `targetArticleId`, `excludeArticleIds`, `startDate`, `endDate`, and `status` ('active' | 'paused').
+  2. Implemented `evaluateAdSlot(slot, context)` in `monetizationService.js` that evaluates campaign status, date bounds (future vs expired), exclusion lists, and scope matches against the current active category and article ID.
+  3. Built 1-click Scope selector buttons with instant context explanations, category dropdown, target article input, and date pickers with live auto-expiry status badge in `MonetizationDesk.jsx`.
+  4. Added responsive CSS classes (`.monetization-scope-selector`, `.monetization-dates-grid`) to guarantee zero overflow on mobile screens (360px–390px).
+- **Reasoning**: Gives administrators precise, automated control over direct sponsorships while guaranteeing 100% AdSense inventory backfill when campaigns end or don't target the current page.
+
+## Decision 30: Monetization Desk 6-Slot Architecture & Mobile Calibration Suite
+- **Status**: Approved by User & Implemented
+- **Context**: In line with the `PublicSpark_ ads UPDATES.md` specification (Section A4), the monetization desk required support for 6 core broadsheet placements, zero layout shift (CLS prevention), and full calibration for small phone screens (360px–390px) where buttons and badges previously overflowed.
+- **Decision**: 
+  1. Extended `DEFAULT_ADS_CONFIG.slots` in `monetizationService.js` to 6 core broadsheet units: `header`, `in_article`, `sidebar`, `home_feed` (New), `footer` (New), and `mobile_footer`.
+  2. Integrated `<PartnerUnit position="home_feed" />` and `<PartnerUnit position="footer" />` into `App.jsx`, ensuring zero DOM footprints when disabled.
+  3. Replaced rigid inline styles in `MonetizationDesk.jsx` with responsive CSS classes: `.monetization-header-card`, `.monetization-cred-grid`, `.monetization-slot-header`, `.monetization-mode-selector`, `.monetization-sponsor-grid`.
+  4. Added mobile rules in `src/index.css` under `@media (max-width: 768px)` to ensure full touch-target width, wrapping for dimension badges, and stacked sponsor grids.
+- **Reasoning**: Ensures all 6 required ad slots are visually manageable from the admin panel and render with zero cumulative layout shift (CLS) on desktop and mobile.
+
 ## Decision 1: Google Fonts Library Integration for Multi-Language Typography
 - **Status**: Approved by User
 - **Context**: The platform supports 18 languages (Hindi, Marathi, Bengali, Tamil, Telugu, English, Urdu, etc.). Admin requires full visual typography control.
@@ -15,16 +97,16 @@
 ## Decision 3: Dual-Scope Typography (Global Default vs Regional / Language-Wise)
 - **Status**: Approved by User
 - **Context**: User requested a Global font mode and a Regional / Language-specific font mode where admin can select any of the 18 languages and set distinct headline/body fonts for each language, with the live preview desk dynamically switching into that language's native script and font.
-- **Decision**: Implemented two toggle buttons `[🌐 Global Typography]` and `[🗺️ Regional / Language-Wise Fonts]`. In Regional mode, a language selection drawer/shelf renders all 18 languages with flags and native scripts. The sticky live preview desk updates in real-time to display authentic news headlines and body text written in that selected language's native script, rendered with its configured font.
+- **Decision**: Implemented two toggle buttons `[ Global Typography]` and `[ Regional / Language-Wise Fonts]`. In Regional mode, a language selection drawer/shelf renders all 18 languages with flags and native scripts. The sticky live preview desk updates in real-time to display authentic news headlines and body text written in that selected language's native script, rendered with its configured font.
 - **Reasoning**: Ensures scripts like Bengali, Tamil, Telugu, Gurmukhi, and Urdu render in their authentic cultural typefaces without breaking layout or falling back to inappropriate generic fonts. Seamlessly persists to backend and dynamically applies when visitors change the site language.
 
 ## Decision 4: 1-Click "Make Global" Propagation Actions
 - **Status**: Implemented based on User Clarification
 - **Context**: User clarified that "Global" should not merely be a separate tab/scope, but an active action where clicking "Make Global" propagates the currently chosen headline font to all headlines across the whole site, and clicking "Make Article Global" propagates the chosen article font to all articles across the whole site and all 18 languages.
 - **Decision**: Added direct 1-click action buttons:
-  1. `🌐 Make Headline Font Global (All 18 Languages & Whole Site)` directly below the Headline Font picker.
-  2. `🌐 Make Article Font Global (All 18 Languages & Whole Site)` directly below the Article Body Font picker.
-  3. Master `🌐 Make Current Fonts Global` button at the top that syncs both headline and body fonts across all 18 languages and whole site in one click.
+  1. ` Make Headline Font Global (All 18 Languages & Whole Site)` directly below the Headline Font picker.
+  2. ` Make Article Font Global (All 18 Languages & Whole Site)` directly below the Article Body Font picker.
+  3. Master ` Make Current Fonts Global` button at the top that syncs both headline and body fonts across all 18 languages and whole site in one click.
 - **Reasoning**: Gives the admin total instant control to homogenize fonts across the entire website with zero friction, while still preserving the option to customize individual regional languages whenever desired.
 
 ## Decision 5: Editorial Color Harmonies & Custom Color Suite (Strict Zero-Emoji Corporate Design)
@@ -73,7 +155,7 @@
 - **Status**: Implemented based on User Approval ("sare he karo but 1 by 1")
 - **Context**: User approved implementing all 4 researched editorial UX improvements to elevate PublicSpark to premier global digital newsroom standards.
 - **Decision**:
-  1. **Corporate Micro-Polish**: Purged all remaining emojis (`Listen 🔊`, `Remove ✖`, `👍 / 👎 / 🤔` poll buttons, and audio bar header) across the public frontpage, replacing them with refined Lucide SVG icons (`Volume2`, `X`, `ThumbsUp`, `ThumbsDown`, `HelpCircle`).
+  1. **Corporate Micro-Polish**: Purged all remaining emojis (`Listen `, `Remove `, ` /  / ` poll buttons, and audio bar header) across the public frontpage, replacing them with refined Lucide SVG icons (`Volume2`, `X`, `ThumbsUp`, `ThumbsDown`, `HelpCircle`).
   2. **Hairline Broadsheet Precision Grid**: Replaced fuzzy, heavy glassmorphism drop-shadows on `.story-card-hero` and `.story-card-secondary` with crisp 1px hairline border rules (`var(--border-medium)`), subtle 8px border-radius, and added dynamic word-count reading time estimates (`⏱ 2 min read`, `⏱ 3 min read`) on every news card.
   3. **Executive 30-Second Highlights**: Added an "In 30 Seconds: Key Highlights" callout card at the top of full articles in `ArticleReader.jsx` with bulleted takeaways for effortless fast scanning.
   4. **In-Article Reading Ergonomics**: Bound the reader `A- / A / A+` font size mode directly to the article markdown body text (enabling seamless switching between 0.975rem, 1.125rem, and 1.275rem on the fly) and refined the top 3px sticky reading progress bar.
@@ -130,7 +212,7 @@
 - **Context**: User rightly pointed out that creating/managing categories is dynamically handled by the Admin, not hardcoded by developers. If an Admin creates a new category (e.g. "Crime" or "Sports") and leaves it empty with 0 articles, Google AdSense reviewers or public readers clicking the category could see a blank page, causing an instant "Site Behaviour: Navigation" rejection.
 - **Decision & Engineering Solution**:
   1. *Public Navigation Auto-Filter*: On the public website, only categories that have at least 1 published live article (`articles.some(a => a.category_slug === cat.slug && a.status === 'published')`) will be rendered in the top header and navigation pills.
-  2. *Admin Workspace Transparency*: In the Admin Workspace "Categories" desk, each category dynamically displays its article count and publication status (e.g., `India (14 articles - Live)` vs `Sports (0 articles - ⚠️ Hidden from public until first story is published)`).
+  2. *Admin Workspace Transparency*: In the Admin Workspace "Categories" desk, each category dynamically displays its article count and publication status (e.g., `India (14 articles - Live)` vs `Sports (0 articles - [Note] Hidden from public until first story is published)`).
   3. *Graceful Fallback on Direct URL*: If an empty category is directly accessed, the UI will not display a blank page or 404 error; instead, it renders an editorial placeholder ("Fresh reporting underway for this section") followed by the latest trending stories.
 - **Reasoning**: Protects Google AdSense approval completely from empty category rejections while giving the administrator 100% freedom to create as many categories as they want whenever they want.
 
@@ -292,8 +374,411 @@
      - Revealed on the left edge when sticky: `[≡ Sections]` (triggers the full newsroom category & desk drawer) and `[Search]` button.
      - Revealed on the right edge when sticky: Compact language pill and dark/light mode toggle.
      - Brand logo remains 100% centered and clickable to return home, exactly mirroring the reference BBC layout.
-  4. *Desktop vs Mobile Navigation Flow*:
-     - On desktop, `.category-nav` is set to `position: relative`, allowing category tabs to scroll naturally with the page while the persistent logo stays locked at the ceiling.
-     - On mobile (`<= 768px`), the compact 52px app header remains sticky at `top: 0` with category navigation docked at `top: 52px`.
-- **Reasoning**: Fulfills the user's exact BBC reference requirement, guarantees persistent brand identity during long reading sessions, and prevents unwanted visual clipping while maintaining 60 FPS scrolling performance.
+## Decision 28: Hinglish & English Mandatory Communication Standard
+- **Status**: Approved by User & Permanently Recorded
+- **Context**: User explicitly requested: "aaye yaar mee ko itne hindi nahi aate hai yaar hinglish me naat keya karo pr aapne rule table me globle me kaa ke save karo tak ke converataion haes hinglish and english me hho he".
+- **Decision & Engineering Solution**:
+  1. *Rule Enforcement*:
+     - Created workspace rule at [`.agents/rules/communication.md`](file:///d:/my%20projects/pintu%20chachu%20news%20web/.agents/rules/communication.md).
+     - Created root [`GEMINI.md`](file:///d:/my%20projects/pintu%20chachu%20news%20web/GEMINI.md) defining strict Hinglish (conversational Hindi written in English/Latin letters) and English conversation style.
+     - Mandated that the AI assistant MUST NEVER use pure/formal Devanagari Hindi for conversation.
+     - Technical terms, code, file paths, variables, and explanations must remain in crisp English.
+- **Reasoning**: Ensures effortless communication tailored to the user's preferred spoken language while preserving technical accuracy.
 
+## Decision 29: Backend-Driven Ad Engine (Admin Order -> Backend Decision Maker with Date & Time Precision -> Pure Frontend Display)
+- **Status**: Approved by User & Implemented
+- **Context**: User instructed: "dekho plane ye hai diside backend kare ke kon sa add kaha or kaan tak dikhana hai or frontend ouse dikhaye bass. frontend ka kaam hai dikhana and or, baskend ka kaam hai keya dikha rahe hai ouse bataana. or backend ko order admine de ga ke is add ko itne daten ko itne baje se ise bage tak chalana hai is date ko ye add yaha lage ga".
+- **Decision & Engineering Solution**:
+  1. *Admin Order Desk (`MonetizationDesk.jsx`)*: Admin orders exact slot, scope (Global, Category, Article), creative, and exact Start Date & Time (`startDateTime`) and End Date & Time (`endDateTime`) down to exact minutes. Renders real-time status badges (`Live Now`, `Scheduled`, `Expired`, `Paused`).
+  2. *Backend Decision Brain (`server/server.js`)*: Added `GET /api/ads/active?category=...&articleId=...` evaluating the real server clock against campaign timestamps, scope targeting, and paused status, with automatic waterfall fallback to Google AdSense.
+  3. *Pure Display Frontend (`PartnerUnit.jsx`)*: Displays the backend decision directly with zero date math or complex logic in the client.
+- **Reasoning**: Ensures tamper-proof scheduling, high performance, and total admin control.
+## Decision 32: Formalization and Deferral of Military-Grade Cybersecurity & 3-Tier Hashing Blueprint
+- **Status**: Recorded & Scheduled for Dedicated Cybersecurity Phase (User Approved)
+- **Context**: User commanded: "ok innsaari chije ka 1 list bana ke save kar lo aapan is me or deep me resarch kare ge sare kaam khatam karne ke baad jaab aapan cyber me jaye ge tab ok na". The user requested a complete record of military-grade newsroom security and 3-tier cryptographic hashing, to be deeply researched and implemented during a dedicated cybersecurity phase after finishing primary functional tasks.
+- **Decision & Engineering Record**:
+  1. Documented the full technical architecture in [SECURITY_REQUIREMENTS.md](file:///d:/my%20projects/pintu%20chachu%20news%20web/SECURITY_REQUIREMENTS.md) (Section 6) and [project-planning/PROGRESS.md](file:///d:/my%20projects/pintu%20chachu%20news%20web/project-planning/PROGRESS.md) (Phase A).
+  2. Defined the 3-Tier Hashing Architecture:
+     - **Tier A (Passwords & PINs)**: Memory-hard `scrypt` / `Argon2id` with 32-byte salt (GPU/ASIC-proof).
+     - **Tier B (Article Tamper-Proofing & Sessions)**: Keyed `HMAC-SHA256` digital signatures with server-side master key validation.
+     - **Tier C (Audit Logging & Media)**: Tamper-evident `Hash-Chaining` (mini-blockchain ledger) and binary magic-byte inspection.
+  3. Defined the 6-Layer Newsroom Defense Suite: RFC 6238 TOTP 2FA, Honeypot traps & auto-blacklisting, binary magic-byte inspection, zero-trust RBAC, enterprise HTTP headers, and 1-click Emergency Lockdown / Air-Gap circuit breaker.
+  4. Execution deferred: Active implementation will commence as a focused, single-task cybersecurity phase after current editorial and monetization tasks are finalized.
+- **Reasoning**: Strictly complies with Rule 2, Rule 5, and Rule 10, maintaining deep research documentation while keeping immediate development focused on the current task order.
+
+## Decision 33: Dynamic In-Place Editable & Backend-Persisted Taxonomy Management Engine
+- **Status**: Approved by User & Implemented
+- **Context**: User specifically requested: "1 jaruri charactery jo ho ge vo aditable ho ge na, yane admin jese jese list add kare ha chatagery ke vo bhe ouse hesab se add hote jaye ge ok na" (Categories must be editable, and as the admin adds or updates categories, they must dynamically expand and sync everywhere).
+- **Decision & Engineering Solution**:
+  1. *Backend REST Persistence (`server/server.js` & `server/data/categories.json`)*:
+     - Implemented `GET /api/categories` returning the real server-persisted category array.
+     - Implemented `POST /api/categories` receiving sanitized category arrays and writing to disk (`server/data/categories.json`), with fallback to standard `DEFAULT_CATEGORIES`.
+  2. *In-Place Inline Editing in Categories Desk (`AdminWorkspace.jsx`)*:
+     - Added `<Edit3 />` inline trigger next to each category card.
+     - Clicking triggers an inline input with auto-focus, clean broadsheet styling, keyboard shortcut support (`Enter` to save, `Esc` to cancel), and action buttons (`[ Save]`, `[ Cancel]`).
+     - Validation: duplicate name check, automatic SEO slug normalization (`[^a-z0-9]+ -> '-'`).
+  3. *Safety Guard on Deletion*:
+     - If articles are assigned to a category when deletion is attempted, the system alerts the admin with exact article count before proceeding.
+  4. *Omni-Channel Real-Time Synchronization*:
+     - Updates immediately propagate across:
+       - Top Broadsheet Masthead Category Nav
+       - Mobile Touch Horizontal Category Rail
+       - Monetization Desk: Scope "Specific Category" dropdown with live story count
+       - Monetization Desk: Scope "Single Article" Category division filter pills
+       - Story Editor Modal category select
+- **Reasoning**: Fulfills the user's requirement for a 100% dynamic, editable, and permanent newsroom taxonomy system without relying on client-only storage or external database services.
+
+
+
+## Decision 34: Ad Campaign History & Archive Engine with 1-Click Re-Run & Re-Activation
+- **Status**: Approved by User & Implemented
+- **Context**: User noted: "yaar ads placment ke history nahi hai keya jaha jaha dekha ja sake ke kon kon se ads lagaya ja chuka hai" and "aabhi aapan me ye baat ke the na Ad Campaign History & Archive Engine... list me topic and subtopic dono hone chaaye na tab na kaab badya se ho ga".
+- **Decision & Engineering Solution**:
+  1. *Backend REST Persistence (server/server.js & server/data/ad_history.json)*:
+     - Created server/data/ad_history.json initialized with user's verified historical campaigns.
+     - Implemented GET /api/ads/history returning immutable campaign snapshots sorted newest first.
+     - Implemented POST /api/ads/history/delete with admin token verification allowing deletion of individual historical snapshots or clearing all records.
+  2. *Automatic Campaign Snapshot Capture*:
+     - In POST /api/settings/ads and /api/settings/monetization, whenever the admin saves or updates any of the 6 placement slots with type === 'sponsor', archiveCampaignSnapshot() automatically logs a snapshot with slot position, sponsor name, banner URL, target URL, scope, target article title, start/end dates, and created timestamp.
+     - Includes deduplication to prevent duplicate snapshots if the admin saves multiple times without altering campaign details.
+  3. *Broadsheet Archive Desk Interface (MonetizationDesk.jsx)*:
+     - Introduced top-level subtab navigation: [ 6 Live Placement Slots ] and [ Campaign History & Archive (N) ].
+     - Live metric counters: Total Archived, Live Right Now (emerald), Scheduled Future (blue), Completed / Past (gray).
+     - Filter bar: keyword search across sponsor name, link, and article title; status filter pills (All, Live, Scheduled, Completed); and slot dropdown filter.
+     - Visual banner thumbnail with click-to-lightbox full-screen preview.
+     - Auto-detects 10-digit Indian phone numbers in target URL and badges them as WhatsApp: XXXXXXXXXX.
+  4. *1-Click Re-Run / Clone Modal*:
+     - Clicking "Re-Run / Clone" on any archived campaign opens an elegant modal allowing the administrator to choose a target slot and a duration preset ("Next 24 Hours", "Next 7 Days", "Next 30 Days").
+     - Automatically pre-fills the slot with the archived banner, destination URL, sponsor name, and calculated dates, switching back to the slots view with zero re-upload friction.
+- **Reasoning**: Solves the advertiser record management problem for newsroom operations, allowing editorial staff to easily prove past campaign runs to local clients and re-run recurring sponsorships in seconds.
+
+## Decision 35: In-Place Ad Campaign Editing & Placement Form Auto-Clear Workflow
+- **Status**: Approved by User & Implemented
+- **Context**: User requested: "aab after save jaha aapan ads ko lagate hai ous jagaha ko clear kar dena hai jis se waha oe koi ads lagaya ja sake or jaab aapan history section me ja kar dekhe ye ye ye ads lage hai and kese add par tik kare to 1 edit ka option aana chhaye edir ka jis se aapan ouse edit kar sake aagar ads lagane me koi galti ho gaye to is se ouse sahi keya ja sakta hai".
+- **Decision & Engineering Solution**:
+  1. *Ad Decision Engine Resolves Active Campaigns from History*:
+     - In evaluateActiveAds() (server/server.js), before falling back to static slot configuration, the backend scans ad_history.json for the active campaign matching the current slotKey, timestamp, and scope targeting.
+     - This decouples the live reader display from temporary input state, allowing the placement form to be safely cleared without disrupting active running ads on the website.
+  2. *Placement Form Auto-Clear & Live Slot Notice (MonetizationDesk.jsx)*:
+     - After an administrator launches and saves a sponsor ad, the slot's input fields (sponsorName, sponsorTargetUrl, sponsorBannerUrl, dates) automatically clear to give a clean workspace ready for the next ad placement.
+     - Added a dedicated [  Clear Form / New Ad ] button on each slot card for manual reset.
+     - Added an informative green status notice banner on any slot where a campaign is actively live, displaying the sponsor name, active schedule, and a direct [  Edit Live Ad ] shortcut.
+  3. *In-Place Campaign Editing (POST /api/ads/history/update & Edit Modal)*:
+     - Built POST /api/ads/history/update supporting comprehensive edits to sponsor name, target URL / WhatsApp phone, placement slot, start/end date-times, targeting scope, and poster banner image.
+     - Added a prominent [  Edit Ad ] button on every campaign card in Active Campaigns Desk.
+     - Integrated a full-featured Edit Campaign Modal allowing instant correction of typos, wrong links, or adjusted dates with zero friction.
+- **Reasoning**: Prevents cluttered stale form inputs and gives the publisher complete confidence that any operational mistake or client change can be corrected immediately without recreating campaigns from scratch.
+
+## Decision 36: In-House Direct Sponsor Impression & Click Analytics Engine with Anti-Cheat IP Deduplication
+- **Status**: Approved by User & Implemented
+- **Context**: Local advertisers require verified proof of impressions and direct clicks to justify ad spending on the regional news platform. Without an in-house analytics engine, publishers must either rely on heavy third-party SaaS trackers (violating zero-cost, privacy, and zero-bloat principles) or cannot provide proof to advertisers.
+- **Decision & Engineering Solution**:
+  1. *Unified Lightweight Storage in `server/data/ad_history.json`*:
+     - Rather than creating a detached secondary analytics table or SQLite database, stored `impressions: Number`, `clicks: Number`, `lastImpressionAt`, and `lastClickAt` directly on each campaign object.
+     - Guarantees zero disk bloat: when a campaign expires and is purged by the Zero-Waste storage engine, its analytics records are deleted in lockstep.
+  2. *Server-Side Tracking Gateway with Anti-Cheat Sliding Windows (`server/server.js`)*:
+     - Implemented endpoints `POST /api/ads/track/impression` and `POST /api/ads/track/click`.
+     - In-memory IP tracking cache (`adImpressionTracker` and `adClickTracker`) with sliding TTL cooldown windows:
+       - Impressions: 30 minutes cooldown per IP per campaign (prevents page reload inflation).
+       - Clicks: 5 minutes cooldown per IP per campaign (prevents click spamming).
+  3. *Client-Side Visibility & Click Telemetry (`src/components/common/PartnerUnit.jsx`)*:
+     - Built an `IntersectionObserver` that only fires an impression when at least 50% of the ad banner remains visible in the reader's viewport for >500ms (ensuring real human attention, not off-screen pre-rendering).
+     - Click tracking employs `navigator.sendBeacon` with fallback to `fetch(..., { keepalive: true })`, guaranteeing reliable click registration even during navigation or external WhatsApp redirection.
+  4. *Admin Real-Time KPI Suite & Client Proof Modal (`src/components/admin/MonetizationDesk.jsx`)*:
+     - 6 top-level KPI summary cards: Total Campaigns, Live Now, Scheduled Future, Total Views, Total Clicks, Overall CTR %.
+     - Live badges on every active campaign row showing Views, Clicks, and calculated CTR %.
+     - Interactive **"Client Proof Summary Modal"**: Displays an official verified shield badge, banner preview, large visual KPI cards, schedule details, and a 1-click **" Copy WhatsApp Client Proof"** button (formatted for WhatsApp) plus direct **" WhatsApp Sponsor"** action link if the target is a phone number.
+- **Reasoning**: Delivers complete transparency and professional advertiser reporting with zero external costs, zero dependencies, and zero persistent storage bloat.
+
+## Decision 37: Article Revision History, Snapshot Engine & 1-Click Rollback Desk
+- **Status**: Approved by User & Implemented
+- **Context**: In real newsroom operations, articles undergo breaking updates, factual corrections, and editorial revisions. If an accidental deletion or faulty edit occurs, editors need an audit trail to inspect past states and restore previous copies in 1 click.
+- **Decision & Engineering Solution**:
+  1. *Backend Revisions Engine (`server/server.js` & `server/data/article_revisions.json`)*:
+     - Built persistent storage in `server/data/article_revisions.json` storing `{ [articleId]: [ RevisionObject, ... ] }`.
+     - Automatically creates an initial baseline snapshot when an existing story is edited for the first time.
+     - Automatically records a new snapshot on every `POST /api/articles/update`, capturing title, subtitle, summary, body content, category, author info, status, word count, character count, and change note.
+     - Strictly enforces Zero-Waste Capping (keeps the last 30 revisions per article to permanently prevent unbounded disk growth).
+  2. *Revision Endpoints with Editorial RBAC Gate*:
+     - `GET /api/articles/:id/revisions`: Returns chronological history sorted newest-first.
+     - `POST /api/articles/:id/rollback`: Validates role and rollback target. Restores article fields in `articles.json` and creates a new audit trail entry noting "Rolled back to revision from [timestamp]".
+     - Strictly enforces Editorial RBAC: Reporters are locked to view-only; rollback execution is restricted to Editors and Administrators (returns 403 Forbidden for reporters).
+  3. *Broadsheet Revision Desk UI (`ArticleRevisionModal.jsx` & `AdminWorkspace.jsx`)*:
+     - Split desktop layout with timeline rail on left (showing version badges `v1`, `v2`, editor name, change note, and timestamp) and snapshot inspector on right.
+     - Snapshot inspector displays headline, standfirst, status pill, word count delta vs live version, and full body copy.
+     - 1-Click Rollback button with confirmation dialog and instant UI state synchronization without page reload.
+     - Integrated `[ Revisions ]` shortcuts directly into article management rows and inside `StoryEditorModal`.
+- **Reasoning**: Gives the newsroom enterprise-grade revision safety and accountability with zero third-party dependencies, zero emojis, and complete editorial integrity.
+
+## Decision 38: 100% Zero-Credit-Card, Zero-Cost Sovereign Cloud & Storage Architecture
+- **Status**: Approved by User & Booked for Production Deployment
+- **Context**: The project owner has no international credit card. Many cloud providers (Cloudflare R2, AWS S3, Google Cloud Storage) mandate an active credit card during signup even on free tiers. The newsroom requires a production infrastructure that is 100% free forever, never sleeps (no cold starts), incurs zero card requirements, and handles unlimited news stories, photos, translations, and audio.
+- **Decision & Engineering Solution**:
+  1. *Hosting & Edge Computing (Cloudflare Pages + Workers)*:
+     - 100% Free, Zero Credit Card required (standard email signup).
+     - Global edge network (including local servers in Delhi, Mumbai, Chennai, Kolkata).
+     - 100,000 requests/day free tier with zero cold starts (instant 0.05s response times).
+  2. *Database for Articles, Revisions & Translations (Cloudflare D1 SQL)*:
+     - 100% Free, Zero Credit Card required.
+     - 5 GB dedicated serverless SQL database co-located with Cloudflare Workers.
+     - 5 GB capacity stores over 2,00,000 articles, all 18-language translation caches, comments, and full revision histories.
+  3. *Media & Photo Storage (ImgBB API / Cloudinary Free Tier)*:
+     - 100% Free, Zero Credit Card required.
+     - Mandatory client-side WebP auto-compression (< 100 KB target) in `mediaService.js` before network upload.
+     - ImgBB provides unlimited photo storage; Cloudinary provides 25 monthly credits (~15-25 GB) without ever requiring card information.
+  4. *Audio Storytelling Cache (Dual Safeguards)*:
+     - Pure JavaScript 32kbps mono MP3 compression (< 400 KB per story).
+     - 14-day rolling automated cleanup (`cleanupExpiredAudioFiles`) capping audio storage permanently under 60-80 MB.
+- **Reasoning**: Completely eliminates credit card dependencies, prevents recurring infrastructure bills, and guarantees world-class performance and high-volume scalability for the regional news platform.
+
+## Decision 39: Centralized Digital Asset & Photo Media Library Desk (Task 22 Subtopic A)
+- **Status**: Implemented & Verified
+- **Context**: In institutional journalism, newsrooms upload hundreds of photo assets over time. Without a centralized media desk, reporters re-upload the same images repeatedly, bloating server storage and losing track of image origins. Furthermore, editors need visibility into which stories are currently using a specific image, and a safety guard to prevent accidental deletion of images active in published stories.
+- **Decision & Engineering Solution**:
+  1. *Backend Media Asset Indexer (`server/server.js` & `server/data/media_library.json`)*:
+     - Implemented `syncAndIndexMediaAssets()` scanning `server/data/uploads/` for image extensions (`.webp`, `.jpg`, `.jpeg`, `.png`, `.gif`, `.svg`, `.avif`) while strictly excluding audio files (`audio_*.mp3`, `audio_*.wav`).
+     - Persistent registry in `server/data/media_library.json` preserving custom editorial captions, credits, and alt text across disk rescans.
+     - Live usage cross-referencing: Maps each image against `articles.json` (`featured_image`, `content`) and `ad_history.json` to calculate `usedInArticles`, `usedInAds`, and `isUsed: Boolean`.
+  2. *REST Endpoints*:
+     - `GET /api/media`: Returns indexed assets with live summary statistics (`totalCount`, `usedCount`, `unusedCount`, `totalSizeMb`), supporting search query (`q`), filter (`all`, `used`, `unused`), and sort (`newest`, `oldest`, `size_desc`, `size_asc`).
+     - `POST /api/upload/image`: Auto-indexes new WebP uploads and associates editorial metadata immediately.
+     - `POST /api/media/delete`: Enforces Active Article Safety Guard (returns 409 Conflict if image is used in live stories unless `force: true`) and Editorial RBAC (reporters blocked with 403 Forbidden).
+     - `POST /api/media/update`: In-place updates for photo caption, photographer credit, and alt-text.
+  3. *Broadsheet Media Library UI (`MediaLibraryDesk.jsx` & `AdminWorkspace.jsx`)*:
+     - Clean broadsheet desk layout with 4 metrics KPI cards (Total Assets, In-Use in Stories, Unused Assets, Storage Consumed vs 5,000 MB Cloudflare free tier).
+     - Upload button with client-side WebP compression (< 200 KB).
+     - Responsive grid of media cards with size badges, usage status pills, 1-click URL copy with visual feedback, and Lightbox Inspector modal.
+     - Lightbox Inspector displays full image, dimensions, file size, editable caption/credit fields, and clickable list of all linked news stories.
+- **Reasoning**: Delivers institutional media asset governance, eliminates duplicate storage bloat, protects against broken live images, and provides seamless photo access for editorial staff.
+
+## Decision 40: Multi-Field Search, Agency Credit Management & Multi-Tier Editorial RBAC (Task 22 Subtopic B)
+- **Status**: Implemented & Verified
+- **Context**: In real-world journalism, images must carry proper attribution (news agency sources like PTI, Reuters, ANI, PIB) and captions for ethical reporting and copyright safety. Furthermore, editors need to quickly discover photos through deep keyword search (matching captions, credits, and linked story categories), spot uncredited images, and have clear role-based access control where reporters write drafts, editors manage metadata, and administrators retain emergency override powers.
+- **Decision & Engineering Solution**:
+  1. *Multi-Field Search & Advanced Filters*:
+     - Enhanced `GET /api/media` search engine (`q`) to perform case-insensitive matching across `fileName`, `caption`, `credit`, `altText`, and linked articles (`title` and `category`).
+     - Added specialized filter pills: `All Photos`, `In-Use`, `Unused`, `Missing Credit` (flags images lacking source attribution), and `With Caption`.
+     - Added sorting presets: `Newest`, `Oldest`, `Largest Size`, `Smallest Size`, `Name (A-Z)`, `Name (Z-A)`.
+  2. *Attribution & Caption Management Suite*:
+     - Integrated 8 institutional news agency presets (`PTI`, `Reuters`, `ANI`, `PIB`, `Staff Photographer`, `AFP`, `AP`, `Press Release`) for 1-click credit filling.
+     - Created dedicated Upload Photo Modal allowing staff to input Caption, Agency Credit, and Alt-Text with live WebP compression preview.
+     - Added amber `Missing Credit` warning badge on asset cards to alert editors to attribution gaps.
+  3. *Multi-Tier Editorial RBAC*:
+     - *Reporter*: Can browse, search, upload new photos with initial caption/credit, and insert into stories. Blocked with 403 Forbidden on editing existing metadata or deleting assets.
+     - *Editor*: Can edit and save Caption, Credit, and Alt-Text for any photo. Can delete unused assets. Blocked with 403 Forbidden from force-deleting assets in active stories.
+     - *Admin*: Retains supreme system authority: can edit all metadata, delete unused assets, and execute **Force Deletion** on in-use assets with confirmation override.
+  4. *Storage Analytics*:
+     - Real-time KPI counters tracking average image size (`avgSizeKb`), captioned photos, missing credit count, and storage consumed as a percentage of the 5,000 MB Cloudflare free tier.
+- **Reasoning**: Enforces strict journalistic accountability, copyright attribution safety, and precise role-based boundaries with zero external subscriptions.
+
+## Decision 41: 1-Click "Insert into Story" Media Picker Modal for Story Editor and Field Reporter Workspace (Task 22 Subtopic C)
+- **Status**: Implemented & Verified
+- **Context**: Previously, whenever editors in `StoryEditorModal` or field reporters in `ReporterWorkspace` wrote an article, they had to either upload a fresh file or manually type image URLs and credit info. This caused duplicate file uploads, wasted storage, and friction in selecting existing archived or agency photos.
+- **Decision & Engineering Solution**:
+  1. *Reusable Media Library Picker Mode*: Added `onSelectAssetForStory` callback support to `MediaLibraryDesk.jsx`. In picker mode, asset cards surface a prominent `[ Insert into Story / स्टोरी में जोड़ें ]` action button.
+  2. *StoryEditorModal Integration (Admin & Executive Editors)*: Added `[ Choose from Media Library ]` trigger alongside the cover image input. Opening the picker displays the full Media Library desk in an overlay modal dialog. Selecting an asset auto-populates `featured_image` (with exact URL without re-uploading), `image_caption`, and `media_credits`.
+  3. *ReporterWorkspace Integration (Field Reporters)*: Added `[ मीडिया लाइब्रेरी से चुनें ]` button with folder icon and a modal overlay in the reporter's Featured Image section. Selecting an asset updates `imagePreview`, `imageCaption`, and `mediaCredits`, automatically preserving the values in the local draft and submitting them with the article to the editor desk. Added 1-click photo removal button (`[X]`).
+  4. *Zero Duplicate Storage*: Uses the exact indexed WebP URL (`/api/uploads/...`) directly. Zero redundant file uploads to disk, preserving server disk space and bandwidth.
+- **Reasoning**: Streamlines editorial workflow, eliminates redundant uploads, prevents duplicate storage bloat, and allows staff to reuse high-quality accredited photos with one click.
+
+## Decision 42: Live Blog Presentation Mode & Real-Time Coverage Status Engine (Task 23 Subtopic A)
+- **Status**: Implemented & Verified
+- **Context**: High-stakes breaking events (Election counts, budget speeches, cricket finals, natural disasters) require a distinct minute-by-minute presentation format rather than static single-article reporting. Newsroom staff must be able to flag an article as a Live Blog, toggle its coverage status between active and concluded, and have this recognized across editorial curation desks, reader views, and homepage feeds.
+- **Decision & Engineering Solution**:
+  1. *Schema Specification*:
+     - `format`: Extended from binary (`standard` / `video`) to three distinct presentation modes: `'standard'` | `'live'` | `'video'`.
+     - `live_status`: `'active'` (Event updates currently ongoing) | `'concluded'` (Live coverage concluded; timeline archived).
+     - `live_updates`: Array initialized to store micro-updates.
+  2. *Editorial Switcher in Workspaces*:
+     - `StoryEditorModal` (Admin) & `ReporterWorkspace` (Field Reporters) now feature high-contrast sovereign format selector pills (`Standard Article`, `Live Blog (Timeline Mode)`, `Video Story`).
+     - Selecting `Live Blog` surfaces real-time coverage status toggle buttons (`Live Active` vs `Coverage Concluded`).
+  3. *REST Endpoint & Editorial RBAC*:
+     - Created `POST /api/articles/:id/live-status` with body `{ live_status: 'active' | 'concluded', userRole }`.
+     - Enforced strict Editorial RBAC: Field reporters attempting to toggle live status are blocked with HTTP 403 Forbidden. Only Editors and Administrators have authority to flip coverage status.
+  4. *Visual Recognition & Curation Desk*:
+     - Admin Stories List: Features a dedicated filter pill `Live Blogs ({count})`, visual status badge on story rows, and a 1-click `[ Conclude Live / Reactivate Live ]` action button.
+     - Homepage & Feeds (`App.jsx`): Hero cards and secondary grid cards display high-contrast `LIVE BLOG` / `LIVE CONCLUDED` badges.
+     - Reader Header (`ArticleReader.jsx`): Renders a prominent `LIVE BLOG` (active crimson badge) or `COVERAGE CONCLUDED` (neutral broadsheet archive badge).
+- **Reasoning**: Establishes the foundational presentation layer for institutional live blogging, cleanly separating static articles from dynamic event streams without breaking existing article schemas or SSR pre-rendering.
+
+
+
+
+
+
+## Decision 43: Reporter Desk Minimalist Language Selection Dropdown
+- **Status**: Implemented & Verified
+- **Context**: On mobile viewports in the Field Reporter Desk (`/reporter`), language selection previously rendered 12 bulky individual grid buttons. This created over 500px of vertical clutter, forcing mobile reporters to scroll extensively before reaching headline and article drafting fields, violating broadsheet minimalism.
+- **Decision & Engineering Solution**:
+  1. Replaced the 12-button grid in `src/components/reporter/ReporterWorkspace.jsx` with a single-line, accessible `<select>` dropdown box.
+  2. Maintained the informative selected status badge (`चयनित भाषा: ...`) and mandatory field-unlock logic upon selection.
+  3. Styled with authentic newsroom typography: 1.5px border, high contrast, matching `AdminWorkspace.jsx`.
+  4. Verified with `npm run build` (541ms, exit code 0), `npm run lint` (0 errors), and zero-emoji compliance.
+- **Reasoning**: Drastically reduces mobile viewport friction, eliminates unnecessary scrolling, and aligns the Reporter Desk with newsroom minimalism design standards.
+
+## Decision 44: Live Blog Real-Time Micro-Update Editor & Public Reader Timeline Polling Engine (Task 23 Subtopic B)
+- **Status**: Implemented & Verified
+- **Context**: For live coverage (e.g. general election vote counting, budget speeches, major breaking news), editorial staff cannot rewrite and re-publish the entire article every 2 minutes. Readers need to view a chronological, minute-by-minute timeline with key event highlights that automatically synchronizes in the background with zero page reload.
+- **Decision & Engineering Solution**:
+  1. *Backend Endpoints (`server/server.js`)*:
+     - `GET /api/articles/:id/live-updates`: Fast, lightweight endpoint returning `{ format, live_status, live_updates: [...] }` without serving heavy rendered HTML bodies.
+     - `POST /api/articles/:id/live-updates`: Posts a new timestamped micro-update (`headline`, `body`, `is_key_event`, `media_url`, `author`, `timestamp`), automatically prepending to the article's `live_updates` array in `server/data/articles.json`.
+     - `DELETE /api/articles/:id/live-updates/:updateId`: Removes an individual update safely.
+  2. *Admin Micro-Updates Desk (`LiveUpdatesModal.jsx` & `AdminWorkspace.jsx`)*:
+     - Added `[ Live Updates ({count}) ]` action button in the Stories Table for any live-format article.
+     - Built dedicated modal with quick input form (timestamp marker, headline, body bullet, key highlight toggle, and media library photo picker).
+     - Provides instant list of all posted updates with filter (`All` vs `Highlights`) and in-place deletion.
+  3. *Public Reader Live Timeline (`ArticleReader.jsx`)*:
+     - Completely eliminated placeholder `MOCK_LIVE_UPDATES`.
+     - Rendered dynamic broadsheet timeline with crimson timestamp badges, key highlight flags, attached media thumbnails, and author bylines.
+     - Integrated dual-layer sync: 25-second background auto-polling while `live_status === 'active'` (halting automatically when `concluded`) plus a manual `[ Check for Updates ]` button.
+     - Added filter tabs: `All Updates ({count})` vs `Key Highlights ({count})`.
+  4. *Universal Responsive Design Compliance (Rule 4)*:
+     - Zero horizontal overflow at 360px viewport width.
+     - 44x44px primary action button touch target.
+     - 32x32px dense action button touch targets with 8px spacing.
+     - Base form inputs styled with 16px font size to prevent mobile browser force-zoom.
+- **Reasoning**: Delivers institutional live blogging capabilities natively with zero third-party subscriptions, zero WebSockets/socket overhead, zero emojis, and complete data persistence.
+
+## Decision 45: Reporter Desk Editorial Rejection Handling, Feedback Display, In-Place Editing & Resubmission Engine
+- **Status**: Implemented & Verified
+- **Context**: When a field reporter submitted a story to the Editor Desk and an editor rejected it or requested revisions, two major defects occurred:
+  1. The story became permanently frozen in the reporter's desk showing a misleading yellow badge ("Pending Editor Review") because the reporter workspace defaulted all non-published articles to pending and was disconnected from editor rejection state.
+  2. The reporter had no mechanism to view the editor's rejection reasons, no edit button to open their submitted story in the drafting form, and no way to update and resubmit the revised story back to the editorial review queue.
+- **Decision & Engineering Solution**:
+  1. *App-Level Rejection & Revision State Management (`src/App.jsx`)*:
+     - Implemented `rejectedArticles` state with localStorage persistence (`ps_rejected_articles_v1`).
+     - Enhanced `handleRejectArticle(articleId, reasonNote)` to move the article from `pendingArticles` to `rejectedArticles` with a structured `rejection_reason` note and timestamp.
+     - Added `handleResubmitArticle(updatedStory)` which extracts the story from `rejectedArticles`, clears the rejection flag, and re-inserts it into `pendingArticles` for editorial review.
+     - Passed `rejectedArticles`, `pendingArticles`, `publishedArticles`, and `onResubmitArticle` into `<ReporterWorkspace />`.
+  2. *Editor Desk Rejection Modal & Quick Presets (`src/components/editor/EditorWorkspace.jsx`)*:
+     - Upgraded the "Request Changes / Reject" action to open a dedicated modal with an editorial feedback note input.
+     - Provided 4 quick institutional editorial presets: *Fact Verification Required*, *Headline Revision Required*, *Missing Official Quotes / Statements*, and *Formatting & Proofreading Required*.
+  3. *Reporter Desk In-Place Editing & Synchronization (`src/components/reporter/ReporterWorkspace.jsx`)*:
+     - Added `useEffect` hook to continuously synchronize `myStories` with `rejectedArticles`, `pendingArticles`, and `publishedArticles`.
+     - Added high-contrast crimson badge (`Changes Requested (Rejected)`) with the editor's specific revision instructions rendered directly underneath the story headline in the "मेरी रिपोर्ट्स (My Submissions)" table.
+     - Added an `Actions` column with a prominent `[ सुधारें व पुनः भेजें (Edit & Resubmit) ]` button (`handleEditStory(story)`).
+     - Clicking Edit populates all article fields (language, headline, body, category, tags, cover image, caption, credits, video URL, highlights) back into the form and switches to the editing tab.
+     - Displays a prominent top alert banner in the drafting form showing the editor's revision instructions with a `[ Cancel Editing ]` option.
+     - Transformed the submission button into `"Update & Resubmit to Editor (संशोधित समाचार पुनः भेजें)"`. Resubmission updates the story in-place, clears rejection status, sends the revised payload back to `pendingArticles` for editorial review, and updates reporter submissions.
+  4. *Zero-Emoji & Rule 4 Universal Responsive Design Compliance*:
+     - Zero emojis across code, UI labels, and terminal outputs.
+     - Minimum 44x44px primary touch target, minimum 32x32px dense action button touch targets, 16px body font to prevent mobile auto-zoom, and zero horizontal overflow at 360px viewport width.
+- **Reasoning**: Closes the fundamental journalistic editorial feedback loop between field reporters and editors, eliminating workflow dead-ends and empowering reporters to iteratively polish and resubmit reporting until published.
+
+## Decision 46: WhatsApp Smart Formatted Share Card & Viral Broadsheet News Bulletin Engine (Task 24)
+- **Status**: Implemented & Verified
+- **Context**: Standard web shares send a raw, unformatted link with only a page title. In real-world Indian digital news consumption, WhatsApp groups and status updates drive over 70% of viral reader traffic. Readers and community journalists require a rich, structured news bulletin formatted in native WhatsApp markdown (bold headlines, key bullet points, dateline, and clean link) that can be sent or copied with 1 click.
+- **Decision & Engineering Solution**:
+  1. *Share Service (`src/services/shareService.js`)*:
+     - `buildWhatsAppShareText(article, currentLang)`: Builds a structured, viral bulletin featuring:
+       - Brand Header (`*PUBLICSPARK NEWS BULLETIN*` / `*BREAKING NEWS | PUBLICSPARK*` / `*LIVE BLOG UPDATES*`).
+       - Bold Headline (`*Headline*`).
+       - Key Highlights: Automatically extracts the top 3 bullet points (`• Point 1\n• Point 2\n• Point 3`) from `article.highlights`, with intelligent fallback to standfirst/summary sentences or clean lead paragraphs.
+       - Localized Call-to-Action (`पूरी खबर और लाइव अपडेट्स यहाँ पढ़ें:`).
+       - Canonical article link (`/article/:slug`).
+     - `getWhatsAppShareUrl(article, currentLang)`: Returns a cross-platform WhatsApp deep link (`https://api.whatsapp.com/send?text=...`) compatible with WhatsApp Android/iOS apps and WhatsApp Web on desktop.
+     - `copyFormattedShareCard(article, currentLang)`: Robust clipboard copy with fallback for older browsers and insecure contexts.
+  2. *Reader Top & Bottom 1-Tap WhatsApp Actions (`ArticleReader.jsx`)*:
+     - Added a dedicated high-contrast emerald green 1-tap WhatsApp button in the Top Reader Action Bar (beside the generic share button).
+     - Added a prominent WhatsApp action button in the Bottom Social Actions Bar.
+  3. *Share Modal Smart Card Preview & 1-Click Copy (`ArticleReader.jsx`)*:
+     - Integrated a dedicated "WhatsApp Smart News Bulletin" card preview inside the Share Modal displaying the live formatted text.
+     - Provided a 1-tap `[ WhatsApp पर भेजें (Send Card) ]` button and a `[ पूरा कार्ड कॉपी करें (Copy Card) ]` button with real-time visual feedback ("कार्ड कॉपी हो गया!").
+     - Updated the social share grid WhatsApp icon to also dispatch the smart bulletin.
+  4. *Homepage Story Cards Direct Share Triggers (`App.jsx`)*:
+     - Integrated 1-click WhatsApp share buttons directly on the Hero Article card and Secondary Grid cards so readers can broadcast breaking news to WhatsApp groups straight from the feed.
+  5. *Zero-Emoji & Rule 4 Universal Responsive Design Compliance*:
+     - Zero emojis across all code, UI labels, and terminal outputs (using clean SVG `WhatsAppIcon`).
+     - Minimum 44x44px primary action button touch target and 32x32px dense action button touch targets.
+- **Reasoning**: Creates a powerful viral growth loop, turning every published article into an instantly shareable, professional news bulletin for WhatsApp groups, channels, and statuses.
+
+## Decision 47: Editorial Fact-Check Dossier & Sovereign Source Citations Architecture (Task 25)
+- **Status**: Implemented & Verified
+- **Context**: In digital news, misinformation and lack of source transparency degrade public trust. Standard CMS platforms treat stories as unverified text blocks without institutional audit trails or primary source citations. Task 25 requires:
+  1. *Subtopic A*: An editorial verification badge inside investigative stories indicating verification rating and verifying desk (PIB, PTI, ANI, Court Records, Editorial Desk).
+  2. *Subtopic B*: An official source and government gazette citations box linking primary gazettes, court orders, press releases, and notifications.
+- **Decision & Engineering Solution**:
+  1. *Structured Fact-Check & Sources Data Model*:
+     - `fact_check`: `{ verified: boolean, rating: 'Verified' | 'Official Statement' | 'Government Gazette' | 'Ground Report' | 'Under Review', desk: string, claim?: string, verified_at?: string, methodology?: string }`
+     - `sources`: `Array<{ id: string, title: string, url: string, type: 'Government Gazette' | 'Official Press Release' | 'Judicial Order' | 'News Agency Dispatch' | 'Official Notification' | 'Institutional Report', publisher?: string, accessed_at?: string, document_ref?: string }>`
+  2. *Interactive Credibility Badge & Verification Dossier Modal (`ArticleReader.jsx`)*:
+     - Replaced static badge with an interactive broadsheet Credibility Shield (`FACT-CHECK: {rating} ({desk})`).
+     - Clicking opens `FactCheckDossierModal`: displays verification status, verifying desk, timestamp, claim findings, and IFCN / Press Council of India standards methodology statement with smooth-scroll button to citations.
+  3. *Official Sources & Government Gazette Citations Box (`ArticleReader.jsx`)*:
+     - Rendered directly below article content/live blog and above reader reaction footer (`<section className="story-sources-box">`).
+     - Broadsheet newsprint layout with verified source count pill, citation cards, classification tags (Government Gazette in amber, Judicial Order in purple, Official Press Release in blue), publisher, document ref, and secure external link button (`target="_blank" rel="noopener noreferrer"`).
+     - Category-based intelligent institutional fallback ensuring unannotated or legacy stories display verified default institutional citations (PIB, Gazette of India, ISRO Mission Bulletin, RBI).
+  4. *Newsroom Admin & Story Editor Controls (`AdminWorkspace.jsx`)*:
+     - Integrated Fact-Check Verification Status dropdown, Verifying Desk input, and Claim Summary input.
+     - Built Primary Sources builder with 1-click presets (`+ PIB Release`, `+ Gazette of India`, `+ PTI Wire`, `+ Judicial Order`, `+ Govt Notification`), title/URL/type inputs, and in-place delete.
+  5. *Field Reporter Desk Integration (`ReporterWorkspace.jsx`)*:
+     - Added optional sources section with 1-click presets enabling field reporters to cite official police notes, gazette orders, and wire dispatches when filing ground stories.
+  6. *Editor Review Desk Certification (`EditorWorkspace.jsx` & `App.jsx`)*:
+     - In the review modal, editors inspect reporter's attached sources and certify the verification rating and bureau before publishing.
+  7. *Rule 4 & Mistake 46 Compliance*:
+     - Zero emojis across all code, UI labels, logs, and docs.
+     - Universal Responsive Design: zero horizontal overflow at 360px width, min 44x44px primary touch target, min 32x32px dense touch target.
+- **Reasoning**: Establishes sovereign journalistic integrity and institutional credibility, distinguishing the newsroom from unverified social media blogs and content farms.
+
+## Decision 48: Category-Matched Smart Recommendation Engine (Task 26 Subtopic A)
+- **Status**: Implemented & Verified
+- **Context**: Retaining reader attention in a digital newspaper requires showing highly relevant companion stories ("Ye Bhi Padhein"). Random or unranked links cause bounce rates to spike. A multi-factor relevance ranking algorithm is needed to evaluate category match, tag overlap, live blog/breaking status, and reader popularity.
+- **Decision & Engineering Solution**:
+  1. *Recommendation Service (`src/services/recommendationService.js`)*:
+     - `calculateArticleRelevanceScore(candidate, currentArticle)`:
+       - Self-exclusion (`candidate.id === currentArticle.id` returns `-Infinity`).
+       - Status check (only `status === 'published'` is eligible; drafts return `-Infinity`).
+       - Primary Category Match: `+50` points.
+       - Shared Tag Match: `+15` points per matching tag.
+       - Title Keyword Lexical Overlap: `+5` points per word (ignoring stop words, max `+25` pts).
+       - Timely Format Boost: `+10` points for active live blogs, `+8` points for breaking news.
+       - Readership Engagement: Log-scaled view boost (`Math.min(10, log10(views) * 2.5)`).
+     - `getRelatedStories(currentArticle, allArticles, options = { limit: 4, excludeIds: [] })`: Returns scored and sorted candidate articles with automatic fallback backfill from published catalog to always fulfill requested limit.
+     - `getMidArticleStory(currentArticle, allArticles, excludeIds = [])`: Selects 1 top companion story for mid-article insertion.
+     - `getEndArticleStories(currentArticle, allArticles, limit = 3, excludeIds = [])`: Selects companion stories for the end of the article, excluding mid-article story to guarantee zero card duplication on the same page.
+  2. *Verification & Standards*:
+     - Verified via 13 automated tests (`scratch/test_task_26_subtopic_a.mjs`).
+     - Production build verified (`npm run build` in 645ms, exit code 0).
+     - Linter check passed with 0 errors.
+     - Zero emojis across code and logs.
+- **Reasoning**: Provides a robust, deterministic, client-side recommendation engine that powers in-article reading discovery without heavy ML dependencies or external tracking scripts.
+
+## Decision 49: Broadsheet Mid-Article Callout & End-of-Article Related Stories (Task 26 Subtopic B)
+- **Status**: Implemented & Verified
+- **Context**: In digital broadsheets, related story cards must look editorial, unobtrusive, and clearly distinguished from sponsor ads, while delivering effortless 1-tap navigation without full-page reloads.
+- **Decision & Engineering Solution**:
+  1. *Mid-Article Callout ("ये भी पढ़ें (Also Read)")*:
+     - Injected into `src/utils/markdownRenderer.jsx` after Paragraph 4 (or at the end if the story has 2-3 paragraphs).
+     - Styled as an editorial broadsheet block with a 4px crimson accent bar (`border-left: 4px solid var(--accent-crimson)`), category tag, serif headline, and thumbnail/icon.
+     - On tap, calls `onSelectArticle(story)` and smoothly scrolls to top (`window.scrollTo({ top: 0, behavior: 'smooth' })`).
+  2. *End-of-Article Related Stories Grid ("संबंधित ख़बरें (Related Stories)")*:
+     - Positioned directly below the Official Sources & Gazette Citations Box and above the reader action bar in `ArticleReader.jsx`.
+     - Displays up to 3 non-duplicate companion stories in a responsive auto-fit grid (`repeat(auto-fit, minmax(240px, 1fr))`) that stacks seamlessly to 1 column on mobile screens (360px–480px).
+     - Each card features a lazy-loaded cover thumbnail, category pill, serif headline clamped to 2 lines, reading time badge, and a `पढ़ें ->` action button.
+  3. *Universal Responsive Design & Micro-Interactions*:
+     - Added desktop hover interactions wrapped in `@media (hover: hover) and (pointer: fine)` in `src/index.css` to prevent sticky hover states on touch screens.
+     - Enforced `box-sizing: border-box` and `min-width: 0` on all cards and containers to guarantee zero horizontal overflow at 360px width.
+     - All interactive touch targets are >= 44x44px.
+  4. *Zero Emojis & Rigorous Verification*:
+     - Zero emojis across all code, UI labels, logs, and docs (Mistake 46 compliance).
+     - Verified via 6 automated unit tests (`scratch/test_task_26_subtopic_b.mjs`), `npm run build` (628ms), and `npm run lint` (0 errors).
+- **Reasoning**: Creates a frictionless circular reading loop that increases average reader session duration and page views per visit while upholding broadsheet design elegance.
+
+## Decision 50: Sovereign Hairline Reading Progress Bar with Mobile Header Offset (Task 27 Subtopic A)
+- **Status**: Implemented & Verified
+- **Context**: Long-form broadsheet readers require instant, subtle visual feedback on their reading depth without distracting neon glow effects or UI stuttering during scrolling. The progress bar must also integrate with both desktop sticky mastheads and the 52px fixed mobile app bar.
+- **Decision & Engineering Solution**:
+  1. *ARIA Semantic Progressbar & Track Container*:
+     - In `ArticleReader.jsx`, implemented a hairline track (`.article-reading-progress-track`) with `role="progressbar"`, `aria-valuenow={scrollProgress}`, `aria-valuemin="0"`, `aria-valuemax="100"`, and `aria-label="Article reading progress"`.
+     - Inner hairline bar (`.article-reading-progress-bar`) dynamically reflects `${scrollProgress}%` with `var(--accent-crimson)` (PublicSpark signal red).
+  2. *60fps requestAnimationFrame Scroll Engine*:
+     - Replaced raw scroll event state setters with `window.requestAnimationFrame` and `lastPct` deduplication to prevent unnecessary React re-renders.
+     - Added immediate execution on mount (`handleScroll()`) so reloads or deep links immediately show correct reading progress.
+  3. *Mobile 52px Header Pinning & Universal Responsiveness*:
+     - On desktop, the track is pinned at `top: 0` with `z-index: 10005`.
+     - On mobile (`max-width: 768px`), configured `top: 52px` so the progress indicator cleanly runs directly beneath the 52px sovereign mobile app bar, avoiding any status bar or header button overlap.
+  4. *Zero Emojis & Verification*:
+     - Zero emojis across all code and CSS (Mistake 46 compliance).
+     - Verified via 4 automated unit tests (`scratch/test_task_27_subtopic_a.mjs`), `npm run build` (702ms, exit code 0), and `npm run lint` (0 errors).
+- **Reasoning**: Provides a crisp, high-performance broadsheet reading feedback line that elevates reader immersion across all device form factors.

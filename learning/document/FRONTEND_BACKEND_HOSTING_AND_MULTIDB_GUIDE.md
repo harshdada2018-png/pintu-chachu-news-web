@@ -1,4 +1,4 @@
-# 🚀 PublicSpark — Full-Stack Deployment, Code Separation & Multi-DB Architecture Guide
+#  PublicSpark — Full-Stack Deployment, Code Separation & Multi-DB Architecture Guide
 
 **Project:** PublicSpark Digital Newsroom Platform  
 **Target Environment:** Production Hosting (Vercel/Netlify for Frontend, Render/Railway/VPS for Backend)  
@@ -7,7 +7,7 @@
 
 ---
 
-## 📑 Table of Contents
+##  Table of Contents
 1. [Executive Summary](#1-executive-summary)
 2. [Frontend vs. Backend Code Separation](#2-frontend-vs-backend-code-separation)
 3. [Frontend Deployment Procedure](#3-frontend-deployment-procedure)
@@ -30,7 +30,7 @@ PublicSpark is architected as a **decoupled full-stack web platform**.
 
 ## 2. Frontend vs. Backend Code Separation
 
-### 🌐 Frontend (Client-Side App)
+###  Frontend (Client-Side App)
 These files execute strictly inside the user's browser.
 
 | File / Folder Path | Purpose |
@@ -46,7 +46,7 @@ These files execute strictly inside the user's browser.
 | `index.html` | Base HTML document, Google Fonts preloader. |
 | `vite.config.js` | Vite build tool configuration. |
 
-### ⚙️ Backend (Server-Side App)
+###  Backend (Server-Side App)
 These files execute strictly on your Node.js cloud server.
 
 | File / Folder Path | Purpose |

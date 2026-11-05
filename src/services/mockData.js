@@ -53,6 +53,34 @@ The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cl
     published_at: '10 mins ago',
     seo_title: 'ISRO Earth Observation Satellite Launch 2026',
     seo_description: 'ISRO successfully launches agricultural and climate monitoring satellite payload into orbit.',
+    fact_check: {
+      verified: true,
+      rating: 'Verified',
+      desk: 'Press Information Bureau (PIB) / ISRO Media Desk',
+      claim: 'PSLV launch timeline, payload orbital separation, and multi-spectral sensor specs verified directly from ISRO mission records.',
+      verified_at: '05 Nov 2026, 09:30 IST',
+      methodology: 'Cross-verified against official launch telemetry and Ministry of Space press bulletin.'
+    },
+    sources: [
+      {
+        id: 'src-isro-1',
+        title: 'ISRO Official Launch Telemetry & Mission Bulletin (PSLV-C62)',
+        url: 'https://www.isro.gov.in',
+        type: 'Official Press Release',
+        publisher: 'Indian Space Research Organisation',
+        accessed_at: '05 Nov 2026',
+        document_ref: 'ISRO-DOC-2026-PSLV'
+      },
+      {
+        id: 'src-isro-2',
+        title: 'The Gazette of India: Space Department Extraordinary Notification',
+        url: 'https://egazette.gov.in',
+        type: 'Government Gazette',
+        publisher: 'Department of Space, Govt of India',
+        accessed_at: '05 Nov 2026',
+        document_ref: 'CG-DL-E-05112026-218'
+      }
+    ]
   },
   {
     id: 'art-2',
@@ -77,7 +105,35 @@ The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cl
     views_count: 8900,
     likes_count: 950,
     reading_time_mins: 5,
-    published_at: '45 mins ago'
+    published_at: '45 mins ago',
+    fact_check: {
+      verified: true,
+      rating: 'Official Statement',
+      desk: 'PublicSpark Fact Desk / MeitY Bureau',
+      claim: 'Government expenditure targets and local compute facility locations verified from Ministry of Electronics & IT policy document.',
+      verified_at: '05 Nov 2026, 08:45 IST',
+      methodology: 'Cross-referenced against MeitY IndiaAI Mission gazette guidelines and ministry whitepaper.'
+    },
+    sources: [
+      {
+        id: 'src-meity-1',
+        title: 'Ministry of Electronics & Information Technology (MeitY) IndiaAI Mission Order',
+        url: 'https://www.meity.gov.in',
+        type: 'Official Notification',
+        publisher: 'MeitY, Government of India',
+        accessed_at: '05 Nov 2026',
+        document_ref: 'MEITY-AI-2026-ORD'
+      },
+      {
+        id: 'src-meity-2',
+        title: 'Press Information Bureau (PIB): Cabinet Approves National AI Compute Grid',
+        url: 'https://pib.gov.in',
+        type: 'Official Press Release',
+        publisher: 'PIB New Delhi',
+        accessed_at: '05 Nov 2026',
+        document_ref: 'PIB-CAB-18293'
+      }
+    ]
   },
   {
     id: 'art-3',
@@ -102,7 +158,35 @@ The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cl
     views_count: 6300,
     likes_count: 720,
     reading_time_mins: 3,
-    published_at: '2 hours ago'
+    published_at: '2 hours ago',
+    fact_check: {
+      verified: true,
+      rating: 'Verified',
+      desk: 'Ministry of New and Renewable Energy (MNRE) Desk',
+      claim: 'Quarterly renewable generation share exceeding 52% verified against Central Electricity Authority (CEA) monthly report.',
+      verified_at: '05 Nov 2026, 07:15 IST',
+      methodology: 'Cross-verified with Central Electricity Authority (CEA) generation statistics.'
+    },
+    sources: [
+      {
+        id: 'src-mnre-1',
+        title: 'Central Electricity Authority (CEA) Monthly Generation Review',
+        url: 'https://cea.nic.in',
+        type: 'Institutional Report',
+        publisher: 'Ministry of Power, Govt of India',
+        accessed_at: '05 Nov 2026',
+        document_ref: 'CEA-MGR-2026-Q3'
+      },
+      {
+        id: 'src-mnre-2',
+        title: 'The Gazette of India: Tariff Policy for Renewable Energy Hybrid Parks',
+        url: 'https://egazette.gov.in',
+        type: 'Government Gazette',
+        publisher: 'Ministry of New & Renewable Energy',
+        accessed_at: '05 Nov 2026',
+        document_ref: 'CG-DL-E-2026-MNRE'
+      }
+    ]
   },
   {
     id: 'art-4',

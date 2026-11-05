@@ -10,10 +10,10 @@ function autoBackendPlugin() {
     configureServer() {
       // Check if backend port 5000 is active
       const req = http.get('http://127.0.0.1:5000/api/storage/status', () => {
-        console.log('⚡ [Vite Dev] Backend server is already running on http://127.0.0.1:5000')
+        console.log('[Vite Dev] Backend server is already running on http://127.0.0.1:5000')
       })
       req.on('error', () => {
-        console.log('🚀 [Vite Dev] Auto-launching backend server (node server/server.js)...')
+        console.log('[Vite Dev] Auto-launching backend server (node server/server.js)...')
         backendProc = spawn('node', ['server/server.js'], { stdio: 'inherit', shell: true })
       })
       const cleanup = () => {

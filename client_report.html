@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PublicSpark Newsroom — Project Status & Audit Report</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 14mm 14mm 14mm 14mm;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      font-size: 11pt;
+      line-height: 1.45;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .header-bar {
+      border-bottom: 3px solid #0f172a;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .brand-title {
+      font-size: 20pt;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      color: #0f172a;
+      text-transform: uppercase;
+    }
+    .brand-title span {
+      color: #dc2626;
+    }
+    .brand-subtitle {
+      font-size: 9pt;
+      color: #64748b;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+    .doc-meta {
+      text-align: right;
+      font-size: 8.5pt;
+      color: #475569;
+    }
+    .doc-meta strong {
+      color: #0f172a;
+    }
+    
+    /* KPI Summary Row */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .summary-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .summary-card .number {
+      font-size: 16pt;
+      font-weight: 800;
+      color: #0f172a;
+      margin-bottom: 2px;
+    }
+    .summary-card .label {
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+    }
+    .summary-card.highlight {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+    }
+    .summary-card.highlight .number {
+      color: #15803d;
+    }
+
+    /* Section Headings */
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 18px;
+      margin-bottom: 10px;
+      border-bottom: 1.5px solid #cbd5e1;
+      padding-bottom: 4px;
+    }
+    .section-title {
+      font-size: 11pt;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #0f172a;
+    }
+    .section-badge {
+      font-size: 7.5pt;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 12px;
+      text-transform: uppercase;
+    }
+    .badge-done {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .badge-progress {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .badge-planned {
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+
+    /* Table Styles */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+      font-size: 9pt;
+    }
+    th {
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 700;
+      text-align: left;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    td {
+      padding: 6px 8px;
+      border: 1px solid #e2e8f0;
+      vertical-align: top;
+    }
+    tr:nth-child(even) td {
+      background: #fafafa;
+    }
+    .col-num {
+      width: 28px;
+      text-align: center;
+      font-weight: 700;
+      color: #64748b;
+    }
+    .col-status {
+      width: 95px;
+      text-align: center;
+      font-weight: 700;
+    }
+    .col-feature {
+      width: 170px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .col-desc {
+      color: #334155;
+      font-size: 8.5pt;
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .status-pill.done {
+      background: #dcfce7;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+    .status-pill.active {
+      background: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+    .status-pill.plan {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .footer {
+      margin-top: 25px;
+      border-top: 1px solid #cbd5e1;
+      padding-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 8pt;
+      color: #64748b;
+    }
+    .highlight-box {
+      background: #f8fafc;
+      border-left: 3px solid #dc2626;
+      padding: 8px 12px;
+      font-size: 8.5pt;
+      color: #334155;
+      margin-bottom: 14px;
+      border-radius: 0 4px 4px 0;
+    }
+    .highlight-box strong {
+      color: #0f172a;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header-bar">
+    <div>
+      <div class="brand-title">PUBLIC<span>SPARK</span></div>
+      <div class="brand-subtitle">Digital Newsroom Platform • Production Audit Report</div>
+    </div>
+    <div class="doc-meta">
+      <div><strong>Report Type:</strong> Client Deliverables & Roadmap Checklist</div>
+      <div><strong>Architecture:</strong> Zero-SaaS Custom Stack (React + Node.js)</div>
+      <div><strong>Status:</strong> Active Production Engineering (Phase 2)</div>
+    </div>
+  </div>
+
+  <!-- Executive KPI Summary -->
+  <div class="summary-grid">
+    <div class="summary-card highlight">
+      <div class="number">15</div>
+      <div class="label">Completed Milestones</div>
+    </div>
+    <div class="summary-card">
+      <div class="number">1</div>
+      <div class="label">In-Progress Task</div>
+    </div>
+    <div class="summary-card">
+      <div class="number">15</div>
+      <div class="label">Planned Features</div>
+    </div>
+    <div class="summary-card highlight">
+      <div class="number">₹0</div>
+      <div class="label">Monthly SaaS Burden</div>
+    </div>
+  </div>
+
+  <div class="highlight-box">
+    <strong>Executive Note for Client:</strong> All systems have been architected in pure custom native code (Zero monthly plugin/SaaS cost burden). The platform features enterprise-grade AI translation (19 languages), neural voice narration with chime pauses, exact minute-by-minute local ad scheduling with Google AdSense waterfall fallback, and sovereign broadsheet typography calibrated for both mobile smartphones (360px–390px) and desktop computers.
+  </div>
+
+  <!-- Section 1: Completed Work -->
+  <div class="section-header">
+    <span class="section-title">Section 1: Completed & Verified Work</span>
+    <span class="section-badge badge-done">15 Features Ready</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="col-num">#</th>
+        <th class="col-status">Status</th>
+        <th class="col-feature">Module / Feature</th>
+        <th class="col-desc">Implementation & Verification Details</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-num">1</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Multilingual AI Translation (19 Languages)</td>
+        <td class="col-desc">Full article, headline, and highlights translated on-demand via Google Gemini Flash API with 0ms in-memory cache and automatic Hindi base-language detection.</td>
+      </tr>
+      <tr>
+        <td class="col-num">2</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Neural AI Audio Narration ("Listen to Story")</td>
+        <td class="col-desc">Two-stage neural speech synthesis: Headline -> 2.2s gentle chime cue pause -> Full story body. Automatic 32kbps mono MP3 compression with HTTP 206 byte-range streaming.</td>
+      </tr>
+      <tr>
+        <td class="col-num">3</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Backend Ad Decision Engine & Scheduler</td>
+        <td class="col-desc">Authoritative server clock evaluation comparing current timestamp to campaign Start & End Date/Time. Instant fallback to Google AdSense upon expiry or scope mismatch.</td>
+      </tr>
+      <tr>
+        <td class="col-num">4</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Ad Scope & Auto-Expiry Rules Suite</td>
+        <td class="col-desc">1-click scope targeting: Global (entire site) vs Category-specific vs Single Article targeting. Article exclusion list and auto-synced <code>ads.txt</code> generation.</td>
+      </tr>
+      <tr>
+        <td class="col-num">5</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Monetization Desk (6 Core Broadsheet Slots)</td>
+        <td class="col-desc">Full visual control over 6 placements: Header Leaderboard, In-Article, Sidebar, Home Feed, Footer, and Mobile Sticky Banner. Zero CLS (Layout Shift) guaranteed.</td>
+      </tr>
+      <tr>
+        <td class="col-num">6</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Server-Side Dynamic Meta & SSR Gateway</td>
+        <td class="col-desc">Dynamic HTML gateway injecting rich OpenGraph, Twitter Cards, canonical tags, and Schema.org <code>NewsArticle</code> JSON-LD for rich WhatsApp previews and Google News indexing.</td>
+      </tr>
+      <tr>
+        <td class="col-num">7</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Native Browser History API Deep Linking</td>
+        <td class="col-desc">Clean crawlable URL architecture (<code>/article/:slug</code>, <code>/news/:slug</code>, <code>/search</code>) using native History API with zero bulky third-party router libraries.</td>
+      </tr>
+      <tr>
+        <td class="col-num">8</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Google AdSense Legal Compliance Suite</td>
+        <td class="col-desc">Integrated 5 mandatory compliance policies in <code>LegalModal.jsx</code>: Privacy Policy (with DART cookie disclosures), Terms of Service, About Us, Contact Us, and Fact-Checking Code.</td>
+      </tr>
+      <tr>
+        <td class="col-num">9</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Daily Reader Poll Management Suite</td>
+        <td class="col-desc">Dedicated Poll Desk with master ON/OFF toggle, custom question/options editor, live simulation preview, vote tally reset, and responsive 2-tier mobile option layout.</td>
+      </tr>
+      <tr>
+        <td class="col-num">10</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Sovereign Broadsheet UI (Zero-Glassmorphism)</td>
+        <td class="col-desc">100% purged all blur filters and translucent alphas. Established solid broadsheet paper contrast with crisp 1px hairline borders for maximum readability and speed.</td>
+      </tr>
+      <tr>
+        <td class="col-num">11</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Regional Indian Typography Studio</td>
+        <td class="col-desc">Curated font pairings across 18 regional Indian languages (Mukta, Tiro, Hind Siliguri), quick size presets, smoothness sliders, boldness sliders, and 1-click site-wide sync.</td>
+      </tr>
+      <tr>
+        <td class="col-num">12</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Writer Desk Auto-Save & WebP Image Upload</td>
+        <td class="col-desc">Automatic client-side draft auto-save (crash protection against accidental refreshes), mandatory source language gate, and direct WebP compression upload pipeline.</td>
+      </tr>
+      <tr>
+        <td class="col-num">13</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Reader Font Scaler (A- / A / A+)</td>
+        <td class="col-desc">Dynamic in-article reader font scaler smoothly resizing headline, standfirst, drop-caps (respecting non-Latin scripts), and body paragraphs without breaking layout.</td>
+      </tr>
+      <tr>
+        <td class="col-num">14</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Autonomous Mobile Newspaper Architecture</td>
+        <td class="col-desc">Single codebase adapting automatically between Desktop Broadsheet (>768px) and Mobile App (<=768px): 52px sticky app bar, touch category rail, compact split cards, docked audio.</td>
+      </tr>
+      <tr>
+        <td class="col-num">15</td>
+        <td class="col-status"><span class="status-pill done">Completed</span></td>
+        <td class="col-feature">Strict Zero-Emoji Corporate Design Standard</td>
+        <td class="col-desc">Eradicated 100% of emojis across the entire platform. Replaced with clean Lucide SVG icons, ISO country badges, and dignified broadsheet news typography.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Page Break for Clean Printing -->
+  <div class="page-break"></div>
+
+  <!-- Header for Page 2 -->
+  <div class="header-bar">
+    <div>
+      <div class="brand-title">PUBLIC<span>SPARK</span></div>
+      <div class="brand-subtitle">Production Roadmap & Upcoming Engineering Checklist</div>
+    </div>
+    <div class="doc-meta">
+      <div><strong>Page:</strong> 2 of 2</div>
+      <div><strong>Confidential:</strong> Client Planning Deliverable</div>
+    </div>
+  </div>
+
+  <!-- Section 2: In Progress -->
+  <div class="section-header">
+    <span class="section-title">Section 2: Work Currently In Progress</span>
+    <span class="section-badge badge-progress">Active Sprint</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="col-num">#</th>
+        <th class="col-status">Status</th>
+        <th class="col-feature">Module / Feature</th>
+        <th class="col-desc">Current Engineering Objectives</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-num">16</td>
+        <td class="col-status"><span class="status-pill active">In Progress</span></td>
+        <td class="col-feature">Smart Searchable Article Picker (Ad Desk)</td>
+        <td class="col-desc">Replacing static ID text inputs with an intelligent Category Division Filter + Live Type-to-Search input + Latest News shortcuts so targeting any single article out of 1000+ takes under 2 seconds.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Section 3: Planned Roadmap -->
+  <div class="section-header">
+    <span class="section-title">Section 3: Planned Upcoming Roadmap (Checklist)</span>
+    <span class="section-badge badge-plan">15 Roadmap Tasks</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="col-num">#</th>
+        <th class="col-status">Phase</th>
+        <th class="col-feature">Feature / Target Capability</th>
+        <th class="col-desc">Business & Technical Benefit</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="col-num">17</td>
+        <td class="col-status"><span class="status-pill plan">Phase A</span></td>
+        <td class="col-feature">Multi-Role Login & PIN Security (RBAC)</td>
+        <td class="col-desc">Strict role isolation: Reporter (drafts only), Editor (review/publish), Admin (monetization/theme). Powered by native Node.js <code>crypto</code> with HttpOnly cookies.</td>
+      </tr>
+      <tr>
+        <td class="col-num">18</td>
+        <td class="col-status"><span class="status-pill plan">Phase A</span></td>
+        <td class="col-feature">Backend API Hardening & Rate Limiting</td>
+        <td class="col-desc">Token authorization gate on mutating API endpoints + sliding-window IP rate limiting to prevent bot flooding and unauthorized data modification.</td>
+      </tr>
+      <tr>
+        <td class="col-num">19</td>
+        <td class="col-status"><span class="status-pill plan">Phase A</span></td>
+        <td class="col-feature">1-Click Full Newsroom Backup Desk</td>
+        <td class="col-desc">Instant 1-click download of all articles, media records, and settings into an encrypted/compressed backup package for zero-risk disaster recovery.</td>
+      </tr>
+      <tr>
+        <td class="col-num">20</td>
+        <td class="col-status"><span class="status-pill plan">Phase B</span></td>
+        <td class="col-feature">Article Future Publishing Timer</td>
+        <td class="col-desc">Enables reporters and editors to write breaking stories or morning briefs at night and set auto-publish schedules (e.g. 06:00 AM) driven by the backend clock.</td>
+      </tr>
+      <tr>
+        <td class="col-num">21</td>
+        <td class="col-status"><span class="status-pill plan">Phase B</span></td>
+        <td class="col-feature">Article Revision History & 1-Click Rollback</td>
+        <td class="col-desc">Maintains timestamped revision snapshots of every edit with side-by-side visual diffs and 1-click instant restoration of previous versions.</td>
+      </tr>
+      <tr>
+        <td class="col-num">22</td>
+        <td class="col-status"><span class="status-pill plan">Phase B</span></td>
+        <td class="col-feature">Central Digital Asset & Photo Media Library</td>
+        <td class="col-desc">A unified media desk to browse, search, and reuse past uploaded photos across articles with metadata and copyright attribution management.</td>
+      </tr>
+      <tr>
+        <td class="col-num">23</td>
+        <td class="col-status"><span class="status-pill plan">Phase B</span></td>
+        <td class="col-feature">Live Breaking News Timeline Mode</td>
+        <td class="col-desc">Minute-by-minute timeline updates for major breaking events (Elections, Sports, State Budget) with live reader streaming.</td>
+      </tr>
+      <tr>
+        <td class="col-num">24</td>
+        <td class="col-status"><span class="status-pill plan">Phase C</span></td>
+        <td class="col-feature">WhatsApp Smart Formatted Share Card</td>
+        <td class="col-desc">1-click WhatsApp share button pre-formatting Headline + 3 Key Bullet Highlights + Clean URL for viral distribution across regional community groups.</td>
+      </tr>
+      <tr>
+        <td class="col-num">25</td>
+        <td class="col-status"><span class="status-pill plan">Phase C</span></td>
+        <td class="col-feature">Fact-Check & Credibility Verification Box</td>
+        <td class="col-desc">Editorial verification badge and primary source citation links attached to investigative reports for institutional authority and Google News trust.</td>
+      </tr>
+      <tr>
+        <td class="col-num">26</td>
+        <td class="col-status"><span class="status-pill plan">Phase C</span></td>
+        <td class="col-feature">Smart In-Article Related Stories</td>
+        <td class="col-desc">Dynamic recommendation of 3 related stories from the same category inside and below the article to reduce bounce rate and double page views.</td>
+      </tr>
+      <tr>
+        <td class="col-num">27</td>
+        <td class="col-status"><span class="status-pill plan">Phase C</span></td>
+        <td class="col-feature">Hairline Reading Progress Bar & "X Min Read"</td>
+        <td class="col-desc">Sleek top progress bar indicating scroll completion percentage paired with an estimated reading time badge on every story.</td>
+      </tr>
+      <tr>
+        <td class="col-num">28</td>
+        <td class="col-status"><span class="status-pill plan">Phase C</span></td>
+        <td class="col-feature">Offline Saved Stories & Bookmarking</td>
+        <td class="col-desc">Allows readers to bookmark articles into local device storage and read full stories offline without requiring user account registration.</td>
+      </tr>
+      <tr>
+        <td class="col-num">29</td>
+        <td class="col-status"><span class="status-pill plan">Phase C</span></td>
+        <td class="col-feature">India IT Rules 2021 Grievance Form</td>
+        <td class="col-desc">Interactive reader complaint submission form routing editorial corrections directly to the statutory Grievance Redressal Officer.</td>
+      </tr>
+      <tr>
+        <td class="col-num">30</td>
+        <td class="col-status"><span class="status-pill plan">Phase C</span></td>
+        <td class="col-feature">Google News Specialized XML Feed</td>
+        <td class="col-desc">Automated <code>/news-sitemap.xml</code> with <code>&lt;news:publication&gt;</code> tags complying with Google News indexing technical standards.</td>
+      </tr>
+      <tr>
+        <td class="col-num">31</td>
+        <td class="col-status"><span class="status-pill plan">Phase D</span></td>
+        <td class="col-feature">In-House Sponsor Ad Impressions & CTR Desk</td>
+        <td class="col-desc">Direct sponsor reporting showing verified views, unique clicks, and Click-Through-Rate (CTR) without external tracking cookies.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div><strong>PublicSpark Engineering Desk</strong> • Certified Milestone Deliverable</div>
+    <div>Document Generated: October 2026 • 100% Native Architecture</div>
+  </div>
+
+</body>
+</html>

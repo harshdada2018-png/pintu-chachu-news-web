@@ -64,3 +64,51 @@ This document defines the security standards, threat model, input validation rul
 - [x] Regex validation on all incoming color values
 - [x] Admin authorization headers wired in frontend services
 - [x] Tested with adversarial payloads (script tags, oversized strings, invalid hex)
+
+---
+
+## 6. Advanced International Cybersecurity & Hashing Blueprint (Dedicated Security Phase)
+
+> [!NOTE]
+> **Roadmap Note**: As per user directive, this comprehensive blueprint is cataloged here for deep research and phased execution once primary functional feature work is completed.
+
+### 6.1 The 3-Tier Cryptographic Hashing Architecture
+1. **Tier A: Memory-Hard Password & PIN Hashing (`scrypt` / `Argon2id`)**
+   - **Threat Defeated**: GPU / ASIC accelerated password cracking (Rainbow tables & brute force).
+   - **Implementation**: Node.js native `crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 })` with a unique 32-byte cryptographically secure pseudorandom salt (`crypto.randomBytes(32)`).
+   - **Advantage**: Requires 32MB–64MB RAM per hash, rendering massive parallel GPU cracking mathematically infeasible while keeping legitimate login latency under 50ms. Zero cost, native C++ OpenSSL engine.
+
+2. **Tier B: Article Anti-Defacement & Tamper-Evident Signatures (`HMAC-SHA256`)**
+   - **Threat Defeated**: Direct database tampering, unauthorized headline alteration, or rogue database manipulation.
+   - **Implementation**:
+     ```js
+     signature = crypto.createHmac('sha256', SERVER_MASTER_SECRET)
+                       .update(article.id + article.title + article.content + article.author)
+                       .digest('hex');
+     ```
+   - **Verification**: On every reader SSR request and API fetch, the signature is validated against the computed hash. If a single character or comma has been altered, the signature fails, the article is quarantined into read-only freeze, and a high-priority alert is issued to the Admin.
+
+3. **Tier C: Tamper-Evident Audit Ledger (`Hash-Chain / Mini-Blockchain`)**
+   - **Threat Defeated**: Log tampering, history wiping, or insider cover-up by rogue accounts.
+   - **Implementation**: Every administrative action (login, status update, ad edit, delete) is appended to a ledger where:
+     `current_hash = SHA256(previous_hash + timestamp + user_id + action + payload)`
+   - **Verification**: If any historical log entry is modified or deleted, the hash chain breaks from that point forward, immediately alerting the system to an integrity breach.
+
+---
+
+### 6.2 The 6-Layer Hardcore Newsroom Defense Suite
+1. **Layer 1: RFC 6238 Time-Based One-Time Password (TOTP 2FA)**
+   - Zero password-only logins for Admin & Senior Editor.
+   - Compatible with Google Authenticator, Microsoft Authenticator, and Aegis via native TOTP math (RFC 6238).
+2. **Layer 2: Honeypot Traps & Automated Bot Blacklisting**
+   - Hidden decoy routes (`/admin-login-v2`, `/api/backup-dump`) and invisible CSS form fields.
+   - Automated IP blacklisting with 0 human interaction on tripwire activation.
+3. **Layer 3: Binary Magic-Byte File Inspection**
+   - Rejects uploaded files based on true binary header signatures (e.g. `RIFF...WEBP`, `\xFF\xD8\xFF` for JPEG) rather than file extensions, eliminating disguised PHP/executable uploads.
+4. **Layer 4: Zero-Trust Role-Based Access Control (RBAC)**
+   - Strict separation: Reporter (Draft & Submit only) vs Editor (Verify, Edit, Schedule) vs Admin (Theme, Ads, Core Settings).
+   - Secured via `HttpOnly`, `SameSite=Strict`, `Secure` cryptographic session cookies immune to client-side XSS exfiltration.
+5. **Layer 5: Enterprise HTTP Security Headers**
+   - Strict `Content-Security-Policy (CSP)`, `X-Frame-Options: DENY` (anti-clickjacking), and `X-Content-Type-Options: nosniff`.
+6. **Layer 6: Emergency "Air-Gap / Lockdown" Circuit Breaker (The Red Panic Button)**
+   - 1-click immediate session termination for all active users, freezing all write operations into static read-only cache, unlockable only via an offline physical Master Recovery Key.

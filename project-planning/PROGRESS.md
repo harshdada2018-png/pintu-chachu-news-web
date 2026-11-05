@@ -1,102 +1,162 @@
-# Implementation Progress
+# PublicSpark Master Project Roadmap & Progress Tracker
 
 > [!IMPORTANT]
-> ### 📌 STATUS UPDATE:
-> - **Master Feature Checklist**: All completed features cataloged in [FEATURE_CHECKLIST.md](file:///d:/my%20projects/pintu%20chachu%20news%20web/project-planning/FEATURE_CHECKLIST.md).
-> - **Gemini Multilingual Translation & 2-Stage Neural TTS Engine**: Fully Active (19 languages).
-> - **Server-Side Pre-Rendering Gateway (SSR) & Deep Linking**: Operational on `/article/:slug`.
-> - **Google AdSense Mandatory Legal Suite**: Privacy Policy, Terms, About, Contact/Grievance, Fact-Check policies integrated via `LegalModal.jsx`.
-> - **32kbps Mono MP3 Compression & 14-Day Rolling Cleanup**: Operational in `server.js`.
-> - **Supabase Schema**: Production DDL in `supabase_schema.sql` ready to execute.
-> - **Next in Line**: Default Site UI Redesign (Base Layout, Visual Hierarchy & Styling).
-> - **Safety Checkpoint Tag**: `checkpoint-before-ui-redesign` (Git Commit `8ade9da`) for 1-click instantaneous rollback if needed.
+> **Core Principle (Rule 10 & Rule 11)**:
+> Start ONE task -> Complete it fully -> Verify it -> Report to User -> Get Approval -> Start Next Task.
+> Zero cost burden: All features built natively in-house using React, Vite, Node.js, and standard web APIs without paid SaaS/plugins.
 
-## Task Status Tracker
+---
 
-| Task / Feature | Status | Details |
-| :--- | :--- | :--- |
-| Default UI Redesign & Baseline Foundation | Completed | Editorial broadsheet tokens, masthead multiply blend, low-profile ticker, crisp category tabs, conditional YouTube video engine, and unified desk styling |
-| YouTube Video Coverage & Conditional Reel | Completed | Strictly conditional YouTube video embeds in ArticleReader, Video Reel section, Reporter/Editor/Admin integration with zero empty space when absent |
-| Sovereign Eye-Comfort Dark Mode (1-Theme Lock) | Completed | Anti-halation 9.8:1 palette (#0D1117/#E6EDF3), photo night shield, zero eye-strain contrast, and architecture lock bypassing inline palette overrides in dark mode |
-| Admin Typography Overlapping Layout Bugfix | Completed | Replaced universal `min-width: 0` selector with `> *` and added `flexShrink: 0` to trigger badge and category filter pills in VisualFontPicker to eliminate text overlap |
-| Daily Reader Poll Management Suite | Completed | Added PollManager desk in Admin Workspace, live on/off switch, custom question/options editor, live simulation preview, vote reset, backend poll.json storage, and live synchronization with homepage |
-| :--- | :--- | :--- |
-| Project Planning & Governance Initialization | Completed | Created planning documents and mistake tracking |
-| Multi-Language Typography & Google Fonts Research | Completed | Selected fonts for 18 languages |
-| Dual Font Sizing Design (Buttons + Slider) | Completed | Synchronized quick-preset buttons + fine-grained range slider |
-| Typography Customizer Tab in Admin Workspace | Completed | Built UI controls & converted to 2-column side-by-side split layout |
-| Extended Font Library & Real-Font Visual Dropdown | Completed | Added 25+ curated fonts with custom searchable dropdown |
-| Dual-Scope Typography (Global vs Regional) | Completed | Added Global vs Regional toggle buttons & 18-language shelf |
-| Dynamic CSS Variable Injection & Public Site Hook | Completed | Linked typography settings to :root CSS variables |
-| White Screen TDZ Bugfix | Completed | Fixed `ReferenceError: Cannot access currentLanguage before initialization` |
-| Backend Persistence for Theme/Font Settings | Completed | Added GET & POST /api/settings/typography in server.js |
-| Editorial Color Harmonies & Custom Color Suite | Completed | Built ColorPaletteCustomizer with 10 editorial newsroom presets |
-| Backend Security Hardening & Input Validation | Completed | Created SECURITY_REQUIREMENTS.md, added strict HEX/RGBA regex validation |
-| Live Site Theme Synchronization Bugfix | Completed | Bound buttons and active category tabs to dynamic theme colors |
-| Full Project Backend Integration & Hardcoding Audit | Completed | Audited all 16 endpoints; created learning/production-readiness.md |
-| Dynamic Data Propagation Across Workspaces | Completed | Linked dynamic categories to SearchPage and ReporterWorkspace |
-| White Screen Header Import Resolution | Completed | Fixed `ReferenceError: useMemo is not defined` in Header.jsx |
-| Breaking News Ticker Dynamic Theme Binding | Completed | Replaced hardcoded red CSS gradient with `var(--accent-crimson)` |
-| Backend Presets & Dynamic Architecture Migration | Completed | Moved presets from JSX into `server/data/presets.json` |
-| 100% Explicit Manual Save Mode for Color Harmonies | Completed | Disabled auto-save; added top header Save button |
-| Competitor Branding & Moodboard Purge | Completed | Purged all competitor citations; authentic newsroom beats |
-| Corporate Micro-Polish (Purge Emojis) | Completed | Replaced emojis with clean SVG Lucide icons |
-| Hairline Broadsheet Grid & Layout Precision | Completed | Crisp 1px newspaper border grid lines & reading time estimates |
-| Executive 30-Second Takeaways Callout Box | Completed | Added "In 30 Seconds: Key Highlights" callout card |
-| In-Article Reading Progress & A-/A+ Controls | Completed | Enhanced 3px sticky progress bar & font scaling |
-| Font Boldness Slider Bar | Completed | Continuous font weight slider with descriptive badges |
-| Gemini AI Backend Translation Engine | Completed | Google Gemini backend with 0ms cache hits and rate limit protection |
-| 19-Language Expansion (Adding Russian) | Completed | Added Russian (`ru`) across dropdown, translation, and typography |
-| Translations & Usage Logs Database Storage | Completed | Created translations.json, usage_logs.json, audio_records.json |
-| Rate Limits Audit & Render Config Guide | Completed | Extracted Text (1,500 RPD) vs TTS (50-100 RPD) quotas |
-| Supabase SQL Database Migration Script | Completed | Complete PostgreSQL DDL in `supabase_schema.sql` |
-| Streamlined Writer Desk & AI Pre-Publish Draft | Completed | Exactly 5 fields; 1-call 30-sec draft + Hindi spelling check |
-| Writer Desk Auto-Save & Permanent Backend Persistence | Completed | Local draft auto-save (ps_reporter_draft_v1) + POST /api/articles/update to server/data/articles.json |
-| Lazy Translation Engine & In-Flight Mutex Lock | Completed | Single on-demand call per (article_id, lang), banner, pre-save validation |
-| 2-Stage Gemini Audio TTS ("Listen") | Completed | Clip 1 (Intro) -> Chime + 2s pause -> Clip 2 (Body after 5s); Vite proxy & HTTP 206 streaming |
-| Per-IP & Daily Rate Limit Guardrails | Completed | 19 languages only, published only, IP hourly limit, daily total cap |
-| Scraper Purge & Error Scrubbing | Completed | Purged legacy scrapers and scrubbed corrupted error strings |
-| Drop Cap Unicode Glyph Fix & Sovereign Multilingual Engine | Completed | Fixed UTF-16 surrogate slicing, purged hardcoded English bypass in translation engine & server, default site language set to Hindi (`hi`) |
-| Mandatory Language Gate for Article Composition | Completed | Writing inputs (Headline, Body, AI draft, Image, Submit) are strictly locked in ReporterWorkspace and AdminWorkspace until article language is chosen |
-| Broadcast Double-Bell Audio Sequencer | Completed | 2-stage audio reading across all 19 languages: Clip 1 (Headline + Points) -> double-bell chime cue (chime.wav) -> Clip 2 (Body) |
-| Total Workspace & Public Emoji Purge | Completed | Replaced emojis with clean, authoritative broadsheet SVG Lucide icons across Public site, Reporter, Editor, and Admin desks |
-| Zero-API Client-Side UI Localization Engine | Completed | Instant offline translation across all 19 languages for navigation, buttons, ticker, categories, polls, reader, and audio controls without API calls |
-| Dynamic Category Population & AdSense Zero-Story Protection | Completed | Populated categories filter on desktop/mobile navigation, story counts & live/hidden badges in Admin desk, and graceful editorial dispatch fallback with trending grid |
-| Pure JS MP3 Audio Compression (32kbps) & 14-Day Rolling Cache | Completed | Automated 92%+ audio compression using @breezystack/lamejs (32kbps mono MP3), 14-day automated rolling cache cleanup in server.js, and 7-day immutable Cache-Control on HTTP 206/200 media responses |
-| Multi-Year Media Storage Architecture | Deferred | Documented comprehensive Cloudinary vs Supabase vs Local strategy in `thinking/MEDIA_STORAGE_STRATEGY.md` for future evaluation |
-| Server-Side Dynamic Meta & Article Pre-Rendering Gateway (SSR) | Completed | Built backend HTML injection gateway in `server.js` serving dynamic meta, canonical URLs, OpenGraph, Twitter Cards, Schema.org `NewsArticle` JSON-LD, and visible semantic `<article>` without `display:none` penalties |
-| Native Browser History API Deep Linking & Route Sync | Completed | Added native History API routing in `src/App.jsx` (`/article/:slug`, `/news/:slug`, `/search`, etc.) with `pushState`, `popstate` Back/Forward listener, and auto-sync on base article load |
-| Standalone WebP Image Upload Pipeline | Completed | Wired `ReporterWorkspace.jsx` to `POST /api/upload/image`, saving WebP files to `server/data/uploads/` and returning clean `/uploads/img_....webp` URLs, ending base64 DB bloat |
-| Google AdSense Mandatory Legal Suite (5 Policies) | Completed | Implemented `LegalModal.jsx` with Privacy Policy (AdSense & DART cookie clauses), Terms of Service, About Us, Contact Us with Statutory Grievance Redressal Officer (IT Rules 2021), and Fact-Check Policy |
-| Ad Placement Customizer & Monetization Suite (Phase 2) | Completed | Built responsive PartnerUnit.jsx, MarkdownRenderer in-article ad injection (after paragraph 2), Header/Sidebar/Mobile Footer slots, MonetizationDesk.jsx in AdminWorkspace, backend GET/POST /api/settings/monetization, and auto-updating /ads.txt |
-| Preloader Freeze Fix & Top-Level ErrorBoundary | Completed | Resolved unimported `Newspaper` icon crash in `App.jsx` and added resilient `ErrorBoundary` in `main.jsx` with automatic newsroom recovery and cache reset |
-| Ad-Blocker Immune File Architecture | Completed | Refactored `adService.js` ➔ `monetizationService.js` and `AdSlot.jsx` ➔ `PartnerUnit.jsx`, eliminating `net::ERR_BLOCKED_BY_CLIENT` on client browsers running uBlock Origin/Brave Shields |
-| Sponsor Banner WebP Upload Format Fix | Completed | Integrated compressImageToWebP and JSON base64 payload in MonetizationDesk.jsx, resolving HTTP 400 alert on direct sponsor banner image uploads |
-| Real-Time WebP Compression UI Badges | Completed | Added live compression badges displaying original vs WebP compressed size and % saved in both MonetizationDesk.jsx and ReporterWorkspace.jsx |
-| Ad Slot Auto-Collapse & Zero-DOM Production Guard | Completed | Implemented Google AdSense `data-ad-status="unfilled"` MutationObserver and `:has()` CSS collapse rules in `PartnerUnit.jsx` and `index.css`; guaranteed that unconfigured slots or missing ads render 0 DOM with zero whitespace on production |
-| 100% Zero-Glassmorphism Purge & Broadsheet Paper Architecture | Completed | Removed 100% of `backdrop-filter` blur rules, `.liquid-glass` classes, and translucent alphas; established 100% solid paper surfaces (`#FFFFFF` / `#0F172A`) with crisp 1px hairline borders |
-| Autonomous Single-Codebase Mobile Newspaper Architecture | Completed | Implemented 5-Pillar mobile transformation: 52px sovereign app bar with hamburger drawer, touch momentum category rail, compact split cards for secondary stories, docked audio mini-player with safe-area insets, and native-feel bottom share sheet; 100% automatic responsiveness across viewports |
-| Mobile Article Typography Calibration & Admin Desk Overflow Fix | Completed | Clamped article headline font sizes (`clamp(1.25rem, 5.2vw, 1.75rem)`), added `word-break: normal; overflow-wrap: break-word` for Devanagari script integrity, compacted mobile reader actions, eliminated 380px grid horizontal overflow in Admin Desk (`1fr` on <= 960px), and converted 9 vertical admin buttons into a sleek horizontal touch-scrollable pill rail on mobile |
-| Article Body Typography, Callout Subheadings & Full-Bleed Mobile Layout | Completed | Reset bodyWeight to 400 (Book/Regular) ending heavy bold blobs, calibrated mobile body font size (`clamp(0.95rem, 3.8vw, 1.05rem)`) with 1.72 line-height, transformed raw `💥...💥` lines into styled newsroom section subheadings with crimson accent bars, auto-bolded city datelines (`जिला उमरिया।`), and made mobile reading canvas full-bleed (100% width, eliminating double padding and side gaps) |
-| Responsive Device Mode Switcher (Desktop vs Mobile) & 390px Phone Frame Preview | Completed | Added segmented Device Mode Switcher (`[ Desktop / बड़ी स्क्रीन ] [ Mobile / छोटी स्क्रीन ]`) in Typography Desk with independent desktop vs mobile headline scales & body sizes, unified space management with 0 slider bloat, and synchronized dual-view live preview including an authentic 390px mobile phone simulation with notch, speaker pill, and home bar |
-| Strict Zero-Emoji Codebase Audit & Broadsheet Vector Icon Standard | Completed | Completely eradicated 100% of Unicode emojis and decorative glyphs across AdminWorkspace, AnalyticsDashboard, Header, VisualFontPicker, MonetizationDesk, App.jsx, and regex parser; replaced with high-contrast Lucide SVG icons, ISO country badges, and clean editorial typography; verified 0 emojis remaining via automated regex AST scanner |
-| Dynamic XML Sitemap ISO-8601 Date Calibration & Public Footer Cleanup | Completed | Standardized `/sitemap.xml` dates to strict W3C ISO 8601 (`YYYY-MM-DDTHH:mm:ss.sssZ`), excluded Base64 data URIs from `<image:loc>`, preserved 100% dynamic generation from live database, and removed raw technical sitemap link from public footer in `App.jsx` |
-| High-Traffic Exit-Only Beacon Analytics Architecture | Completed | Eradicated continuous 5-second `/api/views/heartbeat` polling from `ArticleReader.jsx`; transitioned to zero-load local memory tracking + single `navigator.sendBeacon` exit dispatch, cutting server network load by 90%+ while preserving 100% accurate per-article average reading duration |
-| Article ID Analytics Metadata & Categories Endpoint Resolution | Completed | Added article ID and title metadata directly to client session exit logs and beacon payloads; implemented `GET` and `POST` `/api/categories` handlers in `server/server.js`, eliminating 404 console errors and enabling clear article identification in console and server logs |
-| Visual Font Picker Layout Overlap Resolution | Completed | Fixed `.typography-desk-layout` CSS in `src/index.css` by scoping direct grid children and removing absolute overflow, ensuring clean side-by-side layout in Typography Desk |
-| Daily Reader Poll Management & Live Backend Persistence Suite | Completed | Built atomic `server/data/poll.json`, REST endpoints (`GET /api/poll`, `POST /api/poll/vote`, `POST /api/poll/admin`), full Admin desk manager (`PollManager.jsx`) with 1-click master ON/OFF toggle, question/options editor, vote counter, live simulation preview, and vote reset, with dynamic homepage rendering and 0 empty space when hidden |
-| Persistent Sticky Desktop Logo & BBC-Style Ceil-Locking Suite | Completed | Locked `.masthead-main` to `top: 0` (`position: fixed !important; z-index: 10000;`); when scrolling, utility masthead scrolls away into the ceiling, logo hits the top wall and freezes centered, smoothly scaling from 75px to 44px with tagline hiding to keep a sleek 52px height, revealing BBC-style `[≡ Sections]` and `[Search]` triggers on left, and language/theme on right |
-| Softened 0.45s Luxury Broadsheet Scroll Animation | Completed | Increased scroll threshold to 70px to eliminate twitching, softened transition duration to 0.45s with luxury `cubic-bezier(0.2, 0.8, 0.2, 1)` easing curve, continuous opacity/slide glide for left `[≡ Sections]` and right controls, and graceful tagline fold-up |
-| Mobile Header Layout Restoration & Fixed Pinning Fix | Completed | Restored clean flex space-between layout on mobile (Hamburger menu + Logo on left, Language dropdown + Search + Theme toggle on right); completely eliminated absolute centering collision on 390px screens (0-pixel overlap guaranteed); maintained position: fixed !important; top: 0 !important; ceiling lock with 52px wrapper so header never hides on scroll |
-| Mobile Language Dropdown Clamping & Action Icons Overflow Fix | Completed | Clamped native select to 56px and pill to 95px, simplified mobile option text to pure native names ({lang.native}), added flex-shrink: 0 and min-width to Search and Dark/Light toggle buttons; eliminated mobile right-edge blowout so language never clips and Dark/Light mode toggle is 100% visible on all phones |
-| Mobile Admin Control Desk Transformation & Split Grid Responsive Refactor | Completed | Replaced squished 3-column sidebar with a native mobile desk dropdown selector and a touch-scrollable horizontal pill bar; refactored PollManager and ColorPaletteCustomizer to 1fr single-column responsive stacks on <= 960px; calibrated workspace title, hero card padding, and button wrapping for 100% clean mobile experience |
+##  Section 1: Completed Tasks (Jo Kaam 100% Ho Chuke Hain)
 
-## Blockers & Risks
-- *None. All mobile viewports (iPhone 12 Pro 390px, Galaxy S20, tablets, desktop) rendering cleanly with 0 horizontal overflow and authentic broadsheet typography.*
+| # | Task / Feature | Category | Status | Summary & Verification |
+| :- | :--- | :--- | :- | :--- |
+| 1 | **Gemini Multilingual AI Translation Engine** | AI & Editorial | `Completed` | 19 languages supported with 0ms cache hits, rate limit protection, and Hindi base language auto-detection. |
+| 2 | **2-Stage Neural AI Audio Storytelling ("Listen to Story")** | AI & Voice | `Completed` | Headline -> Chime cue (2.2s pause) -> Full Story Body. Output converted to 32kbps mono MP3 via pure JS (`@breezystack/lamejs`) with HTTP 206 byte-range streaming. |
+| 3 | **Backend Ad Decision Engine & Admin Order Scheduler** | Monetization | `Completed` | Server clock (`new Date()`) evaluates start/end date-time, scope targeting (Global, Category, Article), and waterfall fallback to Google AdSense. Verified with live Node tests. |
+| 4 | **Ad Scope, Campaign Dates & Auto-Expiry Rules Suite** | Monetization | `Completed` | 1-click Scope selector (Global vs Category vs Single Article), exclusion list, `datetime-local` inputs, and auto-updating `/ads.txt`. |
+| 5 | **Monetization Desk 6-Slot Expansion & Mobile Calibration** | Monetization | `Completed` | Expanded to 6 slots (Header, In-Article, Sidebar, Home Feed, Footer, Mobile Sticky Banner). Zero horizontal overflow on 360px-390px screens. |
+| 6 | **Server-Side Dynamic Meta & Article Pre-Rendering Gateway (SSR)** | SEO & Crawlers | `Completed` | Injects dynamic `<title>`, canonical `<link>`, OpenGraph, Twitter Cards, Schema.org `NewsArticle` JSON-LD, and visible semantic `<article>` without cloaking. |
+| 7 | **Native Browser History API Deep Linking** | SEO & Navigation | `Completed` | Full SPA navigation with `/article/:slug`, `/news/:slug`, `/search` via native History API (`pushState`, `popstate`). |
+| 8 | **Google AdSense Mandatory Legal Suite (5 Policies)** | Compliance | `Completed` | `LegalModal.jsx` with Privacy Policy (DART cookie disclosures), Terms, About Us, Contact Us (with Grievance Redressal Officer), and Fact-Check Policy. |
+| 9 | **Daily Reader Poll Manager & Live Homepage Sync** | Engagement | `Completed` | Admin Poll Desk with master toggle, dynamic options, live voting percentages, reset votes, and mobile 2-tier responsive layout. |
+| 10 | **Sovereign Broadsheet UI & 100% Zero-Glassmorphism Purge** | UI/UX | `Completed` | Eradicated all `backdrop-filter` blurs and translucent alphas; established 100% solid paper surfaces with crisp 1px hairline borders. |
+| 11 | **Regional Indian Typography Studio (18 Languages)** | UI/UX | `Completed` | Curated Indian font pairings (Mukta, Tiro, Hind Siliguri), quick presets, range slider, boldness slider, and 1-click site-wide sync. |
+| 12 | **Writer Desk Auto-Save, WebP Uploads & Minimalist Language Dropdown** | Editorial | `Completed` | `localStorage` draft recovery (`ps_reporter_draft_v1`), mandatory source language gate with compact `<select>` dropdown (saving 500px mobile height), and client-side WebP compression to `server/data/uploads/`. |
+| 13 | **In-Article Reader Accessibility Font Scaler (A- / A / A+)** | UI/UX | `Completed` | Reader font scaling smoothly adjusting headlines, standfirst, drop-caps (respecting non-Latin scripts), and body copy without page reload. |
+| 14 | **Autonomous Mobile Newspaper Architecture** | UI/UX | `Completed` | 52px sticky app bar, touch horizontal category rail, compact split cards, docked audio mini-player, and zero overflow on 360px–390px screens. |
+| 15 | **Strict Zero-Emoji Purge Across Entire Codebase** | Design System | `Completed` | Eradicated 100% of emojis; replaced with clean, high-contrast SVG Lucide icons and authentic broadsheet typography. |
+| 16 | **Smart Searchable Article Picker in Ad Desk** | Monetization / Admin UX | `Completed` | Implemented dynamic category division filter pills auto-synced with `/api/categories`, live keyword search input with instant matching, latest news quick select list, selected article preview card with change/reset controls, and full mobile responsive calibration. Verified via `npm run build` (clean exit code 0 in 643ms). |
+| 16.1 | **Dynamic In-Place Editable & Backend-Persisted Category Suite** | Taxonomy & Backend | `Completed` | Built backend `GET /api/categories` & `POST /api/categories` with persistent `server/data/categories.json`, inline Edit Category mode (`<Edit3 />`, `<Check />`, `<X />`) in Categories Desk, auto-slug derivation, duplicate validation, article count safety check on deletion, and real-time synchronization with Monetization Desk and reader navigation. Verified with live API roundtrips and `npm run build` (413ms). |
+| 16.2 | **Ad Campaign History & Archive Engine (with 1-Click Re-Run)** | Monetization & Operations | `Completed` | Built backend `GET /api/ads/history` & `POST /api/ads/history/delete` with persistent `server/data/ad_history.json`, automatic snapshot capture on ad save, live dual-subtab interface (`6 Live Placement Slots` & `Campaign History & Archive`), 4 metrics counters, live search, status & slot filters, thumbnail lightbox preview, and 1-click modal to clone & re-run past campaigns in any slot with customizable duration presets. Verified via API roundtrips and clean `npm run build` (384ms). |
+| 16.3 | **Direct Sponsor Impressions & Click Tracker (In-House Ad Analytics)** | Monetization & Analytics | `Completed` | Implemented server-side tracking endpoints `POST /api/ads/track/impression` & `POST /api/ads/track/click` with in-memory IP deduplication (30 min cooldown for views, 5 min for clicks) persisted to `ad_history.json`. Added client-side `IntersectionObserver` in `PartnerUnit.jsx` (50% visibility for >500ms) and `keepalive: true` / `sendBeacon` click tracking. Created 6 top KPI metric boxes, live card badges (`Views`, `Clicks`, `CTR %`), and interactive "Client Proof" Summary Modal with 1-click WhatsApp copy and direct WhatsApp messaging for sponsors. Verified end-to-end and clean `npm run build` (378ms). |
+| 16.4 | **1-Tap WhatsApp Sponsor Connect (Local Advertiser Mode)** | Monetization & Local Business | `Completed` | Implemented dual-layer Indian phone auto-detection (10 digits, +91, 0-prefix, wa.me) with dynamic `https://wa.me/91XXXXXXXXXX?text=...` deep link embedding custom enquiry message. Added subtle broadsheet `WhatsApp Connect` pill badge on reader banners in `PartnerUnit.jsx`, real-time visual detection badge with 1-click `[Test Link ↗]` in `MonetizationDesk.jsx` (placement form, edit modal, and history table), preserving click telemetry. Verified with unit tests (`scratch/test_whatsapp_connect.cjs`), `npm run build` (502ms), and `npm run lint` (0 errors). |
+| 16.5 | **Real-Time Auto-Switch Timer (Zero-Reload Live Transition)** | Monetization & Real-Time Sync | `Completed` | Implemented precision sleep timers (`setTimeout`) executing at exact `startsAt` and `expiresAt` timestamps. Added zero layout shift (CLS) crossfade (`opacity: 1 -> 0 -> 1` over 300ms) and predictive timestamps (`nextStartsAt`, `expiresAt`) in `/api/ads/active`. Integrated `document.visibilitychange` and `window.focus` listeners for instant synchronization when readers unlock mobile phones or return to tabs. Verified with automated tests, `npm run build` (554ms), and `npm run lint` (0 errors). |
+| 16.6 | **Poster Aspect Ratio Lock & Dimension Guard** | Monetization & Layout Guard | `Completed` | Enforced IAB standards and vertical bounds via `SLOT_DIMENSION_GUARDS` and CSS clamps (Header: 100px/110px, In-Article: 280px, Sidebar: 600px/300px, Home Feed: 120px/110px, Footer: 100px/80px, Mobile Sticky: 60px). Added clean paper letterboxing via `object-fit: contain`, recommended dimension badges in placement accordion, re-run clone modal, and edit campaign modal. Verified with automated tests, `npm run build` (516ms), and `npm run lint` (0 errors). |
+| 20 | **Article Future Publishing Timer (Auto-Publish Later)** | Editorial & Newsroom Ops | `Completed` | Implemented dual-layer auto-publish engine in `server/server.js` (20s background cron + on-demand evaluator), public reader embargo shield (API + SSR), StoryEditorModal scheduler UI with `datetime-local` picker, scheduled stories filter desk with 1-click 'Publish Now', and strict Editorial RBAC gate (reporters locked to drafts; only editors/admins can publish or schedule). Verified via unit tests (`test_scheduled_publishing.mjs`), `npm run build` (640ms), and `npm run lint` (0 errors). |
+| 21 | **Article Revision History & 1-Click Rollback Desk** | Editorial & Newsroom Ops | `Completed` | Built persistent storage in `server/data/article_revisions.json` storing `{ [articleId]: [ RevisionObject, ... ] }`, automatic baseline & update snapshots, zero-waste 30-revision capping, `ArticleRevisionModal.jsx` timeline & diff inspector, 1-click rollback restoring live article with audit log, and strict Editorial RBAC (reporters view-only). Verified via unit tests (`test_revision_rollback.mjs`), `npm run build` (769ms), and `npm run lint` (0 errors). |
+| 22 | **Centralized Digital Asset & Photo Media Library Desk** | Media & Assets | `Completed` | Dedicated Media Library tab indexing server uploads, multi-field search, 8 news agency credit presets, missing-credit badge, disk usage statistics (% of 5GB Cloudflare free tier), multi-tier Editorial RBAC, and 1-click 'Insert into Story' picker for Story Editor and Field Reporter Desk without re-uploading. Verified with 18 automated tests, clean build (489ms), and lint (0 errors). |
+| 31 | **Minimalist Broadsheet Newsroom UI Polish (Phase 1)** | UI/UX & Editorial Standards | `Completed` | Refined header masthead, cards, and sidebar to eliminate generic AI/template aesthetics. Streamlined top utility bar, refined language selector, replaced public role dropdown with discrete staff access, removed fake views/likes from cards, eliminated bouncy hover zoom animations, and established 100% solid flat paper surfaces with crisp 1px hairline dividers while preserving 100% of all features. Verified via `npm run build` (515ms) and `npm run lint` (0 errors). |
+| 23 | **Live Breaking News Live-Blog / Minute-by-Minute Timeline Mode** | Real-Time Editorial & Live Stream | `Completed` | Article presentation format switcher (`standard`, `live`, `video`), live coverage status toggle (`active` vs `concluded`), backend endpoints (`GET/POST/DELETE /api/articles/:id/live-updates`), fast micro-update editor (`LiveUpdatesModal.jsx`), and reader real-time live timeline with 25s auto-polling, manual refresh, and Key Highlights filter. Verified via automated unit tests (`test_subtopic_23_a.mjs`, `test_subtopic_23_b.mjs`), `npm run build` (529ms), and `npm run lint` (0 errors). |
+| 23.1 | **Reporter Desk Rejection, Feedback Note & In-Place Resubmission Flow** | Editorial Workflow & Bug Fix | `Completed` | Synchronized `myStories` with `rejectedArticles` (`ps_rejected_articles_v1`), added feedback note modal with presets in `EditorWorkspace.jsx`, crimson rejection badge with editor's feedback note in `ReporterWorkspace.jsx`, and `[ Edit & Resubmit ]` action loading full story data into form for revision and re-queueing to editor desk. Verified via automated tests (`test_reporter_rejection_flow.mjs`), `npm run build` (923ms, exit code 0), and `npm run lint` (0 errors). |
+| 24 | **WhatsApp Smart Formatted Share Card & Viral Bulletin Engine** | Reader Engagement & Virality | `Completed` | Custom message builder in `src/services/shareService.js` (bold headline, 3 bullet points, dateline, clean URL), 1-tap WhatsApp buttons in ArticleReader top/bottom toolbars, Share Modal with live bulletin preview & 1-click clipboard copy, and direct feed card WhatsApp share buttons in `src/App.jsx`. Verified via automated tests (`test_share_service.mjs`), `npm run build` (556ms), and `npm run lint` (0 errors). |
+| 25 | **Fact-Check & Source Credibility Box** | Reader Trust & Verification | `Completed` | Interactive Credibility Shield badge and Editorial Fact-Check Dossier modal (`FactCheckDossierModal`) in `ArticleReader.jsx`, broadsheet Official Sources & Gazette Citations Box with document classification tags, category-based institutional fallback (PIB, Gazette of India, ISRO Bulletin, RBI), 1-click presets in `StoryEditorModal` and `ReporterWorkspace.jsx`, and certification in `EditorWorkspace.jsx`. Verified via 33 automated tests (`test_task_25_fact_check.mjs`), `npm run build` (637ms), and `npm run lint` (0 errors). |
+| 26 | **In-Article Smart Related Stories ("Ye Bhi Padhein")** | Reader Retention & Discovery | `Completed` | Category-matched scoring algorithm in `src/services/recommendationService.js`, mid-article inline callout ("ये भी पढ़ें") after paragraph 4 in `markdownRenderer.jsx`, and 3-card broadsheet responsive grid at the end of the article with 1-tap navigation and smooth scroll. Verified via 19 automated tests, `npm run build` (628ms), and `npm run lint` (0 errors). |
 
-## Next Steps (Immediate Work Order)
-1. **User Testing & Review on Mobile & Desktop**:
-   - Verify layout toggle by resizing browser window or opening dev server on mobile device.
-2. **Production Deployment Testing**:
-   - Verify deployment workflow on Cloudflare Pages (Frontend) and Render Web Service (Backend).
+---
 
+## Section 2: In-Progress Tasks (Jin Par Kaam Chal Raha Hai)
+
+- **Currently In Progress**: **Task 27 - Hairline Reading Progress Bar & "X Min Read" Badge** (Subtopic A Completed & Verified; Subtopic B Planned for after approval).
+- **Next Task in Queue**: Task 27 - Subtopic B: Calculated reading duration badge.
+
+---
+
+##  Section 3: Planned Tasks (Jo Jo Kaam Aage Karne Hain — Master Topic & Subtopic Checklist)
+
+###  Module 1: Complete In-House Ads & Monetization Suite
+
+- [x] **Task 16.2: Ad Campaign History & Archive Engine (with 1-Click Re-Run & In-Place Editing)** `Completed`
+  - [x] *Subtopic A*: Backend Persistence & REST API — Created `server/data/ad_history.json` and endpoints `GET /api/ads/history` and `POST /api/ads/history/delete`.
+  - [x] *Subtopic B*: Automatic Campaign Snapshots — Auto-captures snapshot on ad save across all 6 slots with deduplication.
+  - [x] *Subtopic C*: History Desk Interface — Dedicated broadsheet history table & cards inside `MonetizationDesk.jsx` showing Banner Thumbnail, Sponsor Name, Slot, Date Range, and Status Badges (`Live Now`, `Scheduled`).
+  - [x] *Subtopic D*: 1-Click "Re-Run / Clone" Action — Modal to instantly re-populate and activate the banner in any slot with 24h, 7d, 30d presets without re-uploading images.
+  - [x] *Subtopic E*: Zero-Waste Storage & Instant Expiry Purge — Auto-deletes campaign record and physical WebP banner file from disk the moment `endDateTime` has passed.
+  - [x] *Subtopic F*: Placement Form Auto-Clear & Live Slot Notice — Slot inputs clear automatically after saving or via manual `[  Clear Form / New Ad ]` button, while displaying an active status badge if an ad is currently live in that slot.
+  - [x] *Subtopic G*: In-Place Campaign Editing (`POST /api/ads/history/update`) — Edit Modal allowing instant corrections for typos, sponsor links/WhatsApp phone, replacement banner, and schedule dates directly from the active campaigns desk.
+
+- [x] **Task 16.3: Direct Sponsor Impressions & Click Tracker (In-House Ad Analytics)** `Completed`
+  - [x] *Subtopic A*: Server-Side Tracking Gateway — Endpoints `POST /api/ads/track/impression` and `POST /api/ads/track/click` with in-memory IP sliding window de-duplication (30 min cooldown for views, 5 min for clicks) and direct JSON persistence in `ad_history.json`.
+  - [x] *Subtopic B*: Client-Side Visibility & Click Telemetry — `IntersectionObserver` in `PartnerUnit.jsx` verifying real human reading (>50% visibility for >500ms) and `keepalive: true` / `navigator.sendBeacon` click recording.
+  - [x] *Subtopic C*: Live Metrics Badges & 6 KPI Counters — Real-time counters inside `MonetizationDesk.jsx` showing Total Views, Total Clicks, and Average CTR %, plus live badges on every active campaign card.
+  - [x] *Subtopic D*: Local Advertiser "Client Proof" Summary Card Modal — Professional verification modal with official shield badge, big KPI cards, 1-click WhatsApp copy text generator, and direct WhatsApp sharing link for advertisers.
+
+- [x] **Task 16.4: 1-Tap WhatsApp Sponsor Connect (Local Advertiser Mode)** `Completed`
+  - [x] *Subtopic A*: Phone Number Auto-Detection — Detect if Sponsor Target URL is a 10-digit Indian phone number, `+91`, `0`-prefix, or `wa.me` link.
+  - [x] *Subtopic B*: Dynamic WhatsApp Deep Link — Auto-generate `https://wa.me/91XXXXXXXXXX?text=...` with pre-filled enquiry message including sponsor name and PublicSpark attribution.
+  - [x] *Subtopic C*: In-App One-Touch Opening & Reader Badge — Subtle `WhatsApp Connect` pill on banner in `PartnerUnit.jsx`, 1-tap direct chat launch, and preserved click telemetry.
+  - [x] *Subtopic D*: Admin Live Phone Validation & Test Button — Real-time detection badge and 1-click test link in `MonetizationDesk.jsx` (placement form, edit modal, and history table).
+
+- [x] **Task 16.5: Real-Time Auto-Switch Timer (Zero-Reload Live Transition)** `Completed`
+  - [x] *Subtopic A*: Precision Sleep Timers — Browser `setTimeout` executing at exact `startsAt` and `expiresAt` timestamps.
+  - [x] *Subtopic B*: Zero Layout Shift (CLS) Fade Transition — Smooth CSS crossfade (`opacity: 1 -> 0 -> 1` over 300ms) preventing reader text jump.
+  - [x] *Subtopic C*: Tab Wakeup Synchronization — `document.visibilitychange` & `window.focus` listeners to auto-sync when reader unlocks phone or returns to tab.
+  - [x] *Subtopic D*: Backend Predictive Timestamps — Enhanced `/api/ads/active` with `nextStartsAt` and `expiresAt` across all slots.
+
+- [x] **Task 16.6: Poster Aspect Ratio Lock & Dimension Guard** `Completed`
+  - [x] *Subtopic A*: CSS Max-Height Clamps — Enforce maximum vertical bounds per slot (Header: 100px desktop / 110px mobile, In-Article: 280px, Sidebar: 600px desktop / 300px mobile, Home Feed: 120px desktop / 110px mobile, Footer: 100px desktop / 80px mobile, Mobile Sticky: 60px).
+  - [x] *Subtopic B*: Object-Fit Contain & Clean Letterboxing — Clean paper letterboxing ensuring vertical/irregular posters never stretch, deform, or expand beyond slot bounds.
+  - [x] *Subtopic C*: Recommended Dimension Badges & Ratio Indicators — High-contrast industry badges in placement accordion, re-run clone modal, and edit campaign modal.
+
+---
+
+###  Module 2: Enterprise Editorial & Newsroom Operations
+
+- [x] **Task 20: Article Future Publishing Timer (Auto-Publish Later)** `Completed`
+  - [x] *Subtopic A*: Future Date-Time Scheduler Input in Story Editor Modal.
+  - [x] *Subtopic B*: Server Clock Cron / Evaluator flipping `scheduled` to `published`.
+  - [x] *Subtopic C*: Admin Filter & Badges: "Scheduled Stories" view with live countdown timer.
+  - [x] *Subtopic D*: Editorial RBAC Gate: Reporters restricted to drafts; only Editors and Admins can publish live or schedule.
+
+- [ ] **Task 21: Article Revision History & 1-Click Rollback Desk**
+  - *Subtopic A*: Snapshot on Save — Store timestamped versions in `server/data/article_revisions.json`.
+  - *Subtopic B*: Visual Side-by-Side Diff Viewer (Old vs New).
+  - *Subtopic C*: 1-Click Restore / Rollback to any past version.
+
+- [ ] **Task 22: Centralized Digital Asset & Photo Media Library Desk**
+  - *Subtopic A*: Dedicated "Media Library" tab indexing all files in `server/data/uploads/`.
+  - *Subtopic B*: Keyword search, caption/credit management, and file size statistics.
+  - *Subtopic C*: 1-Click "Insert into Story" without re-uploading files.
+
+- [ ] **Task 23: Live Breaking News Live-Blog / Minute-by-Minute Timeline Mode**
+  - *Subtopic A*: Toggle "Live Blog Mode" for elections, cricket, and budget events.
+  - *Subtopic B*: Fast micro-update editor posting timestamped bullets without full page reload.
+
+---
+
+###  Module 3: Reader Engagement, Traffic Virality & Indian Compliance
+
+- [ ] **Task 24: WhatsApp Smart Formatted Share Card**
+  - *Subtopic A*: Custom message builder: Headline + 3 Key Bullet Points + Clean Link.
+  - *Subtopic B*: 1-Tap WhatsApp Web / App share button.
+
+- [x] **Task 25: Fact-Check & Source Credibility Box** `Completed`
+  - [x] *Subtopic A*: Editorial verification badge inside investigative stories. `Completed`
+  - [x] *Subtopic B*: Official source and government gazette link citations. `Completed`
+
+- [x] **Task 26: In-Article Smart Related Stories ("Ye Bhi Padhein")** `Completed`
+  - [x] *Subtopic A*: Category-matched recommendation algorithm. `Completed`
+  - [x] *Subtopic B*: Mid-article and end-of-article broadsheet related cards. `Completed`
+
+- [/] **Task 27: Hairline Reading Progress Bar & "X Min Read" Badge** `In Progress`
+  - [x] *Subtopic A*: Top broadsheet scroll indicator line (`scrollProgress %`). `Completed`
+  - [ ] *Subtopic B*: Calculated reading duration badge. `Planned`
+
+- [ ] **Task 28: Saved Stories / Bookmark (Offline Reading Mode)**
+  - *Subtopic A*: Offline storage of bookmarked stories via `localStorage`.
+  - *Subtopic B*: Dedicated "Saved Stories" reading drawer.
+
+- [ ] **Task 29: Statutory Grievance Redressal / Complaint Form (IT Rules 2021 India)**
+  - *Subtopic A*: Reader complaint submission modal with category & grievance officer routing.
+  - *Subtopic B*: Admin Grievance Review Desk with resolution tracking.
+
+- [ ] **Task 30: Google News Specialized XML Feed (`news-sitemap.xml`) & RSS 2.0**
+  - *Subtopic A*: Google News `<news:news>` XML specification generator.
+  - *Subtopic B*: Standard RSS 2.0 automated syndication feed.
+
+---
+
+###  Module 4: Newsroom Access & Cybersecurity Suite (Final Dedicated Phase)
+
+- [ ] **Task 17: Multi-Role Newsroom Login & PIN Security (RBAC)**
+  - *Subtopic A*: 3 Distinct Roles (Reporter, Editor, Admin) with granular permissions.
+  - *Subtopic B*: Secure 6-digit PIN login with memory-hard hashing (`scrypt`).
+  - *Subtopic C*: HttpOnly secure session cookies.
+
+- [ ] **Task 18: Backend API Hardening & Tamper Protection**
+  - *Subtopic A*: Public route rate limiting & anti-DDoS IP throttling.
+  - *Subtopic B*: Authentication token protection on `/api/settings/*`, `/api/articles/*`, and `/api/ads/*`.
+
+- [ ] **Task 19: 1-Click Complete Database & Media Auto-Backup Desk**
+  - *Subtopic A*: Admin backup generator creating `.zip` archive of database files and media uploads.
+  - *Subtopic B*: 1-Click download and restore verification.

@@ -1,4 +1,4 @@
-# 🛠️ PublicSpark — Master Backend Architecture, Schema & API Specification
+#  PublicSpark — Master Backend Architecture, Schema & API Specification
 
 **Project:** PublicSpark Digital Newsroom Platform  
 **Backend Runtime:** Node.js Native HTTP Proxy Server (`server/server.js`) on `http://localhost:5000`  
@@ -8,7 +8,7 @@
 
 ---
 
-## 📋 1. Executive Summary & Core Commitments
+##  1. Executive Summary & Core Commitments
 
 The backend architecture of **PublicSpark** is engineered around two core principles: **₹0 Direct Infrastructure Cost** and **High-Performance Execution Speed**.
 
@@ -20,7 +20,7 @@ PublicSpark employs a **Hybrid Client-Cloud Architecture**:
 
 ---
 
-## 🏗️ 2. High-Level Backend Service Architecture & Modular Layout
+##  2. High-Level Backend Service Architecture & Modular Layout
 
 ```mermaid
 graph TD
@@ -74,7 +74,7 @@ src/services/
 
 ---
 
-## 🔄 3. Data Flow Architecture & Sequence Diagrams
+##  3. Data Flow Architecture & Sequence Diagrams
 
 ### A. Reader Article Viewing, Translation & Audio Progress Sequence
 ```
@@ -93,7 +93,7 @@ src/services/
 [translationService.js] ───► [Update UI Title & Content Instantly]
        │
        ▼
-[User Clicks 🔊 Audio Reader]
+[User Clicks  Audio Reader]
        │
        ▼
 [GET /api/audio/progress?articleId=1&langCode=hi] ───► [Fetch Saved Position (e.g. 15s)]
@@ -145,7 +145,7 @@ src/services/
 
 ---
 
-## ⚡ 4. Node.js Backend Proxy API Specifications (`http://localhost:5000`)
+##  4. Node.js Backend Proxy API Specifications (`http://localhost:5000`)
 
 ### 4.1 Text-To-Speech Synthesis Endpoint
 - **Route**: `POST /api/tts`
@@ -293,7 +293,7 @@ src/services/
 
 ---
 
-## 🗄️ 5. PostgreSQL Production Schema & Data Models
+##  5. PostgreSQL Production Schema & Data Models
 
 Below is the complete production PostgreSQL DDL schema definition (used in Supabase cloud database):
 
@@ -415,7 +415,7 @@ CREATE POLICY "Editors full access" ON public.articles
 
 ---
 
-## 🔑 6. Cache Keys & Naming Conventions
+##  6. Cache Keys & Naming Conventions
 
 | Cache Layer | Key Pattern | Storage Location | Example |
 | :--- | :--- | :--- | :--- |

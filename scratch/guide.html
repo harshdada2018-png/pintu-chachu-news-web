@@ -96,13 +96,13 @@
   </style>
 </head>
 <body>
-  <h1>🚀 PublicSpark — Full-Stack Deployment, Code Separation & Multi-DB Architecture Guide</h1>
+  <h1> PublicSpark — Full-Stack Deployment, Code Separation & Multi-DB Architecture Guide</h1>
 <p><strong>Project:</strong> PublicSpark Digital Newsroom Platform  
 <strong>Target Environment:</strong> Production Hosting (Vercel/Netlify for Frontend, Render/Railway/VPS for Backend)  
 <strong>Database Engines:</strong> Supabase PostgreSQL + Turso Edge SQLite + Cloudflare R2  
 <strong>Document Date:</strong> October 10, 2026  </p>
 <hr/>
-<h2>📑 Table of Contents</h2>
+<h2> Table of Contents</h2>
 1. [Executive Summary](#1-executive-summary)
 2. [Frontend vs. Backend Code Separation](#2-frontend-vs-backend-code-separation)
 3. [Frontend Deployment Procedure](#3-frontend-deployment-procedure)
@@ -117,7 +117,7 @@
 <ul><li><strong>Frontend (Client-Side)</strong>: Handles user interaction, responsive newsroom UI, client caching, theme switching, 1-click share modals, and bookmarks.</li><li><strong>Backend (Server-Side)</strong>: Handles Text-to-Speech synthesis (Google Cloud TTS & Sarvam AI), 18-language multi-tier translation API proxy, analytics view tracking, and server database persistence.</li><li><strong>Multi-DB Layer</strong>: Employs a zero-cost hybrid database strategy splitting Master relational data (Supabase PostgreSQL), fast edge caches (Turso SQLite), and media storage (Cloudflare R2).</li></ul></p>
 <hr/>
 <h2>2. Frontend vs. Backend Code Separation</h2>
-<h3>🌐 Frontend (Client-Side App)</h3>
+<h3> Frontend (Client-Side App)</h3>
 These files execute strictly inside the user's browser.
 <p>| File / Folder Path | Purpose |
 | :--- | :--- |
@@ -131,7 +131,7 @@ These files execute strictly inside the user's browser.
 | <code>public/</code> | Static branding assets (<code>logo.png</code>). |
 | <code>index.html</code> | Base HTML document, Google Fonts preloader. |
 | <code>vite.config.js</code> | Vite build tool configuration. |</p>
-<h3>⚙️ Backend (Server-Side App)</h3>
+<h3> Backend (Server-Side App)</h3>
 These files execute strictly on your Node.js cloud server.
 <p>| File / Folder Path | Purpose |
 | :--- | :--- |

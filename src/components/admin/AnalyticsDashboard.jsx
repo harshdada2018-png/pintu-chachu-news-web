@@ -238,7 +238,7 @@ export default function AnalyticsDashboard({ articles }) {
           </div>
 
           {/* Graph Type Toggle Pills with Lucide Icons */}
-          <div style={{ display: 'inline-flex', background: 'var(--bg-secondary)', padding: '0.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)' }}>
+          <div className="analytics-graph-pills">
             {[
               { id: 'line', label: 'Trend Curve', Icon: TrendingUp },
               { id: 'bar', label: 'Volume Bars', Icon: BarChart2 },

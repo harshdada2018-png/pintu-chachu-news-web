@@ -3,8 +3,33 @@ import {
   Settings, Users, FolderTree, DollarSign, Plus, Trash2, CheckCircle2,
   BarChart2, HardDrive, Share2, Send, Newspaper, Eye, EyeOff, Edit3,
   Radio, Search, Flame, Sparkles, X, RefreshCw, RotateCcw, Check, ExternalLink, ShieldAlert,
-  Type, Sliders, Globe, Languages, MapPin, Palette, Monitor, Smartphone, BarChart3
+  Type, Sliders, Globe, Languages, MapPin, Palette, Monitor, Smartphone, BarChart3,
+  Clock, ShieldCheck, History, Image as ImageIcon, FileText
 } from 'lucide-react';
+import ArticleRevisionModal from './ArticleRevisionModal';
+import MediaLibraryDesk from './MediaLibraryDesk';
+import LiveUpdatesModal from './LiveUpdatesModal';
+
+/**
+ * Format ISO / datetime-local string to clean Indian standard readable format (e.g. 4 Nov 2026, 07:00 AM)
+ */
+function formatDisplayDateTime(dtStr) {
+  if (!dtStr) return '';
+  try {
+    const d = new Date(dtStr);
+    if (isNaN(d.getTime())) return dtStr;
+    return d.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch {
+    return dtStr;
+  }
+}
 
 const WhatsAppIcon = ({ size = 16, color = '#25D366' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -42,8 +67,9 @@ import ColorPaletteCustomizer from './ColorPaletteCustomizer';
 import MonetizationDesk from './MonetizationDesk';
 import PollManager from './PollManager';
 
-// Story Editor Modal Component
-function StoryEditorModal({ article, categories, onClose, onSave }) {
+// Story Editor Modal Component (with Task 20 Future Auto-Publish Scheduler & Task 21 Revisions)
+function StoryEditorModal({ article, categories, onClose, onSave, onOpenRevisions, currentRole = 'admin' }) {
+  const isReporter = currentRole === 'reporter';
   const [formData, setFormData] = useState({
     id: article?.id || `art-${Date.now()}`,
     originalLanguage: article?.originalLanguage || (article ? 'hi' : ''),
@@ -53,17 +79,106 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
     content: article?.content || '',
     category: article?.category || 'India',
     category_slug: article?.category_slug || 'india',
-    status: article?.status || 'published',
+    status: isReporter ? 'draft' : (article?.status || 'published'),
+    scheduledPublishTime: article?.scheduledPublishTime || '',
     is_breaking: article?.is_breaking || false,
+    format: article?.format || (article?.video_url ? 'video' : 'standard'),
+    live_status: article?.live_status || 'active',
     featured_image: article?.featured_image || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80',
     video_url: article?.video_url || '',
     image_caption: article?.image_caption || '',
     media_credits: article?.media_credits || 'PublicSpark News',
-    author_name: article?.author?.name || 'Newsroom Admin',
-    author_role: article?.author?.role || 'Executive Editor'
+    author_name: article?.author?.name || (isReporter ? 'Staff Reporter' : 'Newsroom Admin'),
+    author_role: article?.author?.role || (isReporter ? 'Reporter' : 'Executive Editor'),
+    changeNote: '',
+    fact_check_verified: article?.fact_check?.verified ?? true,
+    fact_check_rating: article?.fact_check?.rating || 'Verified',
+    fact_check_desk: article?.fact_check?.desk || 'PublicSpark Fact Desk',
+    fact_check_claim: article?.fact_check?.claim || '',
+    sources: Array.isArray(article?.sources) ? article.sources : []
   });
 
+  const [newSourceTitle, setNewSourceTitle] = useState('');
+  const [newSourceUrl, setNewSourceUrl] = useState('');
+  const [newSourceType, setNewSourceType] = useState('Official Press Release');
+  const [newSourcePublisher, setNewSourcePublisher] = useState('');
+
+  const SOURCE_PRESETS = [
+    {
+      label: 'PIB Release',
+      title: 'Press Information Bureau (PIB) New Delhi',
+      url: 'https://pib.gov.in',
+      type: 'Official Press Release',
+      publisher: 'Press Information Bureau, Govt of India'
+    },
+    {
+      label: 'Gazette of India',
+      title: 'The Gazette of India (Extraordinary Notification)',
+      url: 'https://egazette.gov.in',
+      type: 'Government Gazette',
+      publisher: 'Ministry of Law & Justice, Govt of India'
+    },
+    {
+      label: 'PTI Wire',
+      title: 'Press Trust of India (PTI) National Dispatch',
+      url: 'https://ptinews.com',
+      type: 'News Agency Dispatch',
+      publisher: 'PTI News Agency'
+    },
+    {
+      label: 'Judicial Order',
+      title: 'Supreme Court / High Court Judicial Order',
+      url: 'https://main.sci.gov.in',
+      type: 'Judicial Order',
+      publisher: 'Judiciary of India'
+    },
+    {
+      label: 'Govt Notification',
+      title: 'State Government Administrative Notification',
+      url: 'https://india.gov.in',
+      type: 'Official Notification',
+      publisher: 'Government Administration'
+    }
+  ];
+
+  const handleAddSource = () => {
+    if (!newSourceTitle.trim()) {
+      alert('Please enter a source document or publication name.');
+      return;
+    }
+    const newSrc = {
+      id: `src-${Date.now()}`,
+      title: newSourceTitle.trim(),
+      url: newSourceUrl.trim() || 'https://pib.gov.in',
+      type: newSourceType,
+      publisher: newSourcePublisher.trim() || 'Official Bureau',
+      accessed_at: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    };
+    setFormData(prev => ({
+      ...prev,
+      sources: [...prev.sources, newSrc]
+    }));
+    setNewSourceTitle('');
+    setNewSourceUrl('');
+    setNewSourcePublisher('');
+  };
+
+  const handleRemoveSource = (srcId) => {
+    setFormData(prev => ({
+      ...prev,
+      sources: prev.sources.filter(s => s.id !== srcId)
+    }));
+  };
+
+  const applySourcePreset = (preset) => {
+    setNewSourceTitle(preset.title);
+    setNewSourceUrl(preset.url);
+    setNewSourceType(preset.type);
+    setNewSourcePublisher(preset.publisher);
+  };
+
   const [presetImages, setPresetImages] = useState([]);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/presets')
@@ -87,64 +202,90 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
       return;
     }
 
+    // Role Gate: Reporters can only save drafts
+    let finalStatus = formData.status;
+    let finalScheduledTime = formData.scheduledPublishTime;
+    if (isReporter) {
+      finalStatus = 'draft';
+      finalScheduledTime = null;
+    } else if (finalStatus === 'scheduled') {
+      if (!finalScheduledTime) {
+        alert('Please specify a target publication date and time for scheduled release.');
+        return;
+      }
+      const schedMs = new Date(finalScheduledTime).getTime();
+      if (isNaN(schedMs)) {
+        alert('Please enter a valid scheduled date and time.');
+        return;
+      }
+    }
+
     const selectedCat = categories.find(c => c.name.toLowerCase() === formData.category.toLowerCase());
     const category_slug = selectedCat ? selectedCat.slug : formData.category.toLowerCase().replace(/\s+/g, '-');
 
     const updatedStory = {
       ...article,
       ...formData,
+      status: finalStatus,
+      scheduledPublishTime: finalScheduledTime,
       category_slug,
-      format: formData.video_url?.trim() ? 'video' : (article?.format || 'standard'),
+      format: formData.format || (formData.video_url?.trim() ? 'video' : 'standard'),
+      live_status: formData.format === 'live' ? (formData.live_status || 'active') : null,
+      live_updates: article?.live_updates || [],
       video_url: formData.video_url?.trim() || null,
       author: {
         name: formData.author_name,
         role: formData.author_role,
         avatar: article?.author?.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80'
       },
-      published_at: article?.published_at || 'Just now',
+      published_at: finalStatus === 'scheduled'
+        ? `Scheduled: ${formatDisplayDateTime(finalScheduledTime)}`
+        : (article?.published_at || 'Just now'),
       views_count: article?.views_count || 120,
-      likes_count: article?.likes_count || 18
+      likes_count: article?.likes_count || 18,
+      fact_check: {
+        verified: formData.fact_check_verified,
+        rating: formData.fact_check_rating || 'Verified',
+        desk: formData.fact_check_desk?.trim() || 'PublicSpark Fact Desk',
+        claim: formData.fact_check_claim?.trim() || '',
+        verified_at: article?.fact_check?.verified_at || 'Just now',
+        methodology: 'Cross-verified against official gazette notifications and primary agency dispatches in accordance with Press Council of India standards.'
+      },
+      sources: formData.sources || [],
+      userRole: currentRole
     };
 
     onSave(updatedStory);
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(15, 23, 42, 0.72)',
-      zIndex: 99999,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '1.5rem'
-    }}>
-      <div style={{
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border-medium)',
-        borderRadius: 'var(--radius-lg)',
-        width: '100%',
-        maxWidth: '760px',
-        maxHeight: '90vh',
-        overflowY: 'auto',
-        boxShadow: 'var(--shadow-xl)',
-        padding: '1.75rem'
-      }}>
+    <div className="admin-modal-overlay">
+      <div className="admin-modal-dialog">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
           <h3 style={{ fontSize: '1.25rem', fontWeight: '900', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
             <Edit3 color="var(--accent-blue)" size={22} />
             {article ? 'Edit News Story' : 'Create Custom News Story'}
           </h3>
-          <button
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '0.4rem', borderRadius: '50%' }}
-          >
-            <X size={20} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {article?.id && onOpenRevisions && (
+              <button
+                type="button"
+                onClick={() => onOpenRevisions(article)}
+                className="btn btn-outline"
+                style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                title="View previous edit history and rollback snapshots"
+              >
+                <History size={13} /> View Revisions
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '0.4rem', borderRadius: '50%' }}
+              title="Close modal"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
@@ -200,7 +341,7 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', opacity: formData.originalLanguage ? 1 : 0.55 }}>
+          <div className="admin-modal-grid-2col" style={{ opacity: formData.originalLanguage ? 1 : 0.55 }}>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: '800', display: 'block', marginBottom: '0.35rem', color: 'var(--text-main)' }}>Category Taxonomy</label>
               <select
@@ -216,28 +357,89 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
             </div>
 
             <div>
-              <label style={{ fontSize: '0.85rem', fontWeight: '800', display: 'block', marginBottom: '0.35rem', color: 'var(--text-main)' }}>Homepage Visibility Control</label>
-              <select
-                value={formData.status}
-                disabled={!formData.originalLanguage}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '0.65rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-medium)',
-                  fontSize: '0.9rem',
-                  fontWeight: '800',
-                  background: 'var(--bg-main)',
-                  color: formData.status === 'published' ? 'var(--accent-emerald)' : 'var(--accent-amber)',
-                  cursor: formData.originalLanguage ? 'pointer' : 'not-allowed'
-                }}
-              >
-                <option value="published">Show Live on Homepage (Published)</option>
-                <option value="hidden">Hide from Homepage (Draft / Hidden)</option>
-              </select>
+              <label style={{ fontSize: '0.85rem', fontWeight: '800', display: 'block', marginBottom: '0.35rem', color: 'var(--text-main)' }}>
+                Publishing & Editorial Status
+              </label>
+              {isReporter ? (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', padding: '0.55rem 0.75rem', borderRadius: 'var(--radius-sm)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: '#B45309', fontWeight: '800', fontSize: '0.8rem' }}>
+                    <ShieldCheck size={15} />
+                    <span>Status: Draft / Editorial Review</span>
+                  </div>
+                  <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.7rem', color: '#92400E', lineHeight: '1.3' }}>
+                    Editorial Gate: Stories written by reporters are submitted as drafts. Only Editors and Admins can publish live or schedule future publication.
+                  </p>
+                </div>
+              ) : (
+                <select
+                  value={formData.status}
+                  disabled={!formData.originalLanguage}
+                  onChange={(e) => {
+                    const s = e.target.value;
+                    setFormData(prev => ({
+                      ...prev,
+                      status: s,
+                      scheduledPublishTime: s === 'scheduled' && !prev.scheduledPublishTime
+                        ? new Date(Date.now() + 3600000).toISOString().slice(0, 16)
+                        : prev.scheduledPublishTime
+                    }));
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.65rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-medium)',
+                    fontSize: '0.85rem',
+                    fontWeight: '800',
+                    background: 'var(--bg-main)',
+                    color: formData.status === 'published' 
+                      ? 'var(--accent-emerald)' 
+                      : formData.status === 'scheduled'
+                        ? 'var(--accent-blue)'
+                        : 'var(--accent-amber)',
+                    cursor: formData.originalLanguage ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  <option value="published">Show Live on Homepage (Published)</option>
+                  <option value="scheduled">Schedule Future Auto-Publish (Timer)</option>
+                  <option value="hidden">Save as Draft (Hidden from Readers)</option>
+                </select>
+              )}
             </div>
           </div>
+
+          {/* Scheduled Publishing Timer Picker Box (Task 20) */}
+          {!isReporter && formData.status === 'scheduled' && (
+            <div style={{
+              background: '#EFF6FF',
+              border: '1px solid #93C5FD',
+              padding: '0.85rem 1rem',
+              borderRadius: 'var(--radius-sm)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.82rem', fontWeight: '800', color: '#1E40AF', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                  <Clock size={16} color="#2563EB" />
+                  Target Auto-Publish Date & Time:
+                </label>
+                {formData.scheduledPublishTime && (
+                  <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#1D4ED8', background: '#DBEAFE', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
+                    Release: {formatDisplayDateTime(formData.scheduledPublishTime)}
+                  </span>
+                )}
+              </div>
+              <input
+                type="datetime-local"
+                value={formData.scheduledPublishTime ? formData.scheduledPublishTime.slice(0, 16) : ''}
+                onChange={(e) => setFormData({ ...formData, scheduledPublishTime: e.target.value })}
+                min={new Date().toISOString().slice(0, 16)}
+                style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid #60A5FA', background: '#FFFFFF', fontSize: '0.88rem', fontWeight: '700', color: '#1E3A8A', boxSizing: 'border-box' }}
+                required={formData.status === 'scheduled'}
+              />
+              <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.74rem', color: '#3B82F6', lineHeight: '1.4' }}>
+                Auto-Publish Engine: The server clock will automatically flip this story to Live on the homepage at this exact minute. Readers will not see it before this time.
+              </p>
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', background: 'var(--bg-secondary)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-light)', opacity: formData.originalLanguage ? 1 : 0.55 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: '800', cursor: formData.originalLanguage ? 'pointer' : 'not-allowed', color: 'var(--accent-crimson)' }}>
@@ -252,6 +454,150 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
                 <Flame size={16} /> Mark as Breaking News Ticker Story
               </span>
             </label>
+          </div>
+
+          {/* Story Format & Live Blog Selector (Task 23 Subtopic A) */}
+          <div style={{
+            background: formData.format === 'live' ? '#FEF2F2' : 'var(--bg-secondary)',
+            border: formData.format === 'live' ? '1px solid #FCA5A5' : '1px solid var(--border-light)',
+            padding: '0.85rem 1rem',
+            borderRadius: 'var(--radius-sm)',
+            transition: 'all 0.2s ease',
+            opacity: formData.originalLanguage ? 1 : 0.55
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: '800', color: formData.format === 'live' ? '#991B1B' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                <Radio size={16} color={formData.format === 'live' ? '#DC2626' : 'var(--text-subtle)'} />
+                Story Format & Presentation Mode:
+              </label>
+              {formData.format === 'live' && (
+                <span style={{
+                  fontSize: '0.7rem',
+                  fontWeight: '800',
+                  color: formData.live_status === 'active' ? '#B91C1C' : '#4B5563',
+                  background: formData.live_status === 'active' ? '#FEE2E2' : '#E5E7EB',
+                  border: formData.live_status === 'active' ? '1px solid #F87171' : '1px solid #D1D5DB',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: '4px',
+                  textTransform: 'uppercase'
+                }}>
+                  {formData.live_status === 'active' ? 'Live Timeline Active' : 'Coverage Concluded'}
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: formData.format === 'live' ? '0.75rem' : '0' }}>
+              <button
+                type="button"
+                disabled={!formData.originalLanguage}
+                onClick={() => setFormData({ ...formData, format: 'standard' })}
+                className="btn"
+                style={{
+                  padding: '0.4rem 0.85rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  borderRadius: '4px',
+                  border: formData.format === 'standard' ? '1px solid #0E2A47' : '1px solid var(--border-medium)',
+                  background: formData.format === 'standard' ? '#0E2A47' : '#FFFFFF',
+                  color: formData.format === 'standard' ? '#FFFFFF' : 'var(--text-main)',
+                  cursor: formData.originalLanguage ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Standard Article
+              </button>
+
+              <button
+                type="button"
+                disabled={!formData.originalLanguage}
+                onClick={() => setFormData({ ...formData, format: 'live', live_status: formData.live_status || 'active' })}
+                className="btn"
+                style={{
+                  padding: '0.4rem 0.85rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '800',
+                  borderRadius: '4px',
+                  border: formData.format === 'live' ? '1px solid #DC2626' : '1px solid var(--border-medium)',
+                  background: formData.format === 'live' ? '#DC2626' : '#FFFFFF',
+                  color: formData.format === 'live' ? '#FFFFFF' : 'var(--text-main)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  cursor: formData.originalLanguage ? 'pointer' : 'not-allowed'
+                }}
+              >
+                <Radio size={13} /> Live Blog (Timeline Mode)
+              </button>
+
+              <button
+                type="button"
+                disabled={!formData.originalLanguage}
+                onClick={() => setFormData({ ...formData, format: 'video' })}
+                className="btn"
+                style={{
+                  padding: '0.4rem 0.85rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  borderRadius: '4px',
+                  border: formData.format === 'video' ? '1px solid #0E2A47' : '1px solid var(--border-medium)',
+                  background: formData.format === 'video' ? '#0E2A47' : '#FFFFFF',
+                  color: formData.format === 'video' ? '#FFFFFF' : 'var(--text-main)',
+                  cursor: formData.originalLanguage ? 'pointer' : 'not-allowed'
+                }}
+              >
+                Video Story
+              </button>
+            </div>
+
+            {/* Live Blog Coverage Status Options */}
+            {formData.format === 'live' && (
+              <div style={{
+                borderTop: '1px solid #FCA5A5',
+                paddingTop: '0.65rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '0.5rem'
+              }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#7F1D1D' }}>
+                  Coverage Status (Event Status):
+                </span>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, live_status: 'active' })}
+                    style={{
+                      padding: '0.25rem 0.6rem',
+                      fontSize: '0.72rem',
+                      fontWeight: '800',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      border: formData.live_status === 'active' ? '1px solid #DC2626' : '1px solid #E5E7EB',
+                      background: formData.live_status === 'active' ? '#DC2626' : '#FFFFFF',
+                      color: formData.live_status === 'active' ? '#FFFFFF' : '#374151'
+                    }}
+                  >
+                    Live Active (Ongoing)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, live_status: 'concluded' })}
+                    style={{
+                      padding: '0.25rem 0.6rem',
+                      fontSize: '0.72rem',
+                      fontWeight: '800',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      border: formData.live_status === 'concluded' ? '1px solid #4B5563' : '1px solid #E5E7EB',
+                      background: formData.live_status === 'concluded' ? '#4B5563' : '#FFFFFF',
+                      color: formData.live_status === 'concluded' ? '#FFFFFF' : '#374151'
+                    }}
+                  >
+                    Coverage Concluded (Ended)
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{ opacity: formData.originalLanguage ? 1 : 0.55 }}>
@@ -279,13 +625,39 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
           </div>
 
           <div style={{ opacity: formData.originalLanguage ? 1 : 0.55 }}>
-            <label style={{ fontSize: '0.85rem', fontWeight: '800', display: 'block', marginBottom: '0.35rem', color: 'var(--text-main)' }}>Featured Cover Image URL</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
+                Featured Cover Image
+              </label>
+              <button
+                type="button"
+                disabled={!formData.originalLanguage}
+                onClick={() => setIsMediaPickerOpen(true)}
+                className="btn btn-outline"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  fontSize: '0.75rem',
+                  fontWeight: '800',
+                  padding: '0.25rem 0.65rem',
+                  background: 'var(--bg-secondary)',
+                  borderColor: 'var(--accent-blue)',
+                  color: 'var(--accent-blue)',
+                  cursor: formData.originalLanguage ? 'pointer' : 'not-allowed'
+                }}
+              >
+                <ImageIcon size={13} />
+                <span>Choose from Media Library</span>
+              </button>
+            </div>
+
             <input
               type="text"
               value={formData.featured_image}
               disabled={!formData.originalLanguage}
               onChange={(e) => setFormData({ ...formData, featured_image: e.target.value })}
-              placeholder="https://images.unsplash.com/..."
+              placeholder="https://images.unsplash.com/... or /uploads/img_..."
               style={{ width: '100%', padding: '0.65rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.85rem', background: 'var(--bg-main)', color: 'var(--text-main)', cursor: formData.originalLanguage ? 'text' : 'not-allowed' }}
             />
 
@@ -317,6 +689,37 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
                 <img src={formData.featured_image} alt="Cover preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
             )}
+
+            {/* Photo Caption & Media Credit Inputs */}
+            <div className="admin-modal-grid-2col" style={{ marginTop: '0.65rem' }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '800', display: 'block', marginBottom: '0.2rem', color: 'var(--text-subtle)' }}>
+                  Photo Caption
+                </label>
+                <input
+                  type="text"
+                  value={formData.image_caption}
+                  disabled={!formData.originalLanguage}
+                  onChange={(e) => setFormData({ ...formData, image_caption: e.target.value })}
+                  placeholder="Short line describing cover photo..."
+                  style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.8rem', background: 'var(--bg-main)', color: 'var(--text-main)', cursor: formData.originalLanguage ? 'text' : 'not-allowed' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '800', display: 'block', marginBottom: '0.2rem', color: 'var(--text-subtle)' }}>
+                  Photo Credit / Source
+                </label>
+                <input
+                  type="text"
+                  value={formData.media_credits}
+                  disabled={!formData.originalLanguage}
+                  onChange={(e) => setFormData({ ...formData, media_credits: e.target.value })}
+                  placeholder="e.g. PTI / Reuters / Staff Photo"
+                  style={{ width: '100%', padding: '0.45rem 0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.8rem', background: 'var(--bg-main)', color: 'var(--text-main)', cursor: formData.originalLanguage ? 'text' : 'not-allowed' }}
+                />
+              </div>
+            </div>
           </div>
 
           <div style={{ opacity: formData.originalLanguage ? 1 : 0.55 }}>
@@ -336,7 +739,7 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
             </span>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', opacity: formData.originalLanguage ? 1 : 0.55 }}>
+          <div className="admin-modal-grid-2col" style={{ opacity: formData.originalLanguage ? 1 : 0.55 }}>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: '800', display: 'block', marginBottom: '0.35rem', color: 'var(--text-main)' }}>Author Name</label>
               <input
@@ -357,6 +760,253 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
                 style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.85rem', background: 'var(--bg-main)', color: 'var(--text-main)', cursor: formData.originalLanguage ? 'text' : 'not-allowed' }}
               />
             </div>
+          </div>
+
+          {/* Task 25: Fact-Check & Official Sources Section */}
+          <div style={{
+            background: '#F8FAFC',
+            border: '1px solid #CBD5E1',
+            borderRadius: '4px',
+            padding: '1rem',
+            opacity: formData.originalLanguage ? 1 : 0.55
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.75rem', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.5rem' }}>
+              <ShieldCheck size={18} color="#059669" />
+              <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '900', color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                Fact-Check & Source Credibility Box (तथ्य सत्यापन एवं स्रोत)
+              </h4>
+            </div>
+
+            {/* Subtopic A: Verification Rating & Verifying Desk */}
+            <div className="admin-modal-grid-2col" style={{ marginBottom: '0.75rem' }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '800', display: 'block', marginBottom: '0.25rem', color: '#334155' }}>
+                  Verification Status (सत्यापन दर्जा)
+                </label>
+                <select
+                  value={formData.fact_check_rating}
+                  disabled={!formData.originalLanguage}
+                  onChange={(e) => setFormData({ ...formData, fact_check_rating: e.target.value })}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #94A3B8', fontSize: '0.82rem', fontWeight: '700', background: '#FFFFFF', color: '#0F172A' }}
+                >
+                  <option value="Verified">Verified (प्रमाणित तथ्य)</option>
+                  <option value="Official Statement">Official Statement (आधिकारिक बयान)</option>
+                  <option value="Government Gazette">Government Gazette (राजपत्र अधिसूचना)</option>
+                  <option value="Ground Report">Ground Report (मैदानी जांच)</option>
+                  <option value="Under Review">Under Review (समीक्षाधीन)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: '800', display: 'block', marginBottom: '0.25rem', color: '#334155' }}>
+                  Verifying Desk / Bureau (सत्यापनकर्ता ब्यूरो)
+                </label>
+                <input
+                  type="text"
+                  value={formData.fact_check_desk}
+                  disabled={!formData.originalLanguage}
+                  onChange={(e) => setFormData({ ...formData, fact_check_desk: e.target.value })}
+                  placeholder="e.g. PublicSpark Fact Desk / PIB"
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #94A3B8', fontSize: '0.82rem', background: '#FFFFFF', color: '#0F172A' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: '800', display: 'block', marginBottom: '0.25rem', color: '#334155' }}>
+                Key Claim / Fact-Check Finding Note (विवेचना / दावा सत्यापन)
+              </label>
+              <input
+                type="text"
+                value={formData.fact_check_claim}
+                disabled={!formData.originalLanguage}
+                onChange={(e) => setFormData({ ...formData, fact_check_claim: e.target.value })}
+                placeholder="e.g. Primary notifications, statistical records, and press briefings cross-checked."
+                style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #94A3B8', fontSize: '0.82rem', background: '#FFFFFF', color: '#0F172A' }}
+              />
+            </div>
+
+            {/* Subtopic B: Official Sources & Gazette Citations List & Adder */}
+            <div style={{ marginTop: '1rem', borderTop: '1px dashed #CBD5E1', paddingTop: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: '800', color: '#0E2A47', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <FileText size={15} /> Primary Sources & Gazette Citations ({formData.sources.length})
+                </span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                  Cited in public reader view
+                </span>
+              </div>
+
+              {/* Current Sources */}
+              {formData.sources.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginBottom: '0.75rem' }}>
+                  {formData.sources.map((src) => (
+                    <div 
+                      key={src.id}
+                      style={{
+                        background: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '4px',
+                        padding: '0.5rem 0.75rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: '800', background: '#DBEAFE', color: '#1E40AF', padding: '0.1rem 0.4rem', borderRadius: '3px' }}>
+                            {src.type}
+                          </span>
+                          <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#0F172A', wordBreak: 'break-word' }}>
+                            {src.title}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748B', display: 'flex', gap: '0.6rem', marginTop: '0.15rem' }}>
+                          <span>{src.publisher}</span>
+                          <span>•</span>
+                          <a href={src.url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', textDecoration: 'none' }}>
+                            {src.url}
+                          </a>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSource(src.id)}
+                        className="btn btn-outline"
+                        style={{ padding: '0.25rem 0.45rem', borderColor: '#FCA5A5', color: '#DC2626', minHeight: '32px' }}
+                        title="Remove citation"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.75rem', color: '#64748B', fontStyle: 'italic', marginBottom: '0.75rem', padding: '0.4rem 0' }}>
+                  No custom sources added yet. Standard institutional citations (PIB / Gazette) will be shown as defaults.
+                </div>
+              )}
+
+              {/* Quick Presets */}
+              <div style={{ marginBottom: '0.65rem' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '0.3rem' }}>
+                  Quick Citation Presets (1-Click Auto-Fill):
+                </span>
+                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  {SOURCE_PRESETS.map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      disabled={!formData.originalLanguage}
+                      onClick={() => applySourcePreset(preset)}
+                      className="btn btn-outline"
+                      style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: '#FFFFFF', borderColor: '#CBD5E1', color: '#334155', cursor: 'pointer' }}
+                    >
+                      + {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Add New Source Input Fields */}
+              <div style={{ background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '4px', padding: '0.65rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.7rem', fontWeight: '700', display: 'block', marginBottom: '0.2rem', color: '#334155' }}>Source Document / Gazette Title</label>
+                    <input
+                      type="text"
+                      value={newSourceTitle}
+                      disabled={!formData.originalLanguage}
+                      onChange={(e) => setNewSourceTitle(e.target.value)}
+                      placeholder="e.g. Gazette of India Notification No. 42"
+                      style={{ width: '100%', padding: '0.45rem', borderRadius: '3px', border: '1px solid #94A3B8', fontSize: '0.78rem', background: '#FFFFFF' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.7rem', fontWeight: '700', display: 'block', marginBottom: '0.2rem', color: '#334155' }}>Source Web Link / Document URL</label>
+                    <input
+                      type="url"
+                      value={newSourceUrl}
+                      disabled={!formData.originalLanguage}
+                      onChange={(e) => setNewSourceUrl(e.target.value)}
+                      placeholder="https://egazette.gov.in/..."
+                      style={{ width: '100%', padding: '0.45rem', borderRadius: '3px', border: '1px solid #94A3B8', fontSize: '0.78rem', background: '#FFFFFF' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', alignItems: 'flex-end' }}>
+                  <div>
+                    <label style={{ fontSize: '0.7rem', fontWeight: '700', display: 'block', marginBottom: '0.2rem', color: '#334155' }}>Source Classification</label>
+                    <select
+                      value={newSourceType}
+                      disabled={!formData.originalLanguage}
+                      onChange={(e) => setNewSourceType(e.target.value)}
+                      style={{ width: '100%', padding: '0.45rem', borderRadius: '3px', border: '1px solid #94A3B8', fontSize: '0.78rem', background: '#FFFFFF' }}
+                    >
+                      <option value="Government Gazette">Government Gazette (राजपत्र)</option>
+                      <option value="Official Press Release">Official Press Release (प्रेस नोट)</option>
+                      <option value="Judicial Order">Judicial Order (न्यायिक आदेश)</option>
+                      <option value="News Agency Dispatch">News Agency Wire (PTI/ANI)</option>
+                      <option value="Official Notification">Official Notification (मंत्रालय)</option>
+                      <option value="Institutional Report">Institutional Report (संस्थागत रिपोर्ट)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.7rem', fontWeight: '700', display: 'block', marginBottom: '0.2rem', color: '#334155' }}>Publishing Authority / Ministry</label>
+                    <input
+                      type="text"
+                      value={newSourcePublisher}
+                      disabled={!formData.originalLanguage}
+                      onChange={(e) => setNewSourcePublisher(e.target.value)}
+                      placeholder="e.g. Ministry of Home Affairs"
+                      style={{ width: '100%', padding: '0.45rem', borderRadius: '3px', border: '1px solid #94A3B8', fontSize: '0.78rem', background: '#FFFFFF' }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={!formData.originalLanguage || !newSourceTitle.trim()}
+                    onClick={handleAddSource}
+                    className="btn btn-outline"
+                    style={{
+                      padding: '0.45rem 0.85rem',
+                      fontSize: '0.78rem',
+                      fontWeight: '800',
+                      background: newSourceTitle.trim() ? '#0E2A47' : '#E2E8F0',
+                      color: newSourceTitle.trim() ? '#FFFFFF' : '#94A3B8',
+                      borderColor: newSourceTitle.trim() ? '#0E2A47' : '#CBD5E1',
+                      minHeight: '34px',
+                      cursor: newSourceTitle.trim() ? 'pointer' : 'not-allowed',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.3rem'
+                    }}
+                  >
+                    <Plus size={14} /> Add Citation
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Edit Summary / Change Note (Task 21) */}
+          <div style={{ opacity: formData.originalLanguage ? 1 : 0.55 }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: '800', display: 'block', marginBottom: '0.35rem', color: 'var(--text-main)' }}>
+              Edit Summary / Change Note (Optional)
+            </label>
+            <input
+              type="text"
+              value={formData.changeNote || ''}
+              disabled={!formData.originalLanguage}
+              onChange={(e) => setFormData({ ...formData, changeNote: e.target.value })}
+              placeholder="e.g. Factual correction in paragraph 2, headline revised..."
+              style={{ width: '100%', padding: '0.55rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.82rem', background: 'var(--bg-main)', color: 'var(--text-main)', cursor: formData.originalLanguage ? 'text' : 'not-allowed' }}
+            />
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid var(--border-light)', paddingTop: '1rem' }}>
@@ -382,6 +1032,42 @@ function StoryEditorModal({ article, categories, onClose, onSave }) {
             </button>
           </div>
         </form>
+
+        {/* Task 22 Subtopic C: 1-Click Insert from Media Library Picker */}
+        {isMediaPickerOpen && (
+          <div className="admin-modal-overlay" style={{ zIndex: 1200 }}>
+            <div className="admin-modal-dialog" style={{ maxWidth: '980px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.65rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <ImageIcon size={18} color="var(--accent-blue)" />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '900', textTransform: 'uppercase' }}>
+                    Select Cover Photo from Media Library
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMediaPickerOpen(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <MediaLibraryDesk
+                currentRole={currentRole}
+                onSelectAssetForStory={(asset) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    featured_image: asset.url,
+                    image_caption: asset.caption || prev.image_caption || '',
+                    media_credits: asset.credit || prev.media_credits || 'PublicSpark News'
+                  }));
+                  setIsMediaPickerOpen(false);
+                }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -402,6 +1088,7 @@ function cleanRssText(text) {
 }
 
 export default function AdminWorkspace({
+  currentRole = 'admin',
   articles: propArticles,
   onUpdateArticles,
   categories: propCategories,
@@ -415,6 +1102,7 @@ export default function AdminWorkspace({
   onShowToast,
   onSelectArticle
 }) {
+  const isReporter = currentRole === 'reporter';
   const [activeTab, setActiveTab] = useState('curation'); // default to News Control Desk
   const [categories, setCategories] = useState(() => {
     return propCategories || getCachedCategories() || MOCK_CATEGORIES;
@@ -467,6 +1155,8 @@ export default function AdminWorkspace({
   const [filterStatus, setFilterStatus] = useState('all'); // all | published | hidden | live_feed
   const [searchQuery, setSearchQuery] = useState('');
   const [newCatName, setNewCatName] = useState('');
+  const [editingCatId, setEditingCatId] = useState(null);
+  const [editingCatName, setEditingCatName] = useState('');
   const [feedbackMsg, setFeedbackMsg] = useState('');
 
   // Live RSS / SauravTech News Feed State
@@ -477,6 +1167,14 @@ export default function AdminWorkspace({
   // Story Editor Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingArticle, setEditingArticle] = useState(null);
+
+  // Article Revision History & Rollback Modal State (Task 21)
+  const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
+  const [revisionModalArticle, setRevisionModalArticle] = useState(null);
+
+  // Live Blog Micro-Updates Desk Modal State (Task 23 Subtopic B)
+  const [isLiveUpdatesModalOpen, setIsLiveUpdatesModalOpen] = useState(false);
+  const [liveUpdatesModalArticle, setLiveUpdatesModalArticle] = useState(null);
 
   const [localSocialLinks, setLocalSocialLinks] = useState(() => {
     return socialLinks || {
@@ -555,12 +1253,33 @@ export default function AdminWorkspace({
     fetchLiveNewsStream('google_hi');
   }, []);
 
-  // 1-Click Show/Hide Toggle
+  // 1-Click Show/Hide Toggle (Guarded by Editorial RBAC & Scheduled Support)
   const handleToggleVisibility = (articleId) => {
+    if (isReporter) {
+      if (onShowToast) onShowToast('Editorial Gate: Reporters cannot toggle live publication. Please submit drafts for Editor review.');
+      return;
+    }
     const updated = articles.map(a => {
       if (a.id === articleId) {
-        const nextStatus = a.status === 'published' ? 'hidden' : 'published';
-        const updatedArt = { ...a, status: nextStatus };
+        let nextStatus;
+        let scheduledPublishTime = a.scheduledPublishTime;
+        if (a.status === 'published') {
+          nextStatus = 'hidden';
+        } else if (a.status === 'scheduled') {
+          // If scheduled, clicking Publish Now publishes immediately
+          nextStatus = 'published';
+          scheduledPublishTime = null;
+        } else {
+          nextStatus = 'published';
+        }
+
+        const updatedArt = { 
+          ...a, 
+          status: nextStatus, 
+          scheduledPublishTime,
+          published_at: nextStatus === 'published' ? 'Just now' : a.published_at,
+          userRole: currentRole 
+        };
         fetch('/api/articles/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -597,13 +1316,31 @@ export default function AdminWorkspace({
     fetch('/api/articles/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(savedStory)
+      body: JSON.stringify({
+        ...savedStory,
+        userRole: currentRole
+      })
     }).catch(e => console.warn('Backend update error:', e));
 
     setIsEditModalOpen(false);
     setEditingArticle(null);
     setFeedbackMsg(`Successfully saved article: "${savedStory.title}"`);
     setTimeout(() => setFeedbackMsg(''), 3000);
+  };
+
+  // Article Revision & Rollback Handlers (Task 21)
+  const handleOpenRevisionHistory = (art) => {
+    setRevisionModalArticle(art);
+    setIsRevisionModalOpen(true);
+  };
+
+  const handleRollbackSuccess = (restoredArticle) => {
+    const updated = articles.map(a => a.id === restoredArticle.id ? restoredArticle : a);
+    setArticles(updated);
+    if (onUpdateArticles) onUpdateArticles(updated);
+    saveNewsToCache(updated);
+    setFeedbackMsg(`Article successfully rolled back: "${restoredArticle.title}"`);
+    setTimeout(() => setFeedbackMsg(''), 3500);
   };
 
   // Delete Article
@@ -662,7 +1399,7 @@ export default function AdminWorkspace({
     }
 
     const isDuplicate = categories.some(
-      c => c.name.toLowerCase() === trimmed.toLowerCase() || c.slug === trimmed.toLowerCase().replace(/\s+/g, '-')
+      c => c.name.toLowerCase() === trimmed.toLowerCase() || c.slug === trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-')
     );
 
     if (isDuplicate) {
@@ -670,42 +1407,119 @@ export default function AdminWorkspace({
       return;
     }
 
-    const slug = trimmed.toLowerCase().replace(/\s+/g, '-');
-    const updated = [...categories, { id: `cat-${Date.now()}`, name: trimmed, slug }];
+    const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const newCategory = { id: `cat-${Date.now()}`, name: trimmed, slug };
+    const updated = [...categories, newCategory];
 
     setCategories(updated);
     saveCategoriesToCache(updated);
     if (onUpdateCategories) {
       onUpdateCategories(updated);
     }
+
+    // Persist directly to backend server
+    fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated)
+    }).catch(e => console.warn('Backend categories sync error:', e));
 
     setNewCatName('');
     setFeedbackMsg(`Added category "${trimmed}" successfully!`);
     setTimeout(() => setFeedbackMsg(''), 3000);
   };
 
+  const handleStartEditCategory = (cat) => {
+    setEditingCatId(cat.id);
+    setEditingCatName(cat.name);
+  };
+
+  const handleCancelEditCategory = () => {
+    setEditingCatId(null);
+    setEditingCatName('');
+  };
+
+  const handleSaveEditCategory = (catId) => {
+    const trimmed = editingCatName.trim();
+    if (!trimmed) {
+      alert('Category name cannot be empty.');
+      return;
+    }
+
+    const isDuplicate = categories.some(
+      c => c.id !== catId && (c.name.toLowerCase() === trimmed.toLowerCase() || c.slug === trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-'))
+    );
+
+    if (isDuplicate) {
+      alert(`Category "${trimmed}" already exists.`);
+      return;
+    }
+
+    const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const updated = categories.map(c => c.id === catId ? { ...c, name: trimmed, slug } : c);
+
+    setCategories(updated);
+    saveCategoriesToCache(updated);
+    if (onUpdateCategories) {
+      onUpdateCategories(updated);
+    }
+
+    // Persist directly to backend server
+    fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated)
+    }).catch(e => console.warn('Backend categories sync error:', e));
+
+    setEditingCatId(null);
+    setEditingCatName('');
+    setFeedbackMsg(`Updated category name to "${trimmed}".`);
+    setTimeout(() => setFeedbackMsg(''), 3000);
+  };
+
   const handleDeleteCategory = (catId) => {
     const target = categories.find(c => c.id === catId);
+    if (!target) return;
+
+    // Safety check if any articles belong to this category
+    const articleCount = articles.filter(a => 
+      (a.category_slug === target.slug || a.category?.toLowerCase() === target.name?.toLowerCase())
+    ).length;
+
+    if (articleCount > 0) {
+      if (!window.confirm(`Notice: ${articleCount} article(s) are currently categorized as "${target.name}". Are you sure you want to delete this category?`)) {
+        return;
+      }
+    }
+
     const updated = categories.filter(c => c.id !== catId);
     setCategories(updated);
     saveCategoriesToCache(updated);
     if (onUpdateCategories) {
       onUpdateCategories(updated);
     }
-    if (target) {
-      setFeedbackMsg(`Removed category "${target.name}".`);
-      setTimeout(() => setFeedbackMsg(''), 3000);
-    }
+
+    // Persist directly to backend server
+    fetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated)
+    }).catch(e => console.warn('Backend categories sync error:', e));
+
+    setFeedbackMsg(`Removed category "${target.name}".`);
+    setTimeout(() => setFeedbackMsg(''), 3000);
   };
 
   const handleToggleAdSlot = (slotId) => {
     setAdSlots(adSlots.map(s => s.id === slotId ? { ...s, enabled: !s.enabled } : s));
   };
 
-  // Filtered Articles List
+  // Filtered Articles List (with Scheduled & Live Blog Filters Support)
   const filteredArticles = articles.filter(art => {
     if (filterStatus === 'published' && art.status !== 'published') return false;
-    if (filterStatus === 'hidden' && art.status === 'published') return false;
+    if (filterStatus === 'scheduled' && art.status !== 'scheduled') return false;
+    if (filterStatus === 'live_blog' && art.format !== 'live') return false;
+    if (filterStatus === 'hidden' && (art.status === 'published' || art.status === 'scheduled')) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return art.title.toLowerCase().includes(q) || (art.summary && art.summary.toLowerCase().includes(q));
@@ -715,6 +1529,7 @@ export default function AdminWorkspace({
 
   const ADMIN_DESKS = [
     { id: 'curation', label: `Live News Control (${articles.length})`, shortLabel: `News (${articles.length})`, icon: Newspaper, group: 'Editorial & Content' },
+    { id: 'media', label: 'Media Library', shortLabel: 'Media', icon: ImageIcon, group: 'Editorial & Content' },
     { id: 'poll', label: 'Daily Reader Poll', shortLabel: 'Reader Poll', icon: BarChart3, group: 'Editorial & Content' },
     { id: 'categories', label: `Categories (${categories.length})`, shortLabel: `Categories (${categories.length})`, icon: FolderTree, group: 'Editorial & Content' },
     { id: 'analytics', label: 'Analytics & Traffic', shortLabel: 'Analytics', icon: BarChart2, group: 'Editorial & Content' },
@@ -727,14 +1542,42 @@ export default function AdminWorkspace({
   ];
 
   return (
-    <div className="container admin-container" style={{ padding: '1.75rem 1.25rem' }}>
+    <div className="container admin-container">
       {/* Story Editor Modal */}
       {isEditModalOpen && (
         <StoryEditorModal
           article={editingArticle}
           categories={categories}
+          currentRole={currentRole}
           onClose={() => { setIsEditModalOpen(false); setEditingArticle(null); }}
           onSave={handleSaveArticleModal}
+          onOpenRevisions={handleOpenRevisionHistory}
+        />
+      )}
+
+      {/* Article Revision History & Rollback Modal (Task 21) */}
+      {isRevisionModalOpen && revisionModalArticle && (
+        <ArticleRevisionModal
+          article={revisionModalArticle}
+          currentRole={currentRole}
+          currentUser={currentUser}
+          onClose={() => { setIsRevisionModalOpen(false); setRevisionModalArticle(null); }}
+          onRollbackSuccess={handleRollbackSuccess}
+        />
+      )}
+
+      {/* Live Blog Micro-Updates Desk Modal (Task 23 Subtopic B) */}
+      {isLiveUpdatesModalOpen && liveUpdatesModalArticle && (
+        <LiveUpdatesModal
+          article={liveUpdatesModalArticle}
+          currentRole={currentRole}
+          onClose={() => {
+            setIsLiveUpdatesModalOpen(false);
+            setLiveUpdatesModalArticle(null);
+          }}
+          onUpdatesChanged={(newUpdates) => {
+            setArticles(prev => prev.map(a => a.id === liveUpdatesModalArticle.id ? { ...a, live_updates: newUpdates } : a));
+          }}
         />
       )}
 
@@ -781,6 +1624,7 @@ export default function AdminWorkspace({
             >
               <optgroup label="Editorial & Content">
                 <option value="curation">Live News Control ({articles.length})</option>
+                <option value="media">Media Library</option>
                 <option value="poll">Daily Reader Poll</option>
                 <option value="categories">Categories ({categories.length})</option>
                 <option value="analytics">Analytics & Traffic</option>
@@ -799,22 +1643,24 @@ export default function AdminWorkspace({
           </div>
 
           {/* 2. Touch-Scrollable Horizontal Pill Bar */}
-          <div className="admin-mobile-pill-bar">
-            {ADMIN_DESKS.map(desk => {
-              const Icon = desk.icon;
-              const isActive = activeTab === desk.id;
-              return (
-                <button
-                  key={desk.id}
-                  onClick={() => setActiveTab(desk.id)}
-                  className={`admin-mobile-pill-btn ${isActive ? 'active' : ''}`}
-                  type="button"
-                >
-                  <Icon size={14} />
-                  <span>{desk.shortLabel}</span>
-                </button>
-              );
-            })}
+          <div className="admin-mobile-pill-wrapper">
+            <div className="admin-mobile-pill-bar">
+              {ADMIN_DESKS.map(desk => {
+                const Icon = desk.icon;
+                const isActive = activeTab === desk.id;
+                return (
+                  <button
+                    key={desk.id}
+                    onClick={() => setActiveTab(desk.id)}
+                    className={`admin-mobile-pill-btn ${isActive ? 'active' : ''}`}
+                    type="button"
+                  >
+                    <Icon size={14} />
+                    <span>{desk.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -831,6 +1677,13 @@ export default function AdminWorkspace({
                 style={{ width: '100%' }}
               >
                 <Newspaper size={16} /> Live News Control ({articles.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('media')}
+                className={`sidebar-nav-link ${activeTab === 'media' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <ImageIcon size={16} /> Media Library
               </button>
               <button
                 onClick={() => setActiveTab('poll')}
@@ -927,28 +1780,51 @@ export default function AdminWorkspace({
               )}
 
               {/* Filter & Toolbar Header */}
-              <div style={{ background: 'var(--bg-surface)', padding: '1rem 1.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div className="admin-curation-toolbar">
+                <div className="admin-filter-group">
                   <button
                     onClick={() => setFilterStatus('all')}
                     className={`btn ${filterStatus === 'all' ? 'btn-primary' : 'btn-outline'}`}
-                    style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem' }}
                   >
                     All Stories ({articles.length})
                   </button>
                   <button
                     onClick={() => setFilterStatus('published')}
                     className={`btn ${filterStatus === 'published' ? 'btn-primary' : 'btn-outline'}`}
-                    style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem' }}
                   >
                     Live on Site ({articles.filter(a => a.status === 'published').length})
                   </button>
                   <button
+                    onClick={() => setFilterStatus('scheduled')}
+                    className={`btn ${filterStatus === 'scheduled' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{
+                      background: filterStatus === 'scheduled' ? '#1D4ED8' : undefined,
+                      borderColor: filterStatus === 'scheduled' ? '#1D4ED8' : undefined,
+                      color: filterStatus === 'scheduled' ? '#FFFFFF' : undefined
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <Clock size={13} /> Scheduled ({articles.filter(a => a.status === 'scheduled').length})
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setFilterStatus('live_blog')}
+                    className={`btn ${filterStatus === 'live_blog' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{
+                      background: filterStatus === 'live_blog' ? '#DC2626' : undefined,
+                      borderColor: filterStatus === 'live_blog' ? '#DC2626' : undefined,
+                      color: filterStatus === 'live_blog' ? '#FFFFFF' : undefined
+                    }}
+                  >
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <Radio size={13} /> Live Blogs ({articles.filter(a => a.format === 'live').length})
+                    </span>
+                  </button>
+                  <button
                     onClick={() => setFilterStatus('hidden')}
                     className={`btn ${filterStatus === 'hidden' ? 'btn-primary' : 'btn-outline'}`}
-                    style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem' }}
                   >
-                    Hidden / Drafts ({articles.filter(a => a.status !== 'published').length})
+                    Hidden / Drafts ({articles.filter(a => a.status !== 'published' && a.status !== 'scheduled').length})
                   </button>
                   <button
                     onClick={() => {
@@ -958,20 +1834,20 @@ export default function AdminWorkspace({
                       }
                     }}
                     className={`btn ${filterStatus === 'live_feed' ? 'btn-primary' : 'btn-outline'}`}
-                    style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem', background: filterStatus === 'live_feed' ? 'var(--accent-indigo)' : undefined, color: filterStatus === 'live_feed' ? '#fff' : undefined }}
+                    style={{ background: filterStatus === 'live_feed' ? 'var(--accent-indigo)' : undefined, color: filterStatus === 'live_feed' ? '#fff' : undefined }}
                   >
                     Incoming RSS Wire ({liveFeedItems.length})
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flex: 1, maxWidth: '300px' }}>
+                <div className="admin-curation-search">
                   <Search size={15} color="var(--text-subtle)" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Filter by headline..."
-                    style={{ width: '100%', padding: '0.4rem 0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.825rem', background: 'var(--bg-main)', color: 'var(--text-main)' }}
+                    style={{ width: '100%', padding: '0.45rem 0.65rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontSize: '0.825rem', background: 'var(--bg-main)', color: 'var(--text-main)', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
@@ -995,7 +1871,7 @@ export default function AdminWorkspace({
                   </div>
 
                   {/* Wire Controls Toolbar (Always visible, responsive, prominent Refresh button) */}
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', background: 'var(--bg-main)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', marginBottom: '1.25rem' }}>
+                  <div className="admin-wire-toolbar">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 200px', maxWidth: '300px' }}>
                       <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-subtle)', whiteSpace: 'nowrap' }}>Channel:</span>
                       <select 
@@ -1070,7 +1946,8 @@ export default function AdminWorkspace({
 
                           {/* Bottom Action Buttons (Always clearly visible in every card) */}
                           <div 
-                            style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', marginTop: '0.25rem' }}
+                            className="admin-wire-actions"
+                            style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', marginTop: '0.25rem' }}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button
@@ -1128,8 +2005,8 @@ export default function AdminWorkspace({
                 </div>
               ) : (
                 /* MAIN STORED ARTICLES TABLE / CARDS */
-                <div style={{ background: 'var(--bg-surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', overflow: 'hidden' }}>
-                  <div style={{ padding: '1rem 1.25rem', fontWeight: '800', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="admin-articles-card">
+                  <div className="admin-articles-header">
                     <span>All Newsroom Articles ({filteredArticles.length})</span>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', fontWeight: '600' }}>
                       Click "Show / Hide" to control live site availability instantly.
@@ -1143,49 +2020,83 @@ export default function AdminWorkspace({
                         return (
                           <div
                             key={art.id}
+                            className="admin-article-item"
                             style={{
-                              padding: '1.1rem 1.25rem',
-                              borderBottom: '1px solid var(--border-light)',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              gap: '1.25rem',
-                              background: isLive ? 'transparent' : 'rgba(239, 68, 68, 0.03)',
-                              flexWrap: 'wrap'
+                              background: isLive ? 'transparent' : 'rgba(239, 68, 68, 0.03)'
                             }}
                           >
                             {/* Thumbnail & Title Details (Clickable) */}
                             <div 
+                              className="admin-article-info"
                               onClick={() => { setEditingArticle(art); setIsEditModalOpen(true); }}
-                              style={{ 
-                                display: 'flex', 
-                                gap: '1rem', 
-                                alignItems: 'center', 
-                                flex: '1 1 320px', 
-                                minWidth: '260px',
-                                cursor: 'pointer'
-                              }}
                               title="Click to Edit Story Details"
                             >
                               <div style={{ width: '80px', height: '60px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
                                 <img src={art.featured_image} alt={art.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                               </div>
-                              <div style={{ flex: 1 }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
                                   <span style={{
-                                    fontSize: '0.7rem',
+                                    fontSize: '0.68rem',
                                     fontWeight: '800',
-                                    padding: '0.15rem 0.5rem',
-                                    borderRadius: '10px',
-                                    background: isLive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                    color: isLive ? 'var(--accent-emerald)' : 'var(--accent-crimson)'
+                                    padding: '0.12rem 0.45rem',
+                                    borderRadius: '4px',
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-medium)',
+                                    fontFamily: 'var(--font-mono)',
+                                    color: 'var(--text-subtle)'
                                   }}>
-                                    {isLive ? 'LIVE ON SITE' : 'HIDDEN (DRAFT)'}
+                                    ID: {art.id}
                                   </span>
+
+                                  {art.status === 'scheduled' ? (
+                                    <span style={{
+                                      fontSize: '0.7rem',
+                                      fontWeight: '800',
+                                      padding: '0.15rem 0.5rem',
+                                      borderRadius: '10px',
+                                      background: '#EFF6FF',
+                                      color: '#1D4ED8',
+                                      border: '1px solid #93C5FD',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.3rem'
+                                    }}>
+                                      <Clock size={11} /> SCHEDULED: {formatDisplayDateTime(art.scheduledPublishTime)}
+                                    </span>
+                                  ) : (
+                                    <span style={{
+                                      fontSize: '0.7rem',
+                                      fontWeight: '800',
+                                      padding: '0.15rem 0.5rem',
+                                      borderRadius: '10px',
+                                      background: isLive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                      color: isLive ? 'var(--accent-emerald)' : 'var(--accent-crimson)'
+                                    }}>
+                                      {isLive ? 'LIVE ON SITE' : 'HIDDEN (DRAFT)'}
+                                    </span>
+                                  )}
 
                                   {art.is_breaking && (
                                     <span style={{ fontSize: '0.7rem', fontWeight: '800', padding: '0.15rem 0.4rem', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-crimson)' }}>
                                       BREAKING
+                                    </span>
+                                  )}
+
+                                  {art.format === 'live' && (
+                                    <span style={{
+                                      fontSize: '0.7rem',
+                                      fontWeight: '800',
+                                      padding: '0.15rem 0.5rem',
+                                      borderRadius: '10px',
+                                      background: (art.live_status || 'active') === 'active' ? '#FEF2F2' : '#F3F4F6',
+                                      color: (art.live_status || 'active') === 'active' ? '#DC2626' : '#4B5563',
+                                      border: (art.live_status || 'active') === 'active' ? '1px solid #FCA5A5' : '1px solid #D1D5DB',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      <Radio size={11} /> {(art.live_status || 'active') === 'active' ? 'LIVE BLOG (ACTIVE)' : 'LIVE BLOG (CONCLUDED)'}
                                     </span>
                                   )}
 
@@ -1200,21 +2111,23 @@ export default function AdminWorkspace({
                                     fontWeight: '800', 
                                     color: 'var(--text-main)', 
                                     lineHeight: '1.35',
-                                    transition: 'color 0.2s ease'
+                                    transition: 'color 0.2s ease',
+                                    wordBreak: 'break-word',
+                                    overflowWrap: 'break-word'
                                   }}
                                   onMouseEnter={(e) => e.currentTarget.style.color = 'var(--accent-indigo)'}
                                   onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-main)'}
                                 >
                                   {art.title} <span style={{ fontSize: '0.75rem', color: 'var(--accent-indigo)', opacity: 0.8 }}>(Click to Edit)</span>
                                 </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.2rem' }}>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.2rem', wordBreak: 'break-word' }}>
                                   By {art.author?.name || 'Admin'} • Published {art.published_at} • {art.views_count ? art.views_count.toLocaleString() : '120'} views
                                 </div>
                               </div>
                             </div>
 
-                            {/* Action Controls (No Clipping) */}
-                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', flexShrink: 0 }}>
+                            {/* Action Controls (Responsive Grid on Mobile) */}
+                            <div className="admin-article-actions">
                               {/* Read Story Preview Button */}
                               {onSelectArticle && (
                                 <button
@@ -1226,8 +2139,7 @@ export default function AdminWorkspace({
                                     fontWeight: '700',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '0.3rem',
-                                    whiteSpace: 'nowrap'
+                                    gap: '0.3rem'
                                   }}
                                   title="Read Story Preview"
                                 >
@@ -1235,34 +2147,133 @@ export default function AdminWorkspace({
                                 </button>
                               )}
 
-                              {/* Toggle Show/Hide Button */}
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleToggleVisibility(art.id); }}
-                                className={`btn ${isLive ? 'btn-outline' : 'btn-primary'}`}
-                                style={{
-                                  padding: '0.4rem 0.8rem',
-                                  fontSize: '0.78rem',
-                                  fontWeight: '800',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.4rem',
-                                  whiteSpace: 'nowrap',
-                                  borderColor: isLive ? 'var(--accent-crimson)' : 'var(--accent-emerald)',
-                                  color: isLive ? 'var(--accent-crimson)' : '#fff',
-                                  background: isLive ? 'transparent' : 'var(--accent-emerald)'
-                                }}
-                              >
-                                {isLive ? <EyeOff size={14} /> : <Eye size={14} />}
-                                {isLive ? 'Hide from Site' : 'Show on Site'}
-                              </button>
+                              {/* 1-Click Live Blog Status Toggle (Active vs Concluded) */}
+                              {art.format === 'live' && !isReporter && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const nextStatus = (art.live_status || 'active') === 'active' ? 'concluded' : 'active';
+                                    try {
+                                      const res = await fetch(`/api/articles/${encodeURIComponent(art.id)}/live-status`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ live_status: nextStatus, userRole: currentRole })
+                                      });
+                                      const data = await res.json();
+                                      if (data.success) {
+                                        setArticles(prev => prev.map(a => a.id === art.id ? { ...a, live_status: nextStatus } : a));
+                                      }
+                                    } catch (err) {
+                                      console.error('Failed to toggle live status:', err);
+                                    }
+                                  }}
+                                  className="btn btn-outline"
+                                  style={{
+                                    padding: '0.4rem 0.75rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: '800',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    borderColor: (art.live_status || 'active') === 'active' ? '#DC2626' : '#6B7280',
+                                    color: (art.live_status || 'active') === 'active' ? '#DC2626' : '#4B5563',
+                                    background: (art.live_status || 'active') === 'active' ? '#FEF2F2' : '#F3F4F6'
+                                  }}
+                                  title={(art.live_status || 'active') === 'active' ? 'Conclude live coverage' : 'Reactivate live coverage'}
+                                >
+                                  <Radio size={13} /> {(art.live_status || 'active') === 'active' ? 'Conclude Live' : 'Reactivate Live'}
+                                </button>
+                              )}
+
+                              {art.format === 'live' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setLiveUpdatesModalArticle(art);
+                                    setIsLiveUpdatesModalOpen(true);
+                                  }}
+                                  className="btn btn-outline"
+                                  style={{
+                                    padding: '0.4rem 0.75rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: '800',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    borderColor: '#0E2A47',
+                                    color: '#0E2A47',
+                                    background: '#F0F4F8'
+                                  }}
+                                  title="Open Live Updates Timeline Desk"
+                                >
+                                  <Clock size={13} /> Live Updates ({art.live_updates?.length || 0})
+                                </button>
+                              )}
+
+                              {/* Toggle Show/Hide or Publish Now Button */}
+                              {art.status === 'scheduled' ? (
+                                !isReporter && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleToggleVisibility(art.id); }}
+                                    className="btn btn-primary"
+                                    style={{
+                                      padding: '0.4rem 0.8rem',
+                                      fontSize: '0.78rem',
+                                      fontWeight: '800',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem',
+                                      borderColor: 'var(--accent-emerald)',
+                                      background: 'var(--accent-emerald)',
+                                      color: '#fff'
+                                    }}
+                                    title="Publish this scheduled story live immediately"
+                                  >
+                                    <Check size={14} /> Publish Now
+                                  </button>
+                                )
+                              ) : (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleToggleVisibility(art.id); }}
+                                  disabled={isReporter}
+                                  className={`btn ${isLive ? 'btn-outline' : 'btn-primary'}`}
+                                  style={{
+                                    padding: '0.4rem 0.8rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: '800',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.4rem',
+                                    borderColor: isLive ? 'var(--accent-crimson)' : 'var(--accent-emerald)',
+                                    color: isLive ? 'var(--accent-crimson)' : '#fff',
+                                    background: isLive ? 'transparent' : 'var(--accent-emerald)',
+                                    opacity: isReporter ? 0.6 : 1,
+                                    cursor: isReporter ? 'not-allowed' : 'pointer'
+                                  }}
+                                  title={isReporter ? 'Editorial Gate: Reporters cannot toggle live status' : (isLive ? 'Hide from Site' : 'Show on Site')}
+                                >
+                                  {isLive ? <EyeOff size={14} /> : <Eye size={14} />}
+                                  {isLive ? 'Hide from Site' : 'Show on Site'}
+                                </button>
+                              )}
 
                               {/* Edit Button */}
                               <button
                                 onClick={(e) => { e.stopPropagation(); setEditingArticle(art); setIsEditModalOpen(true); }}
                                 className="btn btn-outline"
-                                style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}
+                                style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                               >
                                 <Edit3 size={14} /> Edit Story
+                              </button>
+
+                              {/* Revisions & Rollback Button (Task 21) */}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleOpenRevisionHistory(art); }}
+                                className="btn btn-outline"
+                                style={{ padding: '0.4rem 0.75rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                                title="View version snapshots and 1-click rollback"
+                              >
+                                <History size={14} /> Revisions
                               </button>
 
                               {/* Delete Button */}
@@ -1281,7 +2292,7 @@ export default function AdminWorkspace({
                                   justifyContent: 'center'
                                 }}
                               >
-                                <Trash2 size={16} />
+                                <Trash2 size={16} /> Delete
                               </button>
                             </div>
                           </div>
@@ -1296,6 +2307,12 @@ export default function AdminWorkspace({
                 </div>
               )}
             </div>
+          )}
+
+          {activeTab === 'media' && (
+            <MediaLibraryDesk
+              currentRole={currentRole}
+            />
           )}
 
           {activeTab === 'analytics' && <AnalyticsDashboard articles={articles} />}
@@ -1352,7 +2369,7 @@ export default function AdminWorkspace({
                 </div>
               )}
 
-              <form onSubmit={handleAddCategory} style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <form onSubmit={handleAddCategory} className="admin-cat-form" style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
                 <input
                   type="text"
                   value={newCatName}
@@ -1365,7 +2382,7 @@ export default function AdminWorkspace({
                 </button>
               </form>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.85rem' }}>
+              <div className="admin-cat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.85rem' }}>
                 {categories.map((cat) => {
                   const publishedCount = articles.filter(a => 
                     (a.category_slug === cat.slug || a.category?.toLowerCase() === cat.name?.toLowerCase()) && 
@@ -1379,7 +2396,7 @@ export default function AdminWorkspace({
                         background: 'var(--bg-secondary)',
                         padding: '0.9rem 1rem',
                         borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--border-light)',
+                        border: editingCatId === cat.id ? '1px solid var(--accent-blue)' : '1px solid var(--border-light)',
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
@@ -1388,42 +2405,110 @@ export default function AdminWorkspace({
                         overflow: 'hidden'
                       }}
                     >
-                      <div style={{ minWidth: 0, flex: 1, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                        <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: '1.3' }}>
-                          {cat.name}
+                      {editingCatId === cat.id ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                          <input
+                            type="text"
+                            value={editingCatName}
+                            onChange={(e) => setEditingCatName(e.target.value)}
+                            autoFocus
+                            placeholder="Category Name"
+                            style={{
+                              padding: '0.45rem 0.65rem',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--accent-blue)',
+                              fontSize: '0.9rem',
+                              fontWeight: '700',
+                              width: '100%',
+                              background: 'var(--bg-surface)',
+                              color: 'var(--text-main)'
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleSaveEditCategory(cat.id);
+                              if (e.key === 'Escape') handleCancelEditCategory();
+                            }}
+                          />
+                          <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEditCategory(cat.id)}
+                              className="btn btn-primary"
+                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                            >
+                              <Check size={14} /> Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCancelEditCategory}
+                              className="btn"
+                              style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', border: '1px solid var(--border-medium)', background: 'transparent', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                            >
+                              <X size={14} /> Cancel
+                            </button>
+                          </div>
                         </div>
-                        {publishedCount > 0 ? (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', marginTop: '0.25rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <CheckCircle2 size={12} /> {publishedCount} {publishedCount === 1 ? 'Story' : 'Stories'} • Live on Website
+                      ) : (
+                        <>
+                          <div style={{ minWidth: 0, flex: 1, wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                            <div style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--text-main)', lineHeight: '1.3' }}>
+                              {cat.name}
+                            </div>
+                            {publishedCount > 0 ? (
+                              <div style={{ fontSize: '0.75rem', color: 'var(--accent-emerald)', marginTop: '0.25rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <CheckCircle2 size={12} /> {publishedCount} {publishedCount === 1 ? 'Story' : 'Stories'} • Live on Website
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '0.75rem', color: '#d97706', marginTop: '0.25rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <ShieldAlert size={12} /> 0 Stories • Hidden from public until published
+                              </div>
+                            )}
                           </div>
-                        ) : (
-                          <div style={{ fontSize: '0.75rem', color: '#d97706', marginTop: '0.25rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <ShieldAlert size={12} /> 0 Stories • Hidden from public until published
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditCategory(cat)}
+                              title="Edit category name"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text-subtle)',
+                                cursor: 'pointer',
+                                padding: '0.35rem',
+                                borderRadius: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'var(--transition-fast)'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.color = 'var(--accent-blue)'}
+                              onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-subtle)'}
+                            >
+                              <Edit3 size={15} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategory(cat.id)}
+                              title="Remove category"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text-subtle)',
+                                cursor: 'pointer',
+                                padding: '0.35rem',
+                                borderRadius: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'var(--transition-fast)'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.color = 'var(--accent-crimson)'}
+                              onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-subtle)'}
+                            >
+                              <Trash2 size={15} />
+                            </button>
                           </div>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCategory(cat.id)}
-                        title="Remove category"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-subtle)',
-                          cursor: 'pointer',
-                          padding: '0.35rem',
-                          borderRadius: '6px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'var(--transition-fast)',
-                          flexShrink: 0
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--accent-crimson)'}
-                        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-subtle)'}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -1432,7 +2517,7 @@ export default function AdminWorkspace({
           )}
 
           {activeTab === 'ads' && (
-            <MonetizationDesk onShowToast={onShowToast} />
+            <MonetizationDesk onShowToast={onShowToast} articles={articles} categories={categories} />
           )}
 
           {activeTab === 'social' && (

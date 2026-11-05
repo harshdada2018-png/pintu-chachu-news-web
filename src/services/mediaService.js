@@ -63,7 +63,9 @@ export async function compressImageToWebP(file, maxKB = 200, maxWidth = 1200) {
                     dataUrl: dataUrlReader.result,
                     originalKB,
                     compressedKB,
-                    quality: parseFloat(quality.toFixed(2))
+                    quality: parseFloat(quality.toFixed(2)),
+                    width,
+                    height
                   });
                 };
                 dataUrlReader.readAsDataURL(blob);

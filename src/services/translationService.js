@@ -251,7 +251,7 @@ export async function translateArticle(article, targetLang, options = { includeC
         highlights: Array.isArray(article.highlights) ? article.highlights : [],
         body: includeContent ? article.content : ''
       })
-    }, 30000);
+    }, 75000);
 
     if (backendRes.ok) {
       const backendData = await backendRes.json();

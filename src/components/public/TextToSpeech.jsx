@@ -42,11 +42,6 @@ export default function TextToSpeech({
   const [clipStatus, setClipStatus] = useState('idle'); // 'clip_1' | 'chime' | 'clip_2' | 'browser'
   const isUsingBrowserFallback = useRef(false);
 
-  // Strict Rule: Hide Listen button completely in Assamese ('as')
-  if (currentLanguage === 'as') {
-    return null;
-  }
-
   // Stop audio on language change or unmount
   useEffect(() => {
     stopTwoStageAudio();
@@ -203,6 +198,11 @@ export default function TextToSpeech({
   };
 
   const isExpanded = isPlaying || isLoading || currentTime > 0;
+
+  // Strict Rule: Hide Listen button completely in Assamese ('as')
+  if (currentLanguage === 'as') {
+    return null;
+  }
 
   return (
     <div 

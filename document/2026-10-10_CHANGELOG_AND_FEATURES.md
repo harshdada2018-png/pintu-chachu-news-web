@@ -5,19 +5,19 @@ This document logs all features, bug fixes, UI enhancements, and system architec
 
 ---
 
-## 🚀 Summary of Changes & Enhancements
+##  Summary of Changes & Enhancements
 
 ### 1. Breaking News Ticker Auto-Rotation & Animations
 - **Auto-Cycle Timer**: Set breaking news ticker to auto-advance every **4 seconds** (4000 ms) in `Header.jsx`.
 - **Fade In / Fade Out Transitions**: Added `.ticker-content` and `.ticker-content.fade-out` CSS opacity and translation transitions in `src/index.css`.
-- **Manual Navigation**: Connected the "Next ❯" button to trigger smooth fade-out and fade-in transitions.
+- **Manual Navigation**: Connected the "Next " button to trigger smooth fade-out and fade-in transitions.
 
 ---
 
 ### 2. Bookmark System & Dedicated Bookmarks View
-- **Placement**: Positioned the **Bookmark Icon Button (`🔖`)** directly below the red Breaking News ticker bar on the far-left corner, separated from category links by a vertical divider.
+- **Placement**: Positioned the **Bookmark Icon Button (``)** directly below the red Breaking News ticker bar on the far-left corner, separated from category links by a vertical divider.
 - **Dedicated View**: Selecting the Bookmarks tab filters `App.jsx` to render a dedicated **"Your Saved Bookmarks"** grid containing **ONLY** articles saved by the reader. Unbookmarked sidebar widgets (Editor's Spotlight, Top Trending Stories) are completely hidden in this view.
-- **1-Click Quick Remove**: Added a `Remove ✖` button on each bookmarked article card.
+- **1-Click Quick Remove**: Added a `Remove ` button on each bookmarked article card.
 - **Storage & Server Load Logic**:
   - Saved in browser `localStorage` under `ps_bookmark_<article_id>`.
   - **Server Load**: `0%` (Client-side execution).
@@ -28,7 +28,7 @@ This document logs all features, bug fixes, UI enhancements, and system architec
 ### 3. Share Article System & Interactive Share Modal
 - **Native Device Share**: Utilizes `navigator.share` on supported mobile devices and browsers.
 - **Interactive Share Modal**: Custom modal dialog equipped with:
-  - **1-Click Copy Link**: Copies URL to clipboard with instant *"Copied! 📋"* toast feedback.
+  - **1-Click Copy Link**: Copies URL to clipboard with instant *"Copied! "* toast feedback.
   - **Direct Social Platforms**: Instant sharing to **WhatsApp**, **Twitter / X**, **Telegram**, and **Email**.
 
 ---
@@ -62,7 +62,7 @@ This document logs all features, bug fixes, UI enhancements, and system architec
 
 ---
 
-## 📁 Modified Files Reference
+##  Modified Files Reference
 
 | File Path | Key Changes Made |
 | :--- | :--- |
@@ -75,7 +75,7 @@ This document logs all features, bug fixes, UI enhancements, and system architec
 
 ---
 
-## 🛠️ Verification & Build Status
+##  Verification & Build Status
 - **Linter Output**: `oxlint` executed cleanly with `0 errors`.
 - **Production Build**: `npm run build` compiled successfully in `325ms`.
 - **Development Servers**: Frontend running on `http://localhost:5173/`, Backend running on `http://localhost:5000`.

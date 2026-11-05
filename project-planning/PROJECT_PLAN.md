@@ -13,7 +13,7 @@ Transform PublicSpark into a fully customizable digital news platform where an a
    - Continuous Font Boldness Slider (no fixed numbers, qualitative descriptors).
    - Top explicit Save & Apply Typography action bar with draft preview isolation.
 3. **Typography Suite Elegance & Emoji Purge (Immediate Next Step)**:
-   - Replace all casual emojis (`👑`, `📖`, `🗺️`, `🌐`, `⚡`, `💡`) with corporate Lucide SVG icons.
+   - Replace all casual emojis (``, ``, ``, ``, ``, ``) with corporate Lucide SVG icons.
    - Polish language cards, preview desk, and headers to match the high-end broadsheet newsroom standard.
 4. **Google AdSense Monetization & Ads Manager (Phase 2)**:
    - Configurable ad placements (Header Leaderboard 728x90, Sub-Headline, Mid-Article 300x250, Sidebar Sticky 300x600, Sticky Mobile Footer 320x50).

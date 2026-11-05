@@ -5,7 +5,7 @@ import React from 'react';
  * Parses raw markdown (### headings, **bold**, - bullet lists, paragraphs)
  * and journalistic subheadings (callouts, wire markers, brackets) into styled React elements.
  */
-export default function MarkdownRenderer({ content, fontSize, fontSizeMode = 'md', lineHeight, adComponent = null }) {
+export default function MarkdownRenderer({ content, fontSize, fontSizeMode = 'md', lineHeight, adComponent = null, relatedStoryComponent = null }) {
   if (!content) return null;
 
   const currentFontSize = fontSize || (fontSizeMode === 'sm' ? '0.92rem' : fontSizeMode === 'lg' ? '1.2rem' : '1rem');
@@ -16,6 +16,7 @@ export default function MarkdownRenderer({ content, fontSize, fontSizeMode = 'md
   let currentList = [];
   let paragraphCount = 0;
   let hasInjectedAd = false;
+  let hasInjectedRelatedStory = false;
 
   const flushList = () => {
     if (currentList.length > 0) {
@@ -195,6 +196,16 @@ export default function MarkdownRenderer({ content, fontSize, fontSizeMode = 'md
         </React.Fragment>
       );
     }
+
+    // In-Article Related Story ("Ye Bhi Padhein") Callout after Paragraph 4
+    if (relatedStoryComponent && paragraphCount === 4 && !hasInjectedRelatedStory) {
+      hasInjectedRelatedStory = true;
+      elements.push(
+        <React.Fragment key="in-article-related-story-placement">
+          {relatedStoryComponent}
+        </React.Fragment>
+      );
+    }
   });
 
   flushList();
@@ -204,6 +215,16 @@ export default function MarkdownRenderer({ content, fontSize, fontSizeMode = 'md
     elements.push(
       <React.Fragment key="in-article-ad-placement-end">
         {adComponent}
+      </React.Fragment>
+    );
+  }
+
+  // If article has fewer than 4 paragraphs, append related story callout if not injected yet
+  if (relatedStoryComponent && !hasInjectedRelatedStory && paragraphCount >= 1) {
+    hasInjectedRelatedStory = true;
+    elements.push(
+      <React.Fragment key="in-article-related-story-placement-end">
+        {relatedStoryComponent}
       </React.Fragment>
     );
   }

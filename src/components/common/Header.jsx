@@ -190,23 +190,23 @@ export default function Header({
             </span>
           </div>
 
-          {/* Right Side Corner Controls: Mobile Hamburger, Language Selector, View Switcher & Theme Switcher */}
+          {/* Right Side Corner Controls: Language Selector, Staff Newsroom Portal & Theme Switcher */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             
-            {/* Multi-Language Selector Section (Right Side Corner) */}
+            {/* Multi-Language Selector Section (Clean Editorial Dropdown) */}
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
-              gap: '0.3rem', 
-              background: 'var(--accent-crimson-bg)', 
-              color: 'var(--accent-crimson)', 
-              padding: '0.2rem 0.5rem', 
+              gap: '0.35rem', 
+              background: 'var(--bg-surface)', 
+              color: 'var(--text-main)', 
+              padding: '0.25rem 0.55rem', 
               borderRadius: 'var(--radius-sm)', 
               fontSize: '0.75rem',
-              border: '1px solid var(--accent-crimson)',
-              fontWeight: '700'
+              border: '1px solid var(--border-medium)',
+              fontWeight: '600'
             }}>
-              <Languages size={14} color="var(--accent-crimson)" />
+              <Languages size={13} color="var(--text-subtle)" />
               <select 
                 id="lang-select"
                 value={currentLanguage} 
@@ -215,8 +215,8 @@ export default function Header({
                 style={{ 
                   background: 'transparent', 
                   border: 'none', 
-                  fontWeight: '800', 
-                  color: 'var(--accent-crimson)', 
+                  fontWeight: '700', 
+                  color: 'var(--text-main)', 
                   cursor: 'pointer',
                   outline: 'none',
                   fontSize: '0.75rem'
@@ -240,13 +240,15 @@ export default function Header({
               </select>
             </div>
 
-            {/* View Switcher (Desktop) */}
-            <div className="hide-on-mobile" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--bg-secondary)', padding: '0.2rem 0.6rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem' }}>
-              <UserCheck size={14} color="var(--accent-blue)" />
+            {/* Institutional Newsroom Staff Access (Desktop) */}
+            <div className="hide-on-mobile" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'var(--bg-secondary)', padding: '0.25rem 0.55rem', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', border: '1px solid var(--border-light)' }}>
+              <UserCheck size={13} color={currentRole === 'visitor' ? 'var(--text-subtle)' : 'var(--accent-indigo)'} />
               <select 
                 value={currentRole} 
                 onChange={(e) => onRoleChange(e.target.value)}
-                style={{ background: 'transparent', border: 'none', fontWeight: '700', color: 'var(--text-main)', cursor: 'pointer' }}
+                title="Staff & Editorial Desks"
+                aria-label="Staff & Editorial Desks"
+                style={{ background: 'transparent', border: 'none', fontWeight: '700', color: currentRole === 'visitor' ? 'var(--text-subtle)' : 'var(--text-main)', cursor: 'pointer', outline: 'none', fontSize: '0.75rem' }}
               >
                 <option value="visitor">{t('readerView', currentLanguage)}</option>
                 <option value="reporter">{t('reporterDesk', currentLanguage)}</option>
@@ -465,7 +467,6 @@ export default function Header({
       <div className="ticker-bar">
         <div className="ticker-badge">
           <span className="pulse-dot"></span>
-          <Flame size={13} color="var(--accent-crimson)" />
           {t('breaking', currentLanguage)}
         </div>
         <div className={`ticker-content ${isFading ? 'fade-out' : ''}`}>

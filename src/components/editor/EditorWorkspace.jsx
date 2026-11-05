@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle, Flame, Sparkles, XCircle, Clock, Eye, Edit3, ShieldAlert, Languages, Video, Play } from 'lucide-react';
+import { CheckCircle, Flame, Sparkles, XCircle, Clock, Eye, Edit3, ShieldAlert, Languages, Video, Play, X, AlertCircle, ShieldCheck, FileText, ExternalLink } from 'lucide-react';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
 
 export default function EditorWorkspace({ pendingArticles, onApproveArticle, onRejectArticle }) {
@@ -9,6 +9,10 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
   const [isBreaking, setIsBreaking] = useState(false);
   const [headlineSuggestions, setHeadlineSuggestions] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [factCheckRating, setFactCheckRating] = useState('Verified');
+  const [factCheckDesk, setFactCheckDesk] = useState('PublicSpark Fact Desk');
 
   // Select article to review
   const handleSelectArticle = (art) => {
@@ -16,6 +20,8 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
     setEditedTitle(art.title);
     setEditedLanguage(art.originalLanguage || 'hi');
     setIsBreaking(art.is_breaking || false);
+    setFactCheckRating(art.fact_check?.rating || 'Verified');
+    setFactCheckDesk(art.fact_check?.desk || 'PublicSpark Fact Desk');
     setHeadlineSuggestions([]);
   };
 
@@ -34,7 +40,15 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
 
   const handleApprove = () => {
     if (!selectedArticle) return;
-    onApproveArticle(selectedArticle.id, editedTitle, isBreaking, editedLanguage);
+    const finalFactCheck = {
+      verified: true,
+      rating: factCheckRating || 'Verified',
+      desk: factCheckDesk || 'PublicSpark Fact Desk',
+      claim: selectedArticle.fact_check?.claim || 'Verified against institutional statements and reporter ground dispatches.',
+      verified_at: 'Just now',
+      methodology: 'Cross-verified by Editor Desk prior to publication in accordance with Press Council of India standards.'
+    };
+    onApproveArticle(selectedArticle.id, editedTitle, isBreaking, editedLanguage, finalFactCheck, selectedArticle.sources || []);
     setSelectedArticle(null);
     setHeadlineSuggestions([]);
   };
@@ -236,8 +250,83 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
                 </div>
               </div>
 
+              {/* Task 25: Editorial Fact-Check Verification & Sources Review */}
+              <div style={{
+                marginBottom: '1.5rem',
+                background: '#F8FAFC',
+                border: '1px solid #CBD5E1',
+                padding: '1.1rem',
+                borderRadius: 'var(--radius-sm)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.65rem', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.5rem' }}>
+                  <ShieldCheck size={18} color="#059669" />
+                  <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '900', color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                    Editorial Fact-Check Certification & Sources (सत्यापन प्रमाणन)
+                  </h4>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: '800', display: 'block', marginBottom: '0.25rem', color: '#334155' }}>
+                      Editorial Verification Rating
+                    </label>
+                    <select
+                      value={factCheckRating}
+                      onChange={(e) => setFactCheckRating(e.target.value)}
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #94A3B8', fontSize: '0.82rem', fontWeight: '700', background: '#FFFFFF' }}
+                    >
+                      <option value="Verified">Verified (प्रमाणित तथ्य)</option>
+                      <option value="Official Statement">Official Statement (आधिकारिक बयान)</option>
+                      <option value="Government Gazette">Government Gazette (राजपत्र अधिसूचना)</option>
+                      <option value="Ground Report">Ground Report (मैदानी जांच)</option>
+                      <option value="Under Review">Under Review (समीक्षाधीन)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: '800', display: 'block', marginBottom: '0.25rem', color: '#334155' }}>
+                      Certified By Desk / Bureau
+                    </label>
+                    <input
+                      type="text"
+                      value={factCheckDesk}
+                      onChange={(e) => setFactCheckDesk(e.target.value)}
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #94A3B8', fontSize: '0.82rem', background: '#FFFFFF' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Reporter's cited sources */}
+                <div style={{ borderTop: '1px dashed #CBD5E1', paddingTop: '0.65rem' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0E2A47', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.4rem' }}>
+                    <FileText size={14} /> Attached Primary Sources ({Array.isArray(selectedArticle.sources) ? selectedArticle.sources.length : 0})
+                  </span>
+                  {Array.isArray(selectedArticle.sources) && selectedArticle.sources.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                      {selectedArticle.sources.map((src, idx) => (
+                        <div key={idx} style={{ background: '#FFFFFF', padding: '0.45rem 0.65rem', borderRadius: '4px', border: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                          <div>
+                            <span style={{ fontWeight: '800', color: '#1E40AF', marginRight: '0.4rem' }}>[{src.type || 'Source'}]</span>
+                            <span style={{ fontWeight: '700' }}>{src.title}</span>
+                          </div>
+                          {src.url && (
+                            <a href={src.url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>Link</span> <ExternalLink size={12} />
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.75rem', color: '#64748B', fontStyle: 'italic' }}>
+                      Reporter attached no custom sources. Standard institutional citations (PIB / Gazette) will be applied.
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Action Approval Buttons */}
-              <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem', flexWrap: 'wrap' }}>
                 <button 
                   onClick={handleApprove} 
                   className="btn btn-primary" 
@@ -246,7 +335,7 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
                   <CheckCircle size={16} /> Approve & Publish Story Immediately
                 </button>
                 <button 
-                  onClick={() => onRejectArticle(selectedArticle.id)} 
+                  onClick={() => setIsRejectModalOpen(true)} 
                   className="btn btn-outline" 
                   style={{ padding: '0.7rem 1.2rem', color: 'var(--accent-crimson)', borderColor: 'var(--accent-crimson)' }}
                 >
@@ -269,6 +358,135 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
           )}
         </div>
       </div>
+
+      {/* Editorial Rejection & Changes Request Modal */}
+      {isRejectModalOpen && selectedArticle && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(14, 42, 71, 0.75)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10050,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: '4px',
+            border: '1px solid var(--border-medium)',
+            width: '100%',
+            maxWidth: '560px',
+            padding: '1.5rem',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.25)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-medium)', paddingBottom: '0.75rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: 'var(--accent-crimson)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <XCircle size={18} /> Request Changes / Reject Submission
+              </h3>
+              <button
+                type="button"
+                onClick={() => { setIsRejectModalOpen(false); setRejectionReason(''); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+              Story: <strong>"{selectedArticle.title}"</strong>
+            </p>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.85rem', fontWeight: '700', display: 'block', marginBottom: '0.35rem' }}>
+                Feedback & Reason for Reporter:
+              </label>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Specify what needs correction (e.g. Please verify source, add police quote, rewrite headline...)"
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem',
+                  borderRadius: '4px',
+                  border: '1px solid var(--border-medium)',
+                  fontSize: '16px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* Quick Presets */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-subtle)', display: 'block', marginBottom: '0.35rem' }}>
+                Quick Presets:
+              </span>
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {[
+                  'Fact verification needed from official sources',
+                  'Headline needs revision to reflect balanced reporting',
+                  'Please provide primary source quotes and witness accounts',
+                  'Spelling, grammar or formatting corrections required'
+                ].map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setRejectionReason(preset)}
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: '600',
+                      padding: '0.2rem 0.5rem',
+                      borderRadius: '3px',
+                      border: '1px solid var(--border-medium)',
+                      background: 'var(--bg-secondary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    + {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+              <button
+                type="button"
+                onClick={() => { setIsRejectModalOpen(false); setRejectionReason(''); }}
+                className="btn btn-outline"
+                style={{ minHeight: '36px', padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onRejectArticle(selectedArticle.id, rejectionReason.trim() || 'Editorial review requested changes before publication.');
+                  setIsRejectModalOpen(false);
+                  setRejectionReason('');
+                  setSelectedArticle(null);
+                }}
+                className="btn"
+                style={{
+                  minHeight: '36px',
+                  padding: '0.5rem 1.25rem',
+                  fontSize: '0.85rem',
+                  fontWeight: '800',
+                  background: '#DC2626',
+                  color: '#FFFFFF',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Confirm Rejection & Send Feedback
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

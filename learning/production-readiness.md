@@ -20,7 +20,7 @@ This document maintains an honest, project-specific record of implemented & veri
 | **Multi-Language Translation** | Yes (`/api/translate`) | None (Real Gemini `gemini-3.8-flash` translation) | Live & verified with persistent `(article_id, lang)` database cache & sha256 hash invalidation |
 | **Text-to-Speech (Audio Engine)** | Yes (Browser Native Web Speech API) | None | Pure native `window.speechSynthesis` with dynamic voice-availability auto-hiding |
 | **Team & Permissions** | No (Frontend `useState` in AdminWorkspace) | Yes (`usersList` in `AdminWorkspace.jsx`) | Create `GET/POST /api/users` & secure auth system |
-| **Google AdSense & Ad Placements** | No (Frontend `useState` in AdminWorkspace) | Yes (`adSlots` in `AdminWorkspace.jsx`) | Phase 2: Add `GET/POST /api/settings/ads`, publisher ID input, `/ads.txt` route, & policy pages |
+| **Google AdSense & Monetization Engine** | Yes (`/api/settings/monetization`, `/api/ads/active`, `ads.txt`) | Broadsheet placeholders when unconfigured or on localhost | Live & verified with real server clock temporal scheduling, scope targeting, and Google AdSense fallback |
 | **News SEO & Structured Data** | Partial (Static `index.html` tags) | Missing dynamic per-article metadata | Phase 5: Dynamic JSON-LD `NewsArticle` schema, Open Graph, `/sitemap.xml`, & `/robots.txt` |
 | **Public Opinion Poll** | No (Client `localStorage` only) | Initial vote counts hardcoded | Create `POST /api/poll/vote` with IP/session de-duplication |
 | **Article Live Blog Timeline** | No (Hardcoded in `mockData.js`) | Yes (`MOCK_LIVE_UPDATES`) | Create `GET/POST /api/articles/:id/updates` |

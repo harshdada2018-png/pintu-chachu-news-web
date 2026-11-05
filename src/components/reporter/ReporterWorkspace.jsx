@@ -1,10 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { PenTool, Upload, FileText, Send, CheckCircle, Clock, AlertCircle, Image as ImageIcon, Sparkles, Plus, Trash2, Check, RefreshCw, Languages, Lock } from 'lucide-react';
+import { PenTool, Upload, FileText, Send, CheckCircle, Clock, AlertCircle, Image as ImageIcon, Sparkles, Plus, Trash2, Check, RefreshCw, Languages, Lock, FolderOpen, X, Radio, Edit3, XCircle, ShieldCheck } from 'lucide-react';
 import { MOCK_CATEGORIES } from '../../services/mockData';
 import { compressImageToWebP } from '../../services/mediaService';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
+import MediaLibraryDesk from '../admin/MediaLibraryDesk';
 
-export default function ReporterWorkspace({ onAddNewArticle, categories }) {
+export default function ReporterWorkspace({ 
+  onAddNewArticle, 
+  categories,
+  onResubmitArticle,
+  pendingArticles = [],
+  rejectedArticles = [],
+  publishedArticles = []
+}) {
   const activeCategories = categories && categories.length > 0 ? categories : MOCK_CATEGORIES;
   const [activeTab, setActiveTab] = useState('create');
   
@@ -29,6 +37,8 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
   const [category, setCategory] = useState(initialDraft?.category || activeCategories[0]?.name || 'National');
   const [tags, setTags] = useState(initialDraft?.tags || 'News, Ground Report, Verified');
   const [videoUrl, setVideoUrl] = useState(initialDraft?.videoUrl || '');
+  const [format, setFormat] = useState(initialDraft?.format || 'standard');
+  const [liveStatus, setLiveStatus] = useState(initialDraft?.liveStatus || 'active');
   
   // Image with Caption & Credit
   const [imagePreview, setImagePreview] = useState(initialDraft?.imagePreview || null);
@@ -37,6 +47,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
   const [isCompressing, setIsCompressing] = useState(false);
   const [isImageReady, setIsImageReady] = useState(!!initialDraft?.imagePreview);
   const [imageStats, setImageStats] = useState(null);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
 
   // Pre-Publish AI "In 30 Seconds" 2-3 Points & Hindi Spelling Verification
   const [highlights, setHighlights] = useState(initialDraft?.highlights || []);
@@ -45,6 +56,74 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
   const [improvedTitleSuggestion, setImprovedTitleSuggestion] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [hasDraftRestored, setHasDraftRestored] = useState(!!(initialDraft && (initialDraft.originalLanguage || initialDraft.title || initialDraft.content)));
+
+  // Task 25 Subtopic B: Reporter Citations & Official Sources
+  const [sources, setSources] = useState(initialDraft?.sources || []);
+  const [newSourceTitle, setNewSourceTitle] = useState('');
+  const [newSourceUrl, setNewSourceUrl] = useState('');
+  const [newSourceType, setNewSourceType] = useState('Official Press Note');
+  const [newSourcePublisher, setNewSourcePublisher] = useState('');
+
+  const REPORTER_SOURCE_PRESETS = [
+    {
+      label: 'PIB Press Release',
+      title: 'Press Information Bureau (PIB) New Delhi',
+      url: 'https://pib.gov.in',
+      type: 'Official Press Release',
+      publisher: 'PIB Govt of India'
+    },
+    {
+      label: 'Gazette Order',
+      title: 'Government Gazette Notification',
+      url: 'https://egazette.gov.in',
+      type: 'Government Gazette',
+      publisher: 'Govt of India'
+    },
+    {
+      label: 'Police / Admin Note',
+      title: 'Police Department / District Admin Press Note',
+      url: 'https://ips.gov.in',
+      type: 'Official Press Note',
+      publisher: 'District Administration'
+    },
+    {
+      label: 'PTI Dispatch',
+      title: 'Press Trust of India (PTI) Wire',
+      url: 'https://ptinews.com',
+      type: 'News Agency Dispatch',
+      publisher: 'PTI'
+    }
+  ];
+
+  const handleAddSource = () => {
+    if (!newSourceTitle.trim()) {
+      alert('कृपया स्रोत या संदर्भ का शीर्षक भरें।');
+      return;
+    }
+    const newSrc = {
+      id: `src-${Date.now()}`,
+      title: newSourceTitle.trim(),
+      url: newSourceUrl.trim() || 'https://pib.gov.in',
+      type: newSourceType,
+      publisher: newSourcePublisher.trim() || 'Ground Administration',
+      accessed_at: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+    };
+    setSources(prev => [...prev, newSrc]);
+    setNewSourceTitle('');
+    setNewSourceUrl('');
+    setNewSourcePublisher('');
+  };
+
+  const handleRemoveSource = (srcId) => {
+    setSources(prev => prev.filter(s => s.id !== srcId));
+  };
+
+  const applySourcePreset = (preset) => {
+    setNewSourceTitle(preset.title);
+    setNewSourceUrl(preset.url);
+    setNewSourceType(preset.type);
+    setNewSourcePublisher(preset.publisher);
+  };
 
   // Real-time draft auto-save to localStorage
   useEffect(() => {
@@ -57,6 +136,8 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
           category,
           tags,
           videoUrl,
+          format,
+          liveStatus,
           imagePreview: imagePreview && imagePreview.length < 500000 ? imagePreview : null,
           imageCaption,
           mediaCredits,
@@ -67,7 +148,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
         console.warn('Draft auto-save error:', e);
       }
     }
-  }, [originalLanguage, title, content, category, tags, videoUrl, imagePreview, imageCaption, mediaCredits, highlights]);
+  }, [originalLanguage, title, content, category, tags, videoUrl, format, liveStatus, imagePreview, imageCaption, mediaCredits, highlights]);
 
   const handleDiscardDraft = () => {
     if (window.confirm('क्या आप सचमुच इस अनसेव्ड ड्राफ्ट को हटाना चाहते हैं?')) {
@@ -78,6 +159,8 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
       setTitle('');
       setContent('');
       setVideoUrl('');
+      setFormat('standard');
+      setLiveStatus('active');
       setImageCaption('');
       setImagePreview(null);
       setIsImageReady(false);
@@ -85,8 +168,13 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
       setSpellingNote('');
       setImprovedTitleSuggestion('');
       setHasDraftRestored(false);
+      setSources([]);
     }
   };
+
+  // Active story being edited after editor rejection/revision request
+  const [editingStoryId, setEditingStoryId] = useState(null);
+  const [rejectionNotice, setRejectionNotice] = useState('');
 
   // Submissions list with LocalStorage persistence
   const [myStories, setMyStories] = useState(() => {
@@ -105,6 +193,75 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
       return [];
     }
   });
+
+  // Keep myStories synchronized with App-level status changes (Rejection, Approval/Publishing, Review queue)
+  useEffect(() => {
+    setMyStories(prevStories => {
+      let hasChanges = false;
+      const updated = prevStories.map(story => {
+        // 1. Check if rejected by editor
+        const rejectedMatch = rejectedArticles.find(r => r.id === story.id);
+        if (rejectedMatch) {
+          if (story.status !== 'rejected' || story.rejection_reason !== rejectedMatch.rejection_reason) {
+            hasChanges = true;
+            return {
+              ...story,
+              ...rejectedMatch,
+              status: 'rejected',
+              rejection_reason: rejectedMatch.rejection_reason || 'Editorial review requested changes before publication.'
+            };
+          }
+          return story;
+        }
+
+        // 2. Check if published
+        const publishedMatch = publishedArticles.find(p => p.id === story.id);
+        if (publishedMatch) {
+          if (story.status !== 'published') {
+            hasChanges = true;
+            return {
+              ...story,
+              ...publishedMatch,
+              status: 'published',
+              rejection_reason: null
+            };
+          }
+          return story;
+        }
+
+        // 3. Check if pending review
+        const pendingMatch = pendingArticles.find(p => p.id === story.id);
+        if (pendingMatch) {
+          if (story.status !== 'pending') {
+            hasChanges = true;
+            return {
+              ...story,
+              ...pendingMatch,
+              status: 'pending',
+              rejection_reason: null
+            };
+          }
+          return story;
+        }
+
+        return story;
+      });
+
+      // Ensure any rejected article is present in reporter's desk list
+      rejectedArticles.forEach(rej => {
+        if (!updated.some(s => s.id === rej.id)) {
+          updated.unshift({
+            ...rej,
+            status: 'rejected',
+            rejection_reason: rej.rejection_reason || 'Editorial review requested changes before publication.'
+          });
+          hasChanges = true;
+        }
+      });
+
+      return hasChanges ? updated : prevStories;
+    });
+  }, [rejectedArticles, pendingArticles, publishedArticles]);
 
   useEffect(() => {
     try {
@@ -230,7 +387,49 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
     }
   };
 
-  // Publish Story Immediately Live
+  const handleEditStory = (story) => {
+    setEditingStoryId(story.id);
+    setRejectionNotice(story.rejection_reason || '');
+    setOriginalLanguage(story.originalLanguage || 'hi');
+    setTitle(story.title || '');
+    setContent(story.content || '');
+    setCategory(story.category || activeCategories[0]?.name || 'National');
+    setTags(Array.isArray(story.tags) ? story.tags.join(', ') : (story.tags || 'News, Ground Report, Verified'));
+    setVideoUrl(story.video_url || story.videoUrl || '');
+    setFormat(story.format || 'standard');
+    setLiveStatus(story.live_status || 'active');
+    setImagePreview(story.featured_image || story.imagePreview || null);
+    setIsImageReady(!!(story.featured_image || story.imagePreview));
+    setImageCaption(story.image_caption || story.imageCaption || '');
+    setMediaCredits(story.media_credits || story.mediaCredits || 'PublicSpark Bureau');
+    setHighlights(story.highlights || []);
+    setSources(Array.isArray(story.sources) ? story.sources : []);
+    setSpellingNote('');
+    setImprovedTitleSuggestion('');
+    setActiveTab('create');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEditing = () => {
+    setEditingStoryId(null);
+    setRejectionNotice('');
+    setTitle('');
+    setContent('');
+    setVideoUrl('');
+    setFormat('standard');
+    setLiveStatus('active');
+    setImageCaption('');
+    setMediaCredits('PublicSpark Bureau');
+    setTags('News, Ground Report, Verified');
+    setImagePreview(null);
+    setIsImageReady(false);
+    setHighlights([]);
+    setSources([]);
+    setSpellingNote('');
+    setImprovedTitleSuggestion('');
+  };
+
+  // Publish or Resubmit Story to Editor
   const handlePublishStory = (e) => {
     e.preventDefault();
     if (!originalLanguage) {
@@ -250,8 +449,8 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
 
     const tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
 
-    const newStory = {
-      id: `art-${Date.now()}`,
+    const storyPayload = {
+      id: editingStoryId || `art-${Date.now()}`,
       originalLanguage: originalLanguage,
       title: title.trim(),
       sub_title: finalHighlights[0] || '',
@@ -261,7 +460,9 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
       summary: finalHighlights[0] || content.slice(0, 140) + '...',
       highlights: finalHighlights,
       tags: tagList,
-      format: videoUrl.trim() ? 'video' : 'standard',
+      format: format || (videoUrl.trim() ? 'video' : 'standard'),
+      live_status: format === 'live' ? liveStatus : null,
+      live_updates: [],
       video_url: videoUrl.trim() || null,
       featured_image: imagePreview || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=80',
       image_caption: imageCaption || title,
@@ -272,40 +473,61 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
         avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
       },
       status: 'pending', // SENT TO EDITOR DESK FOR EDITORIAL REVIEW
+      rejection_reason: null,
       is_breaking: false,
       views_count: 1,
       reading_time_mins: Math.max(1, Math.ceil(content.length / 500)),
-      published_at: 'Just now'
+      published_at: 'Just now',
+      fact_check: {
+        verified: true,
+        rating: 'Under Review',
+        desk: 'Field Reporter Ground Submission',
+        claim: 'Ground report and local administration statements filed for editorial verification.',
+        verified_at: 'Pending Editor Approval'
+      },
+      sources: sources
     };
 
-    onAddNewArticle(newStory);
-    setMyStories([
-      {
-        id: newStory.id,
-        title: newStory.title,
-        category: newStory.category,
-        originalLanguage: newStory.originalLanguage,
-        status: 'pending',
-        updated_at: 'Just now'
-      },
-      ...myStories
-    ]);
+    if (editingStoryId) {
+      // Resubmit revised story
+      if (onResubmitArticle) {
+        onResubmitArticle(storyPayload);
+      }
+      setMyStories(prev => prev.map(s => s.id === editingStoryId ? { ...s, ...storyPayload, status: 'pending', rejection_reason: null, updated_at: 'अभी-अभी' } : s));
+      setStatusMessage('संशोधित समाचार समीक्षा के लिए पुनः Editor Desk पर भेज दिया गया है!');
+      setEditingStoryId(null);
+      setRejectionNotice('');
+    } else {
+      // Fresh submission
+      onAddNewArticle(storyPayload);
+      setMyStories([
+        {
+          ...storyPayload,
+          status: 'pending',
+          updated_at: 'Just now'
+        },
+        ...myStories
+      ]);
+      setStatusMessage('समाचार समीक्षा के लिए Editor Desk पर भेज दिया गया है! एडिटर के अप्रूव करते ही यह लाइव हो जाएगा।');
+    }
 
     try {
       localStorage.removeItem(DRAFT_KEY);
     } catch (e) {}
     setHasDraftRestored(false);
 
-    setStatusMessage('समाचार समीक्षा के लिए Editor Desk पर भेज दिया गया है! एडिटर के अप्रूव करते ही यह लाइव हो जाएगा।');
     setTitle('');
     setContent('');
     setVideoUrl('');
+    setFormat('standard');
+    setLiveStatus('active');
     setImageCaption('');
     setMediaCredits('PublicSpark Bureau');
     setTags('News, Ground Report, Verified');
     setImagePreview(null);
     setIsImageReady(false);
     setHighlights([]);
+    setSources([]);
     setSpellingNote('');
     setImprovedTitleSuggestion('');
 
@@ -366,9 +588,16 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
           <button 
             onClick={() => setActiveTab('my-submissions')} 
             className={`sidebar-nav-link ${activeTab === 'my-submissions' ? 'active' : ''}`}
-            style={{ width: '100%' }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
           >
-            <FileText size={16} /> प्रकाशित समाचार ({myStories.length})
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <FileText size={16} /> मेरी रिपोर्ट्स ({myStories.length})
+            </span>
+            {myStories.some(s => s.status === 'rejected') && (
+              <span style={{ background: '#DC2626', color: '#FFFFFF', borderRadius: '10px', fontSize: '0.7rem', padding: '0.1rem 0.45rem', fontWeight: '800' }}>
+                {myStories.filter(s => s.status === 'rejected').length} सुधार
+              </span>
+            )}
           </button>
         </div>
 
@@ -376,8 +605,37 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
         <div>
           {activeTab === 'create' ? (
             <form onSubmit={handlePublishStory} style={{ background: 'var(--bg-surface)', padding: '1.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
+              {editingStoryId && (
+                <div style={{
+                  background: '#FEF2F2',
+                  border: '1px solid #FCA5A5',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '1rem',
+                  marginBottom: '1.5rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#991B1B', fontWeight: '800', fontSize: '0.95rem' }}>
+                      <AlertCircle size={18} color="#DC2626" />
+                      <span>संपादक के निर्देशानुसार संशोधन मोड (Revision Mode):</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCancelEditing}
+                      style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', fontSize: '0.82rem', fontWeight: '700', textDecoration: 'underline' }}
+                    >
+                      संशोधन रद्द करें (Cancel)
+                    </button>
+                  </div>
+                  <div style={{ background: '#FFFFFF', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid #FECACA', fontSize: '0.9rem', color: '#7F1D1D', lineHeight: '1.45' }}>
+                    <strong>Editor Feedback:</strong> {rejectionNotice || 'कृपया इस समाचार की समीक्षा कर आवश्यक सुधार करें और पुनः सबमिट करें।'}
+                  </div>
+                </div>
+              )}
               <h3 style={{ fontSize: '1.2rem', fontWeight: '800', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.5rem' }}>
-                समाचार विवरण (Article Details)
+                {editingStoryId ? 'समाचार विवरण में सुधार (Revise Article Details)' : 'समाचार विवरण (Article Details)'}
               </h3>
 
               {/* STEP 1: MANDATORY LANGUAGE GATE */}
@@ -433,42 +691,33 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
                   जिस भाषा में आप समाचार लिख रहे हैं, उसे यहाँ चुनें। जब तक भाषा नहीं चुनी जाएगी, नीचे दिए गए फ़ील्ड लॉक रहेंगे।
                 </p>
 
-                {/* Language selection pills / grid */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-                  gap: '0.5rem'
-                }}>
-                  {SUPPORTED_LANGUAGES.map((lang) => {
-                    const isSelected = originalLanguage === lang.code;
-                    return (
-                      <button
-                        key={lang.code}
-                        type="button"
-                        onClick={() => setOriginalLanguage(lang.code)}
-                        style={{
-                          padding: '0.5rem 0.65rem',
-                          borderRadius: 'var(--radius-sm)',
-                          border: isSelected ? '2px solid var(--accent-indigo)' : '1px solid var(--border-medium)',
-                          background: isSelected ? 'var(--accent-indigo)' : 'var(--bg-surface)',
-                          color: isSelected ? '#FFFFFF' : 'var(--text-main)',
-                          fontWeight: isSelected ? '800' : '600',
-                          fontSize: '0.825rem',
-                          cursor: 'pointer',
-                          textAlign: 'center',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '0.15rem',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <span style={{ fontSize: '0.9rem' }}>{lang.native}</span>
-                        <span style={{ fontSize: '0.7rem', opacity: isSelected ? 0.9 : 0.65 }}>{lang.name}</span>
-                      </button>
-                    );
-                  })}
+                {/* Language selection dropdown box */}
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <select
+                    value={originalLanguage}
+                    onChange={(e) => setOriginalLanguage(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.7rem 0.9rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: originalLanguage ? '1.5px solid var(--accent-indigo)' : '1.5px solid var(--border-medium)',
+                      fontSize: '0.925rem',
+                      fontWeight: '700',
+                      background: 'var(--bg-surface)',
+                      color: originalLanguage ? 'var(--text-main)' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                      outline: 'none',
+                      appearance: 'auto',
+                      WebkitAppearance: 'menulist'
+                    }}
+                  >
+                    <option value="" disabled>-- भाषा चुनें (Select Article Language) --</option>
+                    {SUPPORTED_LANGUAGES.map((lang) => (
+                      <option key={lang.code} value={lang.code}>
+                        {lang.native} ({lang.name})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -623,9 +872,31 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
 
               {/* 3. Featured Image (Upload + Caption + Credit) */}
               <div style={{ marginBottom: '1.5rem', background: 'var(--bg-secondary)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-medium)', opacity: originalLanguage ? 1 : 0.55 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '700', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
-                  <ImageIcon size={18} /> फ़ोटो अपलोड (Image with Caption & Credit)
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '700', fontSize: '0.875rem', margin: 0 }}>
+                    <ImageIcon size={18} /> फ़ोटो अपलोड (Image with Caption & Credit)
+                  </label>
+                  <button
+                    type="button"
+                    disabled={!originalLanguage}
+                    onClick={() => setIsMediaPickerOpen(true)}
+                    className="btn btn-outline"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      fontSize: '0.75rem',
+                      fontWeight: '800',
+                      padding: '0.25rem 0.65rem',
+                      background: 'var(--bg-secondary)',
+                      borderColor: 'var(--accent-blue)',
+                      color: 'var(--accent-blue)',
+                      cursor: originalLanguage ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    <FolderOpen size={14} /> मीडिया लाइब्रेरी से चुनें
+                  </button>
+                </div>
                 <input 
                   type="file" 
                   accept="image/*" 
@@ -641,8 +912,31 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
                 )}
 
                 {imagePreview && (
-                  <div style={{ marginBottom: '0.75rem' }}>
+                  <div style={{ marginBottom: '0.75rem', position: 'relative', display: 'inline-block' }}>
                     <img src={imagePreview} alt="Preview" style={{ height: '140px', borderRadius: 'var(--radius-sm)', objectFit: 'cover' }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImagePreview(null);
+                        setIsImageReady(false);
+                        setImageStats(null);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '4px',
+                        right: '4px',
+                        background: 'rgba(0,0,0,0.7)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '3px',
+                        padding: '2px 5px',
+                        fontSize: '0.7rem',
+                        cursor: 'pointer'
+                      }}
+                      title="फ़ोटो हटाएं"
+                    >
+                      <X size={12} />
+                    </button>
                     {imageStats && (
                       <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: '#047857', background: '#ECFDF5', padding: '0.25rem 0.6rem', borderRadius: '4px', border: '1px solid #A7F3D0', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                         <Check size={13} /> WebP संपीड़ित: {imageStats.compressedKB} KB (मूल: {imageStats.originalKB} KB — {imageStats.savedPercent}% हल्की)
@@ -651,7 +945,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
                   </div>
                 )}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
+                <div className="reporter-grid-2col" style={{ marginTop: '0.5rem' }}>
                   <div>
                     <label style={{ display: 'block', fontWeight: '700', fontSize: '0.8rem', marginBottom: '0.3rem' }}>
                       फ़ोटो कैप्शन (Caption)
@@ -683,7 +977,7 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
               </div>
 
               {/* 4 & 5. Category & Tags */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.75rem', opacity: originalLanguage ? 1 : 0.55 }}>
+              <div className="reporter-grid-2col" style={{ marginBottom: '1.75rem', opacity: originalLanguage ? 1 : 0.55 }}>
                 <div>
                   <label style={{ display: 'block', fontWeight: '700', fontSize: '0.875rem', marginBottom: '0.4rem' }}>
                     श्रेणी (Category) *
@@ -715,6 +1009,132 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
                 </div>
               </div>
 
+              {/* Story Format & Live Blog Selector (Task 23 Subtopic A) */}
+              <div style={{
+                marginBottom: '1.75rem',
+                background: format === 'live' ? '#FEF2F2' : 'var(--bg-secondary)',
+                border: format === 'live' ? '1px solid #FCA5A5' : '1px solid var(--border-medium)',
+                padding: '1rem',
+                borderRadius: 'var(--radius-sm)',
+                opacity: originalLanguage ? 1 : 0.55
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '700', fontSize: '0.875rem', margin: 0, color: format === 'live' ? '#991B1B' : 'var(--text-main)' }}>
+                    <Radio size={16} color={format === 'live' ? '#DC2626' : 'var(--text-subtle)'} />
+                    स्टोरी का फॉर्मेट (Story Format & Presentation Mode)
+                  </label>
+                  {format === 'live' && (
+                    <span style={{ fontSize: '0.7rem', fontWeight: '800', color: liveStatus === 'active' ? '#B91C1C' : '#4B5563', background: liveStatus === 'active' ? '#FEE2E2' : '#E5E7EB', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>
+                      {liveStatus === 'active' ? 'Live Active' : 'Concluded'}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: format === 'live' ? '0.65rem' : '0' }}>
+                  <button
+                    type="button"
+                    disabled={!originalLanguage}
+                    onClick={() => setFormat('standard')}
+                    className="btn"
+                    style={{
+                      padding: '0.4rem 0.85rem',
+                      fontSize: '0.8rem',
+                      fontWeight: '700',
+                      borderRadius: '4px',
+                      border: format === 'standard' ? '1px solid #0E2A47' : '1px solid var(--border-medium)',
+                      background: format === 'standard' ? '#0E2A47' : '#FFFFFF',
+                      color: format === 'standard' ? '#FFFFFF' : 'var(--text-main)',
+                      cursor: originalLanguage ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    सामान्य समाचार (Standard)
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!originalLanguage}
+                    onClick={() => { setFormat('live'); setLiveStatus('active'); }}
+                    className="btn"
+                    style={{
+                      padding: '0.4rem 0.85rem',
+                      fontSize: '0.8rem',
+                      fontWeight: '800',
+                      borderRadius: '4px',
+                      border: format === 'live' ? '1px solid #DC2626' : '1px solid var(--border-medium)',
+                      background: format === 'live' ? '#DC2626' : '#FFFFFF',
+                      color: format === 'live' ? '#FFFFFF' : 'var(--text-main)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      cursor: originalLanguage ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    <Radio size={13} /> लाइव ब्लॉग (Live Timeline)
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!originalLanguage}
+                    onClick={() => setFormat('video')}
+                    className="btn"
+                    style={{
+                      padding: '0.4rem 0.85rem',
+                      fontSize: '0.8rem',
+                      fontWeight: '700',
+                      borderRadius: '4px',
+                      border: format === 'video' ? '1px solid #0E2A47' : '1px solid var(--border-medium)',
+                      background: format === 'video' ? '#0E2A47' : '#FFFFFF',
+                      color: format === 'video' ? '#FFFFFF' : 'var(--text-main)',
+                      cursor: originalLanguage ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    वीडियो स्टोरी (Video)
+                  </button>
+                </div>
+
+                {format === 'live' && (
+                  <div style={{ borderTop: '1px solid #FCA5A5', paddingTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7F1D1D' }}>
+                      कवरेज की स्थिति (Status):
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setLiveStatus('active')}
+                        style={{
+                          padding: '0.2rem 0.5rem',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          borderRadius: '3px',
+                          cursor: 'pointer',
+                          border: liveStatus === 'active' ? '1px solid #DC2626' : '1px solid #E5E7EB',
+                          background: liveStatus === 'active' ? '#DC2626' : '#FFFFFF',
+                          color: liveStatus === 'active' ? '#FFFFFF' : '#374151'
+                        }}
+                      >
+                        Live Active (चालू है)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLiveStatus('concluded')}
+                        style={{
+                          padding: '0.2rem 0.5rem',
+                          fontSize: '0.72rem',
+                          fontWeight: '800',
+                          borderRadius: '3px',
+                          cursor: 'pointer',
+                          border: liveStatus === 'concluded' ? '1px solid #4B5563' : '1px solid #E5E7EB',
+                          background: liveStatus === 'concluded' ? '#4B5563' : '#FFFFFF',
+                          color: liveStatus === 'concluded' ? '#FFFFFF' : '#374151'
+                        }}
+                      >
+                        Concluded (समाप्त)
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Optional YouTube Video Embed URL */}
               <div style={{ marginBottom: '1.75rem', opacity: originalLanguage ? 1 : 0.55 }}>
                 <label style={{ display: 'block', fontWeight: '700', fontSize: '0.875rem', marginBottom: '0.4rem', color: 'var(--text-main)' }}>
@@ -733,9 +1153,178 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
                 </span>
               </div>
 
+              {/* Task 25 Subtopic B: Reporter Ground Sources & Citations Box */}
+              <div style={{
+                marginBottom: '1.75rem',
+                background: '#F8FAFC',
+                border: '1px solid #CBD5E1',
+                padding: '1.1rem',
+                borderRadius: 'var(--radius-sm)',
+                opacity: originalLanguage ? 1 : 0.55
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.4rem', borderBottom: '1px solid #E2E8F0', paddingBottom: '0.5rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '800', fontSize: '0.9rem', margin: 0, color: '#0E2A47' }}>
+                    <FileText size={17} color="#0E2A47" />
+                    स्रोत एवं आधिकारिक संदर्भ (Official Sources & Citations — ऐच्छिक)
+                  </label>
+                  <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#059669', background: '#ECFDF5', padding: '0.15rem 0.5rem', borderRadius: '4px', border: '1px solid #A7F3D0' }}>
+                    <ShieldCheck size={12} color="#059669" /> {sources.length} स्रोत जुड़े
+                  </span>
+                </div>
+
+                <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.78rem', color: '#64748B', lineHeight: '1.4' }}>
+                  यदि यह समाचार किसी पुलिस प्रेस नोट, सरकारी अधिसूचना, या अधिकृत एजेंसी रिपोर्ट पर आधारित है, तो उसका लिंक यहाँ जोड़ें। यह पाठकों को विश्वसनीयता (Credibility Box) में दिखेगा।
+                </p>
+
+                {/* Sources list */}
+                {sources.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                    {sources.map(src => (
+                      <div
+                        key={src.id}
+                        style={{
+                          background: '#FFFFFF',
+                          border: '1px solid #E2E8F0',
+                          borderRadius: '4px',
+                          padding: '0.5rem 0.75rem',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.65rem', fontWeight: '800', background: '#DBEAFE', color: '#1E40AF', padding: '0.1rem 0.4rem', borderRadius: '3px' }}>
+                              {src.type}
+                            </span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#0F172A' }}>
+                              {src.title}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '0.1rem' }}>
+                            {src.publisher} • {src.url}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSource(src.id)}
+                          style={{ background: 'none', border: 'none', color: '#DC2626', cursor: 'pointer', padding: '0.2rem' }}
+                          title="हटाएं"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Quick Presets */}
+                <div style={{ marginBottom: '0.65rem' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '0.3rem' }}>
+                    त्वरित प्रीसेट (1-क्लिक ऑटो-फिल):
+                  </span>
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    {REPORTER_SOURCE_PRESETS.map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        disabled={!originalLanguage}
+                        onClick={() => applySourcePreset(preset)}
+                        className="btn btn-outline"
+                        style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: '#FFFFFF', borderColor: '#CBD5E1', color: '#334155', cursor: 'pointer' }}
+                      >
+                        + {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Add Form */}
+                <div style={{ background: '#F1F5F9', border: '1px solid #CBD5E1', borderRadius: '4px', padding: '0.65rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.7rem', fontWeight: '700', display: 'block', marginBottom: '0.2rem', color: '#334155' }}>दस्तावेज़ / स्रोत का नाम</label>
+                      <input
+                        type="text"
+                        value={newSourceTitle}
+                        disabled={!originalLanguage}
+                        onChange={(e) => setNewSourceTitle(e.target.value)}
+                        placeholder="e.g. जिला पुलिस अधीक्षक प्रेस नोट"
+                        style={{ width: '100%', padding: '0.45rem', borderRadius: '3px', border: '1px solid #94A3B8', fontSize: '0.78rem', background: '#FFFFFF' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.7rem', fontWeight: '700', display: 'block', marginBottom: '0.2rem', color: '#334155' }}>वेब लिंक / पोर्टल URL</label>
+                      <input
+                        type="url"
+                        value={newSourceUrl}
+                        disabled={!originalLanguage}
+                        onChange={(e) => setNewSourceUrl(e.target.value)}
+                        placeholder="https://..."
+                        style={{ width: '100%', padding: '0.45rem', borderRadius: '3px', border: '1px solid #94A3B8', fontSize: '0.78rem', background: '#FFFFFF' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', alignItems: 'flex-end' }}>
+                    <div>
+                      <label style={{ fontSize: '0.7rem', fontWeight: '700', display: 'block', marginBottom: '0.2rem', color: '#334155' }}>प्रकार (Classification)</label>
+                      <select
+                        value={newSourceType}
+                        disabled={!originalLanguage}
+                        onChange={(e) => setNewSourceType(e.target.value)}
+                        style={{ width: '100%', padding: '0.45rem', borderRadius: '3px', border: '1px solid #94A3B8', fontSize: '0.78rem', background: '#FFFFFF' }}
+                      >
+                        <option value="Official Press Note">Official Press Note (प्रेस नोट)</option>
+                        <option value="Government Gazette">Government Gazette (राजपत्र)</option>
+                        <option value="Judicial Order">Judicial Order (अदालत आदेश)</option>
+                        <option value="News Agency Dispatch">News Agency Wire (PTI/ANI)</option>
+                        <option value="Official Notification">Official Notification (मंत्रालय)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '0.7rem', fontWeight: '700', display: 'block', marginBottom: '0.2rem', color: '#334155' }}>संबंधित विभाग / संस्था</label>
+                      <input
+                        type="text"
+                        value={newSourcePublisher}
+                        disabled={!originalLanguage}
+                        onChange={(e) => setNewSourcePublisher(e.target.value)}
+                        placeholder="e.g. जिला पुलिस विभाग"
+                        style={{ width: '100%', padding: '0.45rem', borderRadius: '3px', border: '1px solid #94A3B8', fontSize: '0.78rem', background: '#FFFFFF' }}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!originalLanguage || !newSourceTitle.trim()}
+                      onClick={handleAddSource}
+                      className="btn btn-outline"
+                      style={{
+                        padding: '0.45rem 0.85rem',
+                        fontSize: '0.78rem',
+                        fontWeight: '800',
+                        background: newSourceTitle.trim() ? '#0E2A47' : '#E2E8F0',
+                        color: newSourceTitle.trim() ? '#FFFFFF' : '#94A3B8',
+                        borderColor: newSourceTitle.trim() ? '#0E2A47' : '#CBD5E1',
+                        minHeight: '34px',
+                        cursor: newSourceTitle.trim() ? 'pointer' : 'not-allowed',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.3rem'
+                      }}
+                    >
+                      <Plus size={14} /> संदर्भ जोड़ें
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Publish Action Button */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                   <button 
                     type="submit" 
                     disabled={!originalLanguage}
@@ -744,21 +1333,42 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
                       padding: '0.8rem 1.8rem',
                       fontSize: '1rem',
                       fontWeight: '800',
-                      background: originalLanguage ? 'var(--accent-indigo)' : 'var(--border-medium)',
-                      borderColor: originalLanguage ? 'var(--accent-indigo)' : 'var(--border-medium)',
+                      background: !originalLanguage 
+                        ? 'var(--border-medium)' 
+                        : (editingStoryId ? '#DC2626' : 'var(--accent-indigo)'),
+                      borderColor: !originalLanguage 
+                        ? 'var(--border-medium)' 
+                        : (editingStoryId ? '#DC2626' : 'var(--accent-indigo)'),
                       color: originalLanguage ? '#FFFFFF' : 'var(--text-subtle)',
-                      cursor: originalLanguage ? 'pointer' : 'not-allowed'
+                      cursor: originalLanguage ? 'pointer' : 'not-allowed',
+                      minHeight: '44px'
                     }}
                   >
-                    {originalLanguage ? <Send size={18} /> : <Lock size={18} />} Submit to Editor (संपादक के पास भेजें)
+                    {!originalLanguage ? (
+                      <><Lock size={18} /> भाषा चुनें (Select Language)</>
+                    ) : editingStoryId ? (
+                      <><RefreshCw size={18} /> Update & Resubmit to Editor (संशोधित समाचार पुनः भेजें)</>
+                    ) : (
+                      <><Send size={18} /> Submit to Editor (संपादक के पास भेजें)</>
+                    )}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleDiscardDraft}
-                    style={{ background: 'transparent', border: '1px solid var(--border-medium)', padding: '0.6rem 1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--text-subtle)', cursor: 'pointer' }}
-                  >
-                    नया फॉर्म खाली करें (Clear Form)
-                  </button>
+                  {editingStoryId ? (
+                    <button
+                      type="button"
+                      onClick={handleCancelEditing}
+                      style={{ background: 'transparent', border: '1px solid var(--border-medium)', padding: '0.6rem 1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: '#DC2626', cursor: 'pointer', minHeight: '38px', fontWeight: '700' }}
+                    >
+                      संशोधन रद्द करें (Cancel Editing)
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleDiscardDraft}
+                      style={{ background: 'transparent', border: '1px solid var(--border-medium)', padding: '0.6rem 1rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', color: 'var(--text-subtle)', cursor: 'pointer', minHeight: '38px' }}
+                    >
+                      नया फॉर्म खाली करें (Clear Form)
+                    </button>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-subtle)', fontSize: '0.8rem' }}>
                   <Check size={14} color="var(--accent-emerald)" /> ऑटो-सेव ड्राफ्ट चालू है (Auto-Saved)
@@ -774,28 +1384,65 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
                     <th>कैटेगरी</th>
                     <th>स्थिति (Status)</th>
                     <th>समय</th>
+                    <th style={{ textAlign: 'right' }}>कार्य (Actions)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {myStories.map((story) => (
                     <tr key={story.id}>
-                      <td style={{ fontWeight: '700' }}>{story.title}</td>
+                      <td style={{ fontWeight: '700', maxWidth: '340px' }}>
+                        <div>{story.title}</div>
+                        {story.status === 'rejected' && story.rejection_reason && (
+                          <div style={{ marginTop: '0.4rem', fontSize: '0.8rem', color: '#991B1B', background: '#FEF2F2', padding: '0.35rem 0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid #FECACA', lineHeight: '1.35' }}>
+                            <strong>एडिटर निर्देश:</strong> {story.rejection_reason}
+                          </div>
+                        )}
+                      </td>
                       <td>
                         <span className="story-category-tag">{story.category}</span>
                       </td>
                       <td>
-                        <span 
-                          className="badge" 
-                          style={story.status === 'published' 
-                            ? { background: '#ECFDF5', color: 'var(--accent-emerald)', border: '1px solid #A7F3D0' } 
-                            : { background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}
-                        >
-                          {story.status === 'published' ? <CheckCircle size={12} /> : <Clock size={12} />}
-                          {story.status === 'published' ? ' Live on Site' : ' Pending Editor Review'}
-                        </span>
+                        {story.status === 'published' ? (
+                          <span className="badge" style={{ background: '#ECFDF5', color: 'var(--accent-emerald)', border: '1px solid #A7F3D0' }}>
+                            <CheckCircle size={12} /> Live on Site
+                          </span>
+                        ) : story.status === 'rejected' ? (
+                          <span className="badge" style={{ background: '#FEF2F2', color: '#991B1B', border: '1px solid #FCA5A5', fontWeight: '700' }}>
+                            <XCircle size={12} /> Changes Requested (Rejected)
+                          </span>
+                        ) : (
+                          <span className="badge" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>
+                            <Clock size={12} /> Pending Editor Review
+                          </span>
+                        )}
                       </td>
                       <td style={{ color: 'var(--text-subtle)', fontSize: '0.85rem' }}>
-                        {story.updated_at}
+                        {story.updated_at || 'हाल ही में'}
+                      </td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleEditStory(story)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.45rem 0.85rem',
+                            background: story.status === 'rejected' ? '#DC2626' : 'var(--accent-indigo)',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            borderRadius: 'var(--radius-sm)',
+                            fontSize: '0.82rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            minHeight: '34px',
+                            boxShadow: story.status === 'rejected' ? '0 1px 3px rgba(220, 38, 38, 0.3)' : 'none'
+                          }}
+                          title={story.status === 'rejected' ? 'संपादक के निर्देशानुसार सुधारें और पुनः सबमिट करें' : 'संपादित करें'}
+                        >
+                          <Edit3 size={13} />
+                          <span>{story.status === 'rejected' ? 'सुधारें व पुनः भेजें (Edit & Resubmit)' : 'सुधारें (Edit)'}</span>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -805,6 +1452,40 @@ export default function ReporterWorkspace({ onAddNewArticle, categories }) {
           )}
         </div>
       </div>
+
+      {/* Task 22 Subtopic C: 1-Click Insert from Media Library Picker */}
+      {isMediaPickerOpen && (
+        <div className="admin-modal-overlay" style={{ zIndex: 1200 }}>
+          <div className="admin-modal-dialog" style={{ maxWidth: '980px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.65rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <ImageIcon size={18} color="var(--accent-blue)" />
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '900', textTransform: 'uppercase' }}>
+                  मीडिया लाइब्रेरी से फ़ोटो चुनें (Choose from Media Library)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMediaPickerOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <MediaLibraryDesk
+              currentRole="Reporter"
+              onSelectAssetForStory={(asset) => {
+                setImagePreview(asset.url);
+                setIsImageReady(true);
+                if (asset.caption) setImageCaption(asset.caption);
+                if (asset.credit) setMediaCredits(asset.credit);
+                setIsMediaPickerOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

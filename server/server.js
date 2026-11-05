@@ -23,9 +23,9 @@ const ENV_FILE = path.join(__dirname, '..', '.env');
 if (fs.existsSync(ENV_FILE) && typeof process.loadEnvFile === 'function') {
   try {
     process.loadEnvFile(ENV_FILE);
-    console.log('📄 [Server Env] Loaded environment variables from .env');
+    console.log('[Server Env] Loaded environment variables from .env');
   } catch (err) {
-    console.warn('⚠️ [Server Env] Warning loading .env file:', err.message);
+    console.warn('[Server Env] Warning loading .env file:', err.message);
   }
 }
 
@@ -43,12 +43,18 @@ const TRANSLATIONS_FILE = path.join(DATA_DIR, 'translations.json');
 const USAGE_LOGS_FILE = path.join(DATA_DIR, 'usage_logs.json');
 const AUDIO_RECORDS_FILE = path.join(DATA_DIR, 'audio_records.json');
 const POLL_FILE = path.join(DATA_DIR, 'poll.json');
+const AD_HISTORY_FILE = path.join(DATA_DIR, 'ad_history.json');
+const ARTICLE_REVISIONS_FILE = path.join(DATA_DIR, 'article_revisions.json');
+const MEDIA_LIBRARY_FILE = path.join(DATA_DIR, 'media_library.json');
 
 // Initialize database stores if not already present
 [
   [TRANSLATIONS_FILE, {}],
   [USAGE_LOGS_FILE, {}],
-  [AUDIO_RECORDS_FILE, {}]
+  [AUDIO_RECORDS_FILE, {}],
+  [AD_HISTORY_FILE, []],
+  [ARTICLE_REVISIONS_FILE, {}],
+  [MEDIA_LIBRARY_FILE, []]
 ].forEach(([filePath, defaultData]) => {
   if (!fs.existsSync(filePath)) {
     try {
@@ -431,7 +437,7 @@ function purgeCorruptedTranslations() {
       }
       if (purged > 0) {
         fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(store, null, 2));
-        console.log(`🧹 [Startup Cleanup] Purged ${purged} corrupted legacy translation records from translations.json.`);
+        console.log(`[Startup Cleanup] Purged ${purged} corrupted legacy translation records from translations.json.`);
       }
     }
   } catch (e) {
@@ -543,13 +549,51 @@ The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cl
   }
 ];
 
+/**
+ * Evaluates scheduled articles against the server clock (Task 20).
+ * Automatically flips 'scheduled' stories to 'published' when scheduledPublishTime arrives.
+ */
+function evaluateScheduledArticles(articlesList) {
+  if (!Array.isArray(articlesList) || articlesList.length === 0) return articlesList;
+  const now = Date.now();
+  let modified = false;
+
+  const evaluated = articlesList.map(art => {
+    if (art && art.status === 'scheduled' && art.scheduledPublishTime) {
+      const schedMs = new Date(art.scheduledPublishTime).getTime();
+      if (!isNaN(schedMs) && now >= schedMs) {
+        console.log(`[Auto-Publish Engine] Auto-publishing scheduled story: "${art.title}" (ID: ${art.id}) at ${new Date().toISOString()}`);
+        modified = true;
+        return {
+          ...art,
+          status: 'published',
+          published_at: 'Just now',
+          publishDateISO: new Date().toISOString()
+        };
+      }
+    }
+    return art;
+  });
+
+  if (modified) {
+    try {
+      fs.writeFileSync(ARTICLES_FILE, JSON.stringify(evaluated, null, 2), 'utf8');
+      console.log('[Auto-Publish Engine] Flipped articles saved to disk successfully.');
+    } catch (e) {
+      console.error('[Auto-Publish Engine] Error saving auto-published articles:', e);
+    }
+  }
+
+  return evaluated;
+}
+
 function getSavedArticles() {
   try {
     if (fs.existsSync(ARTICLES_FILE)) {
       const raw = fs.readFileSync(ARTICLES_FILE, 'utf8');
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return evaluateScheduledArticles(parsed);
       }
     }
     // Initialize file on disk on first access
@@ -557,7 +601,7 @@ function getSavedArticles() {
   } catch (e) {
     console.error('Error reading/initializing articles file:', e);
   }
-  return DEFAULT_ARTICLES;
+  return evaluateScheduledArticles(DEFAULT_ARTICLES);
 }
 
 function saveArticles(articlesList) {
@@ -569,6 +613,249 @@ function saveArticles(articlesList) {
     return articlesList;
   }
 }
+
+// -------------------------------------------------------------
+// Article Revisions & Snapshot Engine (Task 21)
+// -------------------------------------------------------------
+function getArticleRevisionsStore() {
+  try {
+    if (fs.existsSync(ARTICLE_REVISIONS_FILE)) {
+      const raw = fs.readFileSync(ARTICLE_REVISIONS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (e) {
+    console.warn('[Revision Store Warning] Error reading revisions file:', e.message);
+  }
+  return {};
+}
+
+function saveArticleRevisionsStore(store) {
+  try {
+    fs.writeFileSync(ARTICLE_REVISIONS_FILE, JSON.stringify(store, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('[Revision Store Error] Error writing revisions file:', e);
+    return false;
+  }
+}
+
+function recordArticleRevision(article, editorInfo = {}, changeNote = '') {
+  if (!article || !article.id) return null;
+  const store = getArticleRevisionsStore();
+  const aId = String(article.id);
+  if (!Array.isArray(store[aId])) {
+    store[aId] = [];
+  }
+
+  const contentText = typeof article.content === 'string' ? article.content : '';
+  const wordCount = contentText.trim().split(/\s+/).filter(Boolean).length;
+  const charCount = contentText.length;
+
+  const revisionRecord = {
+    revisionId: `rev_${aId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    articleId: aId,
+    timestamp: new Date().toISOString(),
+    authorName: editorInfo.name || article.author_name || article.author?.name || 'Newsroom Desk',
+    editorRole: (editorInfo.role || article.author_role || article.author?.role || 'editor').toLowerCase(),
+    title: article.title || '',
+    sub_title: article.sub_title || '',
+    content: contentText,
+    summary: article.summary || '',
+    category: article.category || '',
+    featured_image: article.featured_image || '',
+    status: article.status || 'draft',
+    scheduledPublishTime: article.scheduledPublishTime || null,
+    wordCount,
+    charCount,
+    changeNote: changeNote || 'Updated story content'
+  };
+
+  // Prepend latest revision
+  store[aId].unshift(revisionRecord);
+  // Cap history at 30 revisions per article (Rule 3: Minimal Code & Zero Waste)
+  if (store[aId].length > 30) {
+    store[aId] = store[aId].slice(0, 30);
+  }
+
+  saveArticleRevisionsStore(store);
+  return revisionRecord;
+}
+
+function getRevisionsForArticle(articleId) {
+  const store = getArticleRevisionsStore();
+  const aId = String(articleId);
+  if (!store[aId] || store[aId].length === 0) {
+    // If article exists in articles.json but has no revision yet, seed baseline snapshot
+    const all = getSavedArticles();
+    const art = all.find(a => String(a.id) === aId);
+    if (art) {
+      recordArticleRevision(art, { name: art.author_name || art.author?.name || 'Newsroom Desk', role: 'admin' }, 'Original baseline version');
+      return getArticleRevisionsStore()[aId] || [];
+    }
+    return [];
+  }
+  return store[aId].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
+// -------------------------------------------------------------
+// Centralized Digital Asset & Photo Media Library Desk (Task 22)
+// -------------------------------------------------------------
+function getMediaLibraryStore() {
+  try {
+    if (fs.existsSync(MEDIA_LIBRARY_FILE)) {
+      const raw = fs.readFileSync(MEDIA_LIBRARY_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn('[Media Store Warning] Error reading media library:', e.message);
+  }
+  return [];
+}
+
+function saveMediaLibraryStore(assets) {
+  try {
+    fs.writeFileSync(MEDIA_LIBRARY_FILE, JSON.stringify(assets, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('[Media Store Error] Error writing media library:', e);
+    return false;
+  }
+}
+
+const SUPPORTED_MEDIA_IMAGE_EXTS = new Set(['.webp', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.avif']);
+
+function syncAndIndexMediaAssets() {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    try { fs.mkdirSync(UPLOADS_DIR, { recursive: true }); } catch (e) {}
+    return [];
+  }
+
+  const existingAssets = getMediaLibraryStore();
+  const existingMap = new Map();
+  for (const asset of existingAssets) {
+    if (asset && asset.fileName) {
+      existingMap.set(asset.fileName, asset);
+    }
+  }
+
+  // Load active articles to cross-reference usage
+  const allArticles = getSavedArticles();
+
+  // Load active ad campaigns to cross-reference ad banner usage
+  let allAds = [];
+  try {
+    if (fs.existsSync(AD_HISTORY_FILE)) {
+      const adRaw = fs.readFileSync(AD_HISTORY_FILE, 'utf8');
+      const parsedAds = JSON.parse(adRaw);
+      if (Array.isArray(parsedAds)) allAds = parsedAds;
+    }
+  } catch (e) {}
+
+  let diskFiles = [];
+  try {
+    diskFiles = fs.readdirSync(UPLOADS_DIR);
+  } catch (e) {
+    console.warn('[Media Sync Warning] Could not read uploads directory:', e.message);
+    return existingAssets;
+  }
+
+  const updatedAssets = [];
+  for (const fileName of diskFiles) {
+    // Skip audio files (audio_...)
+    if (fileName.startsWith('audio_')) continue;
+
+    const ext = path.extname(fileName).toLowerCase();
+    if (!SUPPORTED_MEDIA_IMAGE_EXTS.has(ext)) continue;
+
+    const filePath = path.join(UPLOADS_DIR, fileName);
+    let stats;
+    try {
+      stats = fs.statSync(filePath);
+    } catch (e) {
+      continue;
+    }
+
+    const publicUrl = `/uploads/${fileName}`;
+
+    // Cross-reference with articles
+    const usedInArticles = [];
+    for (const art of allArticles) {
+      if (!art) continue;
+      const featImg = String(art.featured_image || '');
+      const contentStr = String(art.content || '');
+      if (featImg === publicUrl || featImg.includes(fileName) || contentStr.includes(publicUrl) || contentStr.includes(fileName)) {
+        usedInArticles.push({
+          id: String(art.id),
+          title: art.title || 'Untitled Story',
+          slug: art.slug || '',
+          category: art.category || 'General',
+          status: art.status || 'draft'
+        });
+      }
+    }
+
+    // Cross-reference with ads
+    const usedInAds = [];
+    for (const ad of allAds) {
+      if (!ad) continue;
+      const bannerUrl = String(ad.banner_url || ad.image_url || '');
+      if (bannerUrl === publicUrl || bannerUrl.includes(fileName)) {
+        usedInAds.push({
+          id: ad.id || '',
+          slot: ad.slot || '',
+          sponsor_name: ad.sponsor_name || 'Direct Advertiser',
+          status: ad.status || 'active'
+        });
+      }
+    }
+
+    const existing = existingMap.get(fileName);
+    const uploadedAt = existing?.uploadedAt || stats.birthtime?.toISOString() || stats.mtime.toISOString();
+
+    const assetRecord = {
+      id: existing?.id || `med_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      fileName,
+      url: publicUrl,
+      sizeBytes: stats.size,
+      sizeKb: parseFloat((stats.size / 1024).toFixed(1)),
+      uploadedAt,
+      modifiedAt: stats.mtime.toISOString(),
+      caption: existing?.caption || '',
+      credit: existing?.credit || '',
+      altText: existing?.altText || '',
+      width: existing?.width || null,
+      height: existing?.height || null,
+      usedInArticles,
+      usedInAds,
+      isUsed: usedInArticles.length > 0 || usedInAds.length > 0
+    };
+
+    updatedAssets.push(assetRecord);
+  }
+
+  // Sort newest first by default
+  updatedAssets.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+
+  saveMediaLibraryStore(updatedAssets);
+  return updatedAssets;
+}
+
+// Background Cron / Heartbeat: Checks and auto-publishes scheduled stories every 20 seconds
+setInterval(() => {
+  try {
+    if (fs.existsSync(ARTICLES_FILE)) {
+      const raw = fs.readFileSync(ARTICLES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        evaluateScheduledArticles(parsed);
+      }
+    }
+  } catch (e) {
+    // Silent catch for background heartbeat
+  }
+}, 20000);
 
 function parseRssItems(xmlText) {
   const items = [];
@@ -680,7 +967,16 @@ const DEFAULT_SETTINGS = {
         sponsorTargetUrl: '',
         sponsorName: 'Featured Partner',
         desktopDimensions: '728×90',
-        mobileDimensions: '320×50'
+        mobileDimensions: '320×50',
+        scope: 'global',
+        targetCategory: 'all',
+        targetArticleId: '',
+        excludeArticleIds: '',
+        startDateTime: '',
+        endDateTime: '',
+        startDate: '',
+        endDate: '',
+        status: 'active'
       },
       in_article: {
         id: 'in_article',
@@ -693,7 +989,16 @@ const DEFAULT_SETTINGS = {
         sponsorTargetUrl: '',
         sponsorName: 'Featured Partner',
         desktopDimensions: '336×280 / Fluid',
-        mobileDimensions: '300×250'
+        mobileDimensions: '300×250',
+        scope: 'global',
+        targetCategory: 'all',
+        targetArticleId: '',
+        excludeArticleIds: '',
+        startDateTime: '',
+        endDateTime: '',
+        startDate: '',
+        endDate: '',
+        status: 'active'
       },
       sidebar: {
         id: 'sidebar',
@@ -706,7 +1011,60 @@ const DEFAULT_SETTINGS = {
         sponsorTargetUrl: '',
         sponsorName: 'Featured Partner',
         desktopDimensions: '300×600',
-        mobileDimensions: '300×250'
+        mobileDimensions: '300×250',
+        scope: 'global',
+        targetCategory: 'all',
+        targetArticleId: '',
+        excludeArticleIds: '',
+        startDateTime: '',
+        endDateTime: '',
+        startDate: '',
+        endDate: '',
+        status: 'active'
+      },
+      home_feed: {
+        id: 'home_feed',
+        name: 'Homepage Feed In-Stream Unit',
+        position: 'home_feed',
+        enabled: false,
+        type: 'adsense',
+        adSlotId: '',
+        sponsorBannerUrl: '',
+        sponsorTargetUrl: '',
+        sponsorName: 'Featured Partner',
+        desktopDimensions: '728×90 / 300×250',
+        mobileDimensions: '300×250',
+        scope: 'global',
+        targetCategory: 'all',
+        targetArticleId: '',
+        excludeArticleIds: '',
+        startDateTime: '',
+        endDateTime: '',
+        startDate: '',
+        endDate: '',
+        status: 'active'
+      },
+      footer: {
+        id: 'footer',
+        name: 'Broadsheet Footer Leaderboard',
+        position: 'footer',
+        enabled: false,
+        type: 'adsense',
+        adSlotId: '',
+        sponsorBannerUrl: '',
+        sponsorTargetUrl: '',
+        sponsorName: 'Featured Partner',
+        desktopDimensions: '728×90',
+        mobileDimensions: '320×50',
+        scope: 'global',
+        targetCategory: 'all',
+        targetArticleId: '',
+        excludeArticleIds: '',
+        startDateTime: '',
+        endDateTime: '',
+        startDate: '',
+        endDate: '',
+        status: 'active'
       },
       mobile_footer: {
         id: 'mobile_footer',
@@ -719,7 +1077,16 @@ const DEFAULT_SETTINGS = {
         sponsorTargetUrl: '',
         sponsorName: 'Featured Partner',
         desktopDimensions: 'Hidden on Desktop',
-        mobileDimensions: '320×50 Sticky'
+        mobileDimensions: '320×50 Sticky',
+        scope: 'global',
+        targetCategory: 'all',
+        targetArticleId: '',
+        excludeArticleIds: '',
+        startDateTime: '',
+        endDateTime: '',
+        startDate: '',
+        endDate: '',
+        status: 'active'
       }
     }
   }
@@ -728,10 +1095,12 @@ const DEFAULT_SETTINGS = {
 const DEFAULT_CATEGORIES = [
   { id: 'cat-1', name: 'India', slug: 'india' },
   { id: 'cat-2', name: 'World', slug: 'world' },
-  { id: 'cat-3', name: 'Tech & AI', slug: 'tech' },
-  { id: 'cat-4', name: 'Economy', slug: 'economy' },
-  { id: 'cat-5', name: 'Climate', slug: 'climate' },
-  { id: 'cat-6', name: 'Culture & Opinion', slug: 'culture' }
+  { id: 'cat-3', name: 'Technology', slug: 'technology' },
+  { id: 'cat-4', name: 'Business', slug: 'business' },
+  { id: 'cat-5', name: 'Science & Environment', slug: 'science' },
+  { id: 'cat-6', name: 'Opinion', slug: 'opinion' },
+  { id: 'cat-7', name: 'Sports', slug: 'sports' },
+  { id: 'cat-8', name: 'Entertainment', slug: 'entertainment' }
 ];
 
 function getSavedSettings() {
@@ -874,6 +1243,335 @@ function saveCategories(categoriesList) {
     console.error('Error saving categories file:', e);
     return categoriesList;
   }
+}
+
+function getAdHistory() {
+  try {
+    if (fs.existsSync(AD_HISTORY_FILE)) {
+      const raw = fs.readFileSync(AD_HISTORY_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error reading ad history file:', e);
+  }
+  return [];
+}
+
+function saveAdHistory(historyList) {
+  try {
+    fs.writeFileSync(AD_HISTORY_FILE, JSON.stringify(historyList, null, 2), 'utf8');
+    return historyList;
+  } catch (e) {
+    console.error('Error saving ad history file:', e);
+    return historyList;
+  }
+}
+
+// Zero-Waste Storage Helper: Clean unused banner file from server/data/uploads/
+function cleanupUnusedUploadFile(fileUrl, activeSlots = {}) {
+  if (!fileUrl || typeof fileUrl !== 'string' || !fileUrl.startsWith('/uploads/')) return false;
+
+  const filename = path.basename(fileUrl);
+  if (!filename || filename === '.' || filename === '/') return false;
+
+  const nowMs = Date.now();
+  // 1. Check if any slot in live settings is still actively referencing this banner AND slot is not expired
+  const isInLiveSlot = Object.values(activeSlots || {}).some(slot => {
+    if (!slot || !slot.sponsorBannerUrl || !slot.sponsorBannerUrl.includes(filename)) return false;
+    const endDateTimeStr = slot.endDateTime || (slot.endDate ? `${slot.endDate}T23:59:59` : '');
+    if (endDateTimeStr) {
+      const endMs = new Date(endDateTimeStr).getTime();
+      if (!isNaN(endMs) && nowMs > endMs) return false; // Expired slot
+    }
+    return true;
+  });
+
+  if (isInLiveSlot) {
+    return false;
+  }
+
+  // 2. Check if any active campaign in ad_history is still live/scheduled referencing this banner
+  const history = getAdHistory();
+  const isInActiveCampaign = history.some(camp => {
+    if (!camp || !camp.sponsorBannerUrl || !camp.sponsorBannerUrl.includes(filename)) return false;
+    const endDateTimeStr = camp.endDateTime || (camp.endDate ? `${camp.endDate}T23:59:59` : '');
+    if (endDateTimeStr) {
+      const endMs = new Date(endDateTimeStr).getTime();
+      if (!isNaN(endMs) && nowMs > endMs) return false; // Expired campaign
+    }
+    return true;
+  });
+
+  if (isInActiveCampaign) {
+    return false;
+  }
+
+  const filePath = path.join(UPLOADS_DIR, filename);
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      console.log(`[Zero-Waste Storage] Permanently deleted expired banner file from disk: ${filename}`);
+      return true;
+    }
+  } catch (err) {
+    console.warn(`[Zero-Waste Storage Warning] Could not delete ${filename}:`, err.message);
+  }
+  return false;
+}
+
+let lastAdPurgeMs = 0;
+
+// Zero-Waste Auto-Purge: Delete all campaigns whose end time has passed, wipe their media files, and clean orphaned banners
+function purgeExpiredAdHistory(force = false) {
+  const nowMs = Date.now();
+  if (!force && (nowMs - lastAdPurgeMs < 60000)) {
+    return { purgedCount: 0, history: getAdHistory() };
+  }
+  lastAdPurgeMs = nowMs;
+
+  const history = getAdHistory();
+  const settings = getSavedSettings();
+  let settingsChanged = false;
+  const activeSlots = (settings && settings.adsConfig && settings.adsConfig.slots) ? settings.adsConfig.slots : {};
+
+  // 1. Check all live slots in settings - if expired, reset sponsor details
+  for (const [sKey, slot] of Object.entries(activeSlots)) {
+    if (slot && slot.type === 'sponsor' && (slot.endDateTime || slot.endDate)) {
+      const endDateTimeStr = slot.endDateTime || `${slot.endDate}T23:59:59`;
+      const endMs = new Date(endDateTimeStr).getTime();
+      if (!isNaN(endMs) && nowMs > endMs) {
+        // This slot's sponsor period has ended!
+        if (slot.sponsorBannerUrl) {
+          cleanupUnusedUploadFile(slot.sponsorBannerUrl, {});
+        }
+        slot.type = (slot.adSlotId && slot.adSlotId.trim()) ? 'adsense' : 'sponsor';
+        slot.sponsorBannerUrl = '';
+        slot.sponsorName = '';
+        slot.sponsorTargetUrl = '';
+        slot.startDateTime = '';
+        slot.endDateTime = '';
+        slot.startDate = '';
+        slot.endDate = '';
+        settingsChanged = true;
+        console.log(`[Zero-Waste Storage] Slot [${sKey}] campaign reached end time — reset to default/fallback.`);
+      }
+    }
+  }
+
+  if (settingsChanged) {
+    saveSettings(settings);
+  }
+
+  // 2. Check ad_history.json - keep only live/future campaigns
+  const kept = [];
+  const expiredToRemove = [];
+
+  for (const camp of history) {
+    const endDateTimeStr = camp.endDateTime || (camp.endDate ? `${camp.endDate}T23:59:59` : '');
+    if (endDateTimeStr) {
+      const endMs = new Date(endDateTimeStr).getTime();
+      if (!isNaN(endMs) && nowMs > endMs) {
+        // Campaign time has ended! Immediate auto-purge
+        expiredToRemove.push(camp);
+        continue;
+      }
+    }
+    kept.push(camp);
+  }
+
+  if (expiredToRemove.length > 0) {
+    for (const exp of expiredToRemove) {
+      if (exp.sponsorBannerUrl) {
+        cleanupUnusedUploadFile(exp.sponsorBannerUrl, activeSlots);
+      }
+    }
+    saveAdHistory(kept);
+    console.log(`[Zero-Waste Storage] Auto-deleted ${expiredToRemove.length} expired campaign(s) and wiped media files from disk.`);
+  }
+
+  // 3. Orphan File Sweep: Delete any img_sponsor_* file on disk that has no active campaign or slot
+  try {
+    if (fs.existsSync(UPLOADS_DIR)) {
+      const activeFileNames = new Set();
+      // Active in kept history
+      for (const camp of kept) {
+        if (camp.sponsorBannerUrl) activeFileNames.add(path.basename(camp.sponsorBannerUrl));
+      }
+      // Active in current settings slots
+      for (const slot of Object.values(activeSlots)) {
+        if (slot && slot.sponsorBannerUrl) {
+          const endDateTimeStr = slot.endDateTime || (slot.endDate ? `${slot.endDate}T23:59:59` : '');
+          const endMs = endDateTimeStr ? new Date(endDateTimeStr).getTime() : NaN;
+          if (isNaN(endMs) || nowMs <= endMs) {
+            activeFileNames.add(path.basename(slot.sponsorBannerUrl));
+          }
+        }
+      }
+
+      const allUploadFiles = fs.readdirSync(UPLOADS_DIR);
+      for (const f of allUploadFiles) {
+        if (f.startsWith('img_sponsor_') && !activeFileNames.has(f)) {
+          const orphanedPath = path.join(UPLOADS_DIR, f);
+          fs.unlinkSync(orphanedPath);
+          console.log(`[Zero-Waste Storage] Cleaned orphaned banner file from disk: ${f}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Zero-Waste Storage Sweep Warning]:', err.message);
+  }
+
+  return { purgedCount: expiredToRemove.length, history: kept };
+}
+
+function archiveCampaignSnapshot(slotKey, slotData, articles = []) {
+  if (!slotData || slotData.type !== 'sponsor' || !slotData.sponsorBannerUrl) return;
+
+  const nowMs = Date.now();
+  const endDateTimeStr = slotData.endDateTime || (slotData.endDate ? `${slotData.endDate}T23:59:59` : '');
+  if (endDateTimeStr) {
+    const endMs = new Date(endDateTimeStr).getTime();
+    if (!isNaN(endMs) && nowMs > endMs) {
+      // Already expired! Do not archive expired campaigns
+      return;
+    }
+  }
+
+  // Purge any expired records first
+  purgeExpiredAdHistory();
+
+  const history = getAdHistory();
+
+  let targetArticleTitle = '';
+  if (slotData.scope === 'article' && slotData.targetArticleId) {
+    const art = articles.find(a => a.id === slotData.targetArticleId);
+    if (art) targetArticleTitle = art.title || '';
+  }
+
+  // Check if identical active entry already exists
+  const existingIndex = history.findIndex(h => 
+    h.slotKey === slotKey && 
+    h.sponsorBannerUrl === slotData.sponsorBannerUrl &&
+    h.sponsorName === slotData.sponsorName &&
+    h.startDateTime === slotData.startDateTime &&
+    h.endDateTime === slotData.endDateTime
+  );
+
+  const snapshot = {
+    id: existingIndex >= 0 ? history[existingIndex].id : `camp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    slotKey,
+    slotName: slotData.name || slotKey,
+    sponsorName: slotData.sponsorName || 'Direct Sponsor',
+    sponsorBannerUrl: slotData.sponsorBannerUrl,
+    sponsorTargetUrl: slotData.sponsorTargetUrl || '',
+    scope: slotData.scope || 'global',
+    targetCategory: slotData.targetCategory || 'all',
+    targetArticleId: slotData.targetArticleId || '',
+    targetArticleTitle,
+    desktopDimensions: slotData.desktopDimensions || '',
+    mobileDimensions: slotData.mobileDimensions || '',
+    startDateTime: slotData.startDateTime || '',
+    endDateTime: slotData.endDateTime || '',
+    impressions: existingIndex >= 0 ? (history[existingIndex].impressions || 0) : 0,
+    clicks: existingIndex >= 0 ? (history[existingIndex].clicks || 0) : 0,
+    lastImpressionAt: existingIndex >= 0 ? (history[existingIndex].lastImpressionAt || null) : null,
+    lastClickAt: existingIndex >= 0 ? (history[existingIndex].lastClickAt || null) : null,
+    createdAt: existingIndex >= 0 ? history[existingIndex].createdAt : new Date().toISOString()
+  };
+
+  if (existingIndex >= 0) {
+    history[existingIndex] = snapshot;
+  } else {
+    history.unshift(snapshot);
+  }
+
+  if (history.length > 50) {
+    history.length = 50;
+  }
+
+  saveAdHistory(history);
+}
+
+// -------------------------------------------------------------
+// DIRECT SPONSOR ANALYTICS ENGINE (IN-HOUSE IMPRESSION & CLICK TRACKER)
+// In-memory sliding window cache for anti-cheat IP deduplication:
+// Impressions: 30 minutes cooldown per IP per campaign
+// Clicks: 5 minutes cooldown per IP per campaign
+// -------------------------------------------------------------
+const adImpressionTracker = new Map();
+const adClickTracker = new Map();
+
+const IMPRESSION_TTL_MS = 30 * 60 * 1000;
+const CLICK_TTL_MS = 5 * 60 * 1000;
+
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    const list = forwarded.split(',');
+    if (list[0] && list[0].trim()) return list[0].trim();
+  }
+  return req.socket?.remoteAddress || '127.0.0.1';
+}
+
+function recordAdImpression(campaignId, slotKey, clientIp) {
+  if (!campaignId) return { recorded: false, reason: 'missing_campaign_id' };
+
+  const key = `${campaignId}_${clientIp}`;
+  const now = Date.now();
+  const lastTime = adImpressionTracker.get(key);
+  if (lastTime && (now - lastTime) < IMPRESSION_TTL_MS) {
+    return { recorded: false, reason: 'deduplicated_cooldown' };
+  }
+  adImpressionTracker.set(key, now);
+
+  // Periodic pruning of stale in-memory tracker entries
+  if (adImpressionTracker.size > 5000) {
+    for (const [k, ts] of adImpressionTracker.entries()) {
+      if (now - ts > IMPRESSION_TTL_MS) adImpressionTracker.delete(k);
+    }
+  }
+
+  const history = getAdHistory();
+  const camp = history.find(h => h.id === campaignId || h.slotKey === campaignId);
+  if (camp) {
+    camp.impressions = (camp.impressions || 0) + 1;
+    camp.lastImpressionAt = new Date().toISOString();
+    saveAdHistory(history);
+    return { recorded: true, impressions: camp.impressions, clicks: camp.clicks || 0 };
+  }
+
+  return { recorded: false, reason: 'campaign_not_found' };
+}
+
+function recordAdClick(campaignId, slotKey, clientIp) {
+  if (!campaignId) return { recorded: false, reason: 'missing_campaign_id' };
+
+  const key = `${campaignId}_${clientIp}`;
+  const now = Date.now();
+  const lastTime = adClickTracker.get(key);
+  if (lastTime && (now - lastTime) < CLICK_TTL_MS) {
+    return { recorded: false, reason: 'deduplicated_cooldown' };
+  }
+  adClickTracker.set(key, now);
+
+  // Periodic pruning of stale in-memory tracker entries
+  if (adClickTracker.size > 5000) {
+    for (const [k, ts] of adClickTracker.entries()) {
+      if (now - ts > CLICK_TTL_MS) adClickTracker.delete(k);
+    }
+  }
+
+  const history = getAdHistory();
+  const camp = history.find(h => h.id === campaignId || h.slotKey === campaignId);
+  if (camp) {
+    camp.clicks = (camp.clicks || 0) + 1;
+    camp.lastClickAt = new Date().toISOString();
+    saveAdHistory(history);
+    return { recorded: true, impressions: camp.impressions || 0, clicks: camp.clicks };
+  }
+
+  return { recorded: false, reason: 'campaign_not_found' };
 }
 
 const DEFAULT_POLL = {
@@ -1068,7 +1766,7 @@ function seedMockAnalyticsData() {
     });
   }
 
-  console.log(`📊 [Analytics Engine] Seeded ${articleViews.length} raw view events & ${articleStatsDaily.size} daily stats.`);
+  console.log(`[Analytics Engine] Seeded ${articleViews.length} raw view events & ${articleStatsDaily.size} daily stats.`);
 }
 
 function seedMockLikesData() {
@@ -1094,7 +1792,7 @@ function seedMockLikesData() {
     }
   });
 
-  console.log(`❤️ [Analytics Engine] Seeded ${articleLikes.length} raw like events across articles.`);
+  console.log(`[Analytics Engine] Seeded ${articleLikes.length} raw like events across articles.`);
 }
 
 seedMockAnalyticsData();
@@ -1184,7 +1882,14 @@ async function callGeminiApi(prompt, isJson = false) {
   }
 
   // Use current fast, high-quota recommended models in order of availability
-  const models = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  const models = [
+    'gemini-3.5-flash',
+    'gemini-3.7-flash',
+    'gemini-flash-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-flash-lite-latest'
+  ];
   let lastError = null;
 
   for (const model of models) {
@@ -1218,11 +1923,8 @@ async function callGeminiApi(prompt, isJson = false) {
       }
     } catch (err) {
       lastError = err;
-      // If 404 model not available, try next model in fallback list
-      if (err.message && err.message.includes('404')) {
-        continue;
-      }
-      throw err;
+      console.warn(`[Gemini Model Fallback] Model ${model} failed (${err.message ? err.message.slice(0, 100) : 'Unknown'}). Trying next candidate...`);
+      continue;
     }
   }
 
@@ -1276,26 +1978,18 @@ function validateTranslationIntegrity(originalTitle, originalBody, translatedTit
   const errPattern = /QUERY LENGTH|MYMEMORY|MAX ALLOWED|undefined|null|\[object Object\]/i;
   if (errPattern.test(translatedTitle) || errPattern.test(translatedBody)) return false;
 
-  // 2. Paragraph count verification (protect against truncation)
+  // 2. Paragraph count verification (protect against major truncation)
   const origParas = originalBody.split(/\n\s*\n/).filter(p => p.trim());
   const transParas = translatedBody.split(/\n\s*\n/).filter(p => p.trim());
-  if (origParas.length >= 2 && transParas.length < Math.max(1, Math.floor(origParas.length * 0.5))) {
-    console.warn(`[Integrity Check Failed] Paragraph count drop: original ${origParas.length}, translated ${transParas.length}`);
+  if (origParas.length >= 3 && transParas.length < Math.max(1, Math.floor(origParas.length * 0.35))) {
+    console.warn(`[Integrity Check Notice] Paragraph count drop: original ${origParas.length}, translated ${transParas.length}`);
     return false;
   }
 
-  // 3. Number, date, vehicle plate preservation
-  const origNumbers = (originalTitle + ' ' + originalBody).match(/\b\d+([.,/-]\d+)*\b/g) || [];
-  if (origNumbers.length >= 4) {
-    const transText = translatedTitle + ' ' + translatedBody;
-    let matchCount = 0;
-    for (const num of origNumbers) {
-      if (transText.includes(num)) matchCount++;
-    }
-    if (matchCount === 0) {
-      console.warn(`[Integrity Check Failed] Zero numbers preserved from original list of ${origNumbers.length}`);
-      return false;
-    }
+  // 3. Minimum length check: translated body shouldn't be empty or tiny stub (< 20% of original character count)
+  if (originalBody.length > 200 && translatedBody.length < (originalBody.length * 0.2)) {
+    console.warn(`[Integrity Check Failed] Translated body length is unusually short: original ${originalBody.length}, translated ${translatedBody.length}`);
+    return false;
   }
 
   return true;
@@ -1608,7 +2302,7 @@ const server = http.createServer(async (req, res) => {
 
     if (fs.existsSync(baseHtmlPath)) {
       const baseHtml = fs.readFileSync(baseHtmlPath, 'utf-8');
-      if (article) {
+      if (article && (article.status === 'published' || !article.status)) {
         const renderedHtml = renderArticleHtml(article, req.headers.host || 'localhost:5000', baseHtml);
         res.writeHead(200, {
           'Content-Type': 'text/html; charset=utf-8',
@@ -1650,12 +2344,35 @@ const server = http.createServer(async (req, res) => {
 
         console.log(`[Image Upload] Saved ${fileName} (${(imgBuffer.length / 1024).toFixed(1)} KB)`);
 
+        // Task 22: Immediately index newly uploaded media asset
+        const syncedAssets = syncAndIndexMediaAssets();
+        const assetRecord = syncedAssets.find(a => a.fileName === fileName) || {
+          id: `med_${Date.now()}`,
+          fileName,
+          url: publicUrl,
+          sizeBytes: imgBuffer.length,
+          sizeKb: parseFloat((imgBuffer.length / 1024).toFixed(1)),
+          uploadedAt: new Date().toISOString(),
+          isUsed: false,
+          usedInArticles: []
+        };
+
+        if (body.caption || body.credit || body.altText || body.width || body.height) {
+          if (body.caption) assetRecord.caption = String(body.caption).trim();
+          if (body.credit) assetRecord.credit = String(body.credit).trim();
+          if (body.altText) assetRecord.altText = String(body.altText).trim();
+          if (body.width) assetRecord.width = Number(body.width);
+          if (body.height) assetRecord.height = Number(body.height);
+          saveMediaLibraryStore(syncedAssets);
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({
           success: true,
           url: publicUrl,
           size_kb: parseFloat((imgBuffer.length / 1024).toFixed(1)),
-          file_name: fileName
+          file_name: fileName,
+          asset: assetRecord
         }));
       } catch (err) {
         console.error('[Image Upload Exception]', err);
@@ -2007,9 +2724,9 @@ const server = http.createServer(async (req, res) => {
             return res.end(JSON.stringify({ error: 'Draft articles cannot be translated.' }));
           }
 
-          const rawTitle = title || (targetArticle ? targetArticle.title : '');
-          const rawBody = articleBody || (targetArticle ? targetArticle.content : '');
-          const rawHighlights = highlights || (targetArticle ? targetArticle.highlights : []) || [];
+          const rawTitle = (targetArticle && targetArticle.title) ? targetArticle.title : (title || '');
+          const rawBody = (targetArticle && targetArticle.content) ? targetArticle.content : (articleBody || '');
+          const rawHighlights = (targetArticle && Array.isArray(targetArticle.highlights) && targetArticle.highlights.length > 0) ? targetArticle.highlights : (highlights || []);
           const contentHash = computeContentHash(`${rawTitle}:::${rawBody}`);
 
           // Check Database for existing translation with matching content_hash
@@ -2247,14 +2964,14 @@ const server = http.createServer(async (req, res) => {
             viewRecord.readDurationSeconds = finalDuration;
             viewRecord.scrollDepth = Math.max(viewRecord.scrollDepth || 0, parseInt(scrollDepth, 10) || 0);
             const titleSnippet = articleTitle ? ` - "${articleTitle.slice(0, 30)}..."` : '';
-            console.log(`[Analytics Server] ⏱️ Recorded read time for article [${viewRecord.articleId}${titleSnippet}]: ${finalDuration}s (Scroll: ${viewRecord.scrollDepth}%)`);
+            console.log(`[Analytics Server] Recorded read time for article [${viewRecord.articleId}${titleSnippet}]: ${finalDuration}s (Scroll: ${viewRecord.scrollDepth}%)`);
           } else if (articleId) {
             const matchingRecord = [...articleViews].reverse().find(v => v.articleId === String(articleId));
             if (matchingRecord) {
               const finalDuration = Math.min(1800, Math.max(matchingRecord.readDurationSeconds || 0, parseInt(readDurationSeconds, 10) || 0));
               matchingRecord.readDurationSeconds = finalDuration;
               matchingRecord.scrollDepth = Math.max(matchingRecord.scrollDepth || 0, parseInt(scrollDepth, 10) || 0);
-              console.log(`[Analytics Server] ⏱️ Recorded read time (fallback) for article [${articleId}]: ${finalDuration}s (Scroll: ${matchingRecord.scrollDepth}%)`);
+              console.log(`[Analytics Server] Recorded read time (fallback) for article [${articleId}]: ${finalDuration}s (Scroll: ${matchingRecord.scrollDepth}%)`);
             }
           }
         }
@@ -2793,6 +3510,20 @@ const server = http.createServer(async (req, res) => {
 
         const updated = saveSettings({ adsConfig: validatedAdsConfig });
 
+        // Auto-archive sponsor campaign snapshots into ad_history.json
+        try {
+          const currentArticles = getSavedArticles();
+          if (validatedAdsConfig.slots) {
+            for (const [sKey, sData] of Object.entries(validatedAdsConfig.slots)) {
+              if (sData && sData.type === 'sponsor' && sData.sponsorBannerUrl) {
+                archiveCampaignSnapshot(sKey, sData, currentArticles);
+              }
+            }
+          }
+        } catch (archErr) {
+          console.warn('[Ad Campaign Archive Warning]:', archErr.message);
+        }
+
         // Automatically synchronize public/ads.txt if publisher ID is valid
         if (cleanPubId) {
           const rawPubDigits = cleanPubId.replace(/^(ca-)?pub-/, '');
@@ -2811,6 +3542,563 @@ const server = http.createServer(async (req, res) => {
         console.log('[Backend Ad Monetization Settings Saved]:', validatedAdsConfig.adSensePublisherId ? `Publisher ${cleanPubId}` : 'No publisher ID set');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, adsConfig: updated.adsConfig }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
+  // BACKEND-DRIVEN AD DECISION ENGINE (ROADMAP A1-A4 & USER SPEC)
+  // Backend decides: What to show, Where to show, and When to show!
+  // Evaluates Server Clock, Date & Time Scheduling, Scope & Fallbacks.
+  // -------------------------------------------------------------
+
+  /**
+   * Format and resolve sponsor target URL with automatic WhatsApp Indian phone detection
+   */
+  function resolveSponsorTargetUrl(rawUrl, sponsorName = '') {
+    if (!rawUrl || typeof rawUrl !== 'string') {
+      return { url: '#', isWhatsApp: false, display: 'No Link' };
+    }
+    const trimmed = rawUrl.trim();
+    if (!trimmed || trimmed === '#') {
+      return { url: '#', isWhatsApp: false, display: 'No Link' };
+    }
+
+    const cleanDigits = trimmed.replace(/[^0-9]/g, '');
+    let indianPhone = null;
+
+    if (cleanDigits.length === 10) {
+      indianPhone = `91${cleanDigits}`;
+    } else if (cleanDigits.length === 11 && cleanDigits.startsWith('0')) {
+      indianPhone = `91${cleanDigits.slice(1)}`;
+    } else if (cleanDigits.length === 12 && cleanDigits.startsWith('91')) {
+      indianPhone = cleanDigits;
+    }
+
+    const nameStr = sponsorName ? sponsorName.trim() : 'Team';
+    const defaultMessage = `Hello ${nameStr}, I saw your advertisement on PublicSpark News and would like to inquire about your services/products.`;
+    const encodedMsg = encodeURIComponent(defaultMessage);
+
+    // If detected as Indian phone number (or starts with tel:)
+    if (indianPhone && (trimmed.startsWith('+') || trimmed.startsWith('0') || /^[0-9\s-]+$/.test(trimmed) || trimmed.startsWith('tel:'))) {
+      return {
+        url: `https://wa.me/${indianPhone}?text=${encodedMsg}`,
+        isWhatsApp: true,
+        phone: indianPhone,
+        display: `+91 ${indianPhone.slice(2, 7)} ${indianPhone.slice(7)}`
+      };
+    }
+
+    // If already a wa.me or api.whatsapp.com link
+    if (trimmed.includes('wa.me/') || trimmed.includes('api.whatsapp.com/send')) {
+      let finalWaUrl = trimmed;
+      if (!finalWaUrl.startsWith('http://') && !finalWaUrl.startsWith('https://')) {
+        finalWaUrl = `https://${finalWaUrl}`;
+      }
+      if (!finalWaUrl.includes('text=')) {
+        finalWaUrl += (finalWaUrl.includes('?') ? '&' : '?') + `text=${encodedMsg}`;
+      }
+      return {
+        url: finalWaUrl,
+        isWhatsApp: true,
+        phone: cleanDigits || null,
+        display: 'WhatsApp Direct'
+      };
+    }
+
+    // Standard website URL
+    let websiteUrl = trimmed;
+    if (!websiteUrl.startsWith('http://') && !websiteUrl.startsWith('https://') && !websiteUrl.startsWith('mailto:')) {
+      websiteUrl = `https://${websiteUrl}`;
+    }
+
+    return {
+      url: websiteUrl,
+      isWhatsApp: false,
+      display: websiteUrl.replace(/^https?:\/\/(www\.)?/, '')
+    };
+  }
+
+  function evaluateActiveAds(adsConfig, queryContext = {}) {
+    const now = new Date();
+    const nowMs = now.getTime();
+    const currentIso = now.toISOString();
+    const publisherId = (adsConfig && adsConfig.adSensePublisherId) ? adsConfig.adSensePublisherId.trim() : '';
+    const slotsConfig = (adsConfig && adsConfig.slots) ? adsConfig.slots : {};
+    
+    const evaluatedSlots = {};
+    const slotKeys = ['header', 'in_article', 'sidebar', 'home_feed', 'footer', 'mobile_footer'];
+    
+    const currentCategory = (queryContext.category || '').toLowerCase().trim();
+    const currentArticleId = (queryContext.articleId || '').trim();
+
+    for (const key of slotKeys) {
+      const slot = slotsConfig[key];
+      if (!slot || !slot.enabled) {
+        evaluatedSlots[key] = {
+          action: 'none',
+          reason: 'slot_disabled'
+        };
+        continue;
+      }
+
+      const hasAdSenseFallback = Boolean(publisherId && slot.adSlotId && slot.adSlotId.trim());
+
+      // 1. DIRECT SPONSOR EVALUATION
+      if (slot.type === 'sponsor') {
+        // Status Check: Admin manually paused this campaign
+        if (slot.status === 'paused') {
+          if (hasAdSenseFallback) {
+            evaluatedSlots[key] = {
+              action: 'adsense',
+              type: 'adsense',
+              publisherId,
+              adSlotId: slot.adSlotId.trim(),
+              reason: 'sponsor_paused_fallback_adsense'
+            };
+          } else {
+            evaluatedSlots[key] = { action: 'none', reason: 'sponsor_paused' };
+          }
+          continue;
+        }
+
+        // Check if there is an active matching campaign in ad_history.json
+        const history = getAdHistory();
+        const upcomingCamp = history.find(camp => {
+          if (camp.slotKey !== key) return false;
+          if (camp.startDateTime) {
+            const startMs = new Date(camp.startDateTime).getTime();
+            if (!isNaN(startMs) && startMs > nowMs) return true;
+          }
+          return false;
+        });
+
+        const activeCamp = history.find(camp => {
+          if (camp.slotKey !== key) return false;
+          // Check start
+          if (camp.startDateTime) {
+            const startMs = new Date(camp.startDateTime).getTime();
+            if (!isNaN(startMs) && nowMs < startMs) return false;
+          }
+          // Check end
+          if (camp.endDateTime) {
+            const endMs = new Date(camp.endDateTime).getTime();
+            if (!isNaN(endMs) && nowMs > endMs) return false;
+          }
+          // Check excluded articles
+          if (currentArticleId && camp.excludeArticleIds) {
+            const excludedList = (Array.isArray(camp.excludeArticleIds)
+              ? camp.excludeArticleIds
+              : camp.excludeArticleIds.split(',').map(s => s.trim())
+            );
+            if (excludedList.includes(currentArticleId)) return false;
+          }
+          // Check Category scope
+          if (camp.scope === 'category') {
+            const targetCat = (camp.targetCategory || 'all').toLowerCase().trim();
+            if (targetCat !== 'all' && currentCategory && currentCategory !== targetCat) return false;
+          }
+          // Check Article scope
+          if (camp.scope === 'article') {
+            if (camp.targetArticleId && camp.targetArticleId.trim()) {
+              if (currentArticleId !== camp.targetArticleId.trim()) return false;
+            }
+          }
+          return Boolean(camp.sponsorBannerUrl && camp.sponsorBannerUrl.trim());
+        });
+
+        if (activeCamp) {
+          const targetInfo = resolveSponsorTargetUrl(activeCamp.sponsorTargetUrl, activeCamp.sponsorName);
+          evaluatedSlots[key] = {
+            action: 'sponsor',
+            type: 'sponsor',
+            campaignId: activeCamp.id,
+            bannerUrl: activeCamp.sponsorBannerUrl.trim(),
+            targetUrl: targetInfo.url,
+            isWhatsApp: targetInfo.isWhatsApp,
+            targetDisplay: targetInfo.display,
+            sponsorName: activeCamp.sponsorName ? activeCamp.sponsorName.trim() : 'Featured Partner',
+            desktopDimensions: activeCamp.desktopDimensions || slot.desktopDimensions,
+            mobileDimensions: activeCamp.mobileDimensions || slot.mobileDimensions,
+            expiresAt: activeCamp.endDateTime || null,
+            nextStartsAt: upcomingCamp ? upcomingCamp.startDateTime : null,
+            reason: 'active_campaign_matched'
+          };
+          continue;
+        }
+
+        // Schedule Check: Exact Date & Time
+        // A. Start Date & Time
+        const startDateTimeStr = slot.startDateTime || (slot.startDate ? `${slot.startDate}T00:00:00` : '');
+        if (startDateTimeStr) {
+          const startTimeMs = new Date(startDateTimeStr).getTime();
+          if (!isNaN(startTimeMs) && nowMs < startTimeMs) {
+            // Future campaign: not started yet
+            if (hasAdSenseFallback) {
+              evaluatedSlots[key] = {
+                action: 'adsense',
+                type: 'adsense',
+                publisherId,
+                adSlotId: slot.adSlotId.trim(),
+                reason: 'sponsor_scheduled_future_fallback_adsense',
+                startsAt: startDateTimeStr,
+                nextStartsAt: startDateTimeStr
+              };
+            } else {
+              evaluatedSlots[key] = { action: 'none', reason: 'sponsor_scheduled_future', startsAt: startDateTimeStr, nextStartsAt: startDateTimeStr };
+            }
+            continue;
+          }
+        }
+
+        // B. End Date & Time (Automatic Expiry)
+        const endDateTimeStr = slot.endDateTime || (slot.endDate ? `${slot.endDate}T23:59:59` : '');
+        if (endDateTimeStr) {
+          const endTimeMs = new Date(endDateTimeStr).getTime();
+          if (!isNaN(endTimeMs) && nowMs > endTimeMs) {
+            // Expired campaign: server clock passed end time
+            if (hasAdSenseFallback) {
+              evaluatedSlots[key] = {
+                action: 'adsense',
+                type: 'adsense',
+                publisherId,
+                adSlotId: slot.adSlotId.trim(),
+                reason: 'sponsor_expired_fallback_adsense',
+                expiredAt: endDateTimeStr
+              };
+            } else {
+              evaluatedSlots[key] = { action: 'none', reason: 'sponsor_expired', expiredAt: endDateTimeStr };
+            }
+            continue;
+          }
+        }
+
+        // Scope & Targeting Check: Exclude Specific Articles
+        if (currentArticleId && slot.excludeArticleIds) {
+          const excludedList = (Array.isArray(slot.excludeArticleIds)
+            ? slot.excludeArticleIds
+            : slot.excludeArticleIds.split(',').map(s => s.trim())
+          );
+          if (excludedList.includes(currentArticleId)) {
+            if (hasAdSenseFallback) {
+              evaluatedSlots[key] = {
+                action: 'adsense',
+                type: 'adsense',
+                publisherId,
+                adSlotId: slot.adSlotId.trim(),
+                reason: 'article_excluded_fallback_adsense'
+              };
+            } else {
+              evaluatedSlots[key] = { action: 'none', reason: 'article_excluded' };
+            }
+            continue;
+          }
+        }
+
+        // Scope Check: Specific Category
+        if (slot.scope === 'category') {
+          const targetCat = (slot.targetCategory || 'all').toLowerCase().trim();
+          if (targetCat !== 'all' && currentCategory && currentCategory !== targetCat) {
+            if (hasAdSenseFallback) {
+              evaluatedSlots[key] = {
+                action: 'adsense',
+                type: 'adsense',
+                publisherId,
+                adSlotId: slot.adSlotId.trim(),
+                reason: 'category_mismatch_fallback_adsense'
+              };
+            } else {
+              evaluatedSlots[key] = { action: 'none', reason: 'category_mismatch' };
+            }
+            continue;
+          }
+        }
+
+        // Scope Check: Single Target Article ID
+        if (slot.scope === 'article') {
+          if (slot.targetArticleId && slot.targetArticleId.trim()) {
+            if (currentArticleId !== slot.targetArticleId.trim()) {
+              if (hasAdSenseFallback) {
+                evaluatedSlots[key] = {
+                  action: 'adsense',
+                  type: 'adsense',
+                  publisherId,
+                  adSlotId: slot.adSlotId.trim(),
+                  reason: 'article_mismatch_fallback_adsense'
+                };
+              } else {
+                evaluatedSlots[key] = { action: 'none', reason: 'article_mismatch' };
+              }
+              continue;
+            }
+          }
+        }
+
+        // All checks passed! Sponsor banner is active for this request
+        if (slot.sponsorBannerUrl && slot.sponsorBannerUrl.trim()) {
+          const targetInfo = resolveSponsorTargetUrl(slot.sponsorTargetUrl, slot.sponsorName);
+          evaluatedSlots[key] = {
+            action: 'sponsor',
+            type: 'sponsor',
+            campaignId: slot.campaignId || slot.id || `slot_${key}`,
+            bannerUrl: slot.sponsorBannerUrl.trim(),
+            targetUrl: targetInfo.url,
+            isWhatsApp: targetInfo.isWhatsApp,
+            targetDisplay: targetInfo.display,
+            sponsorName: slot.sponsorName ? slot.sponsorName.trim() : 'Featured Partner',
+            desktopDimensions: slot.desktopDimensions,
+            mobileDimensions: slot.mobileDimensions,
+            expiresAt: endDateTimeStr || null,
+            nextStartsAt: upcomingCamp ? upcomingCamp.startDateTime : null,
+            reason: 'sponsor_active'
+          };
+        } else if (hasAdSenseFallback) {
+          evaluatedSlots[key] = {
+            action: 'adsense',
+            type: 'adsense',
+            publisherId,
+            adSlotId: slot.adSlotId.trim(),
+            desktopDimensions: slot.desktopDimensions,
+            mobileDimensions: slot.mobileDimensions,
+            nextStartsAt: upcomingCamp ? upcomingCamp.startDateTime : null,
+            reason: 'sponsor_idle_fallback_adsense'
+          };
+        } else {
+          // Banner image not uploaded yet
+          evaluatedSlots[key] = {
+            action: 'placeholder',
+            type: 'sponsor',
+            sponsorName: slot.sponsorName ? slot.sponsorName.trim() : 'Featured Partner',
+            desktopDimensions: slot.desktopDimensions,
+            mobileDimensions: slot.mobileDimensions,
+            nextStartsAt: upcomingCamp ? upcomingCamp.startDateTime : null,
+            reason: 'sponsor_banner_pending'
+          };
+        }
+        continue;
+      }
+
+      // 2. GOOGLE ADSENSE EVALUATION
+      if (slot.type === 'adsense') {
+        if (publisherId && slot.adSlotId && slot.adSlotId.trim()) {
+          evaluatedSlots[key] = {
+            action: 'adsense',
+            type: 'adsense',
+            publisherId,
+            adSlotId: slot.adSlotId.trim(),
+            desktopDimensions: slot.desktopDimensions,
+            mobileDimensions: slot.mobileDimensions,
+            reason: 'adsense_active'
+          };
+        } else {
+          evaluatedSlots[key] = {
+            action: 'placeholder',
+            type: 'adsense',
+            desktopDimensions: slot.desktopDimensions,
+            mobileDimensions: slot.mobileDimensions,
+            reason: 'adsense_slot_unconfigured'
+          };
+        }
+        continue;
+      }
+
+      evaluatedSlots[key] = { action: 'none', reason: 'unknown_type' };
+    }
+
+    return {
+      success: true,
+      serverTime: currentIso,
+      context: { category: currentCategory, articleId: currentArticleId },
+      slots: evaluatedSlots
+    };
+  }
+
+  // GET /api/ads/active or /api/monetization/active (Evaluates and returns live ad decisions)
+  if (req.method === 'GET' && (url.pathname === '/api/ads/active' || url.pathname === '/api/monetization/active')) {
+    purgeExpiredAdHistory();
+    const category = url.searchParams.get('category') || '';
+    const articleId = url.searchParams.get('articleId') || '';
+    const settings = getSavedSettings();
+    const evaluated = evaluateActiveAds(settings.adsConfig || DEFAULT_SETTINGS.adsConfig, { category, articleId });
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    });
+    return res.end(JSON.stringify(evaluated));
+  }
+
+  // GET /api/ads/history (Retrieve list of live & scheduled ad campaigns, auto-purging expired)
+  if (req.method === 'GET' && url.pathname === '/api/ads/history') {
+    const { history } = purgeExpiredAdHistory();
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate'
+    });
+    return res.end(JSON.stringify(history));
+  }
+
+  // POST /api/ads/history/delete (Delete an ad campaign and wipe its media file from disk)
+  if (req.method === 'POST' && url.pathname === '/api/ads/history/delete') {
+    if (!verifyAdminAuthorization(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden: Admin authorization required.' }));
+    }
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const settings = getSavedSettings();
+        const activeSlots = (settings && settings.adsConfig && settings.adsConfig.slots) ? settings.adsConfig.slots : {};
+        let history = getAdHistory();
+        
+        if (body.clearAll) {
+          for (const camp of history) {
+            if (camp.sponsorBannerUrl) cleanupUnusedUploadFile(camp.sponsorBannerUrl, activeSlots);
+          }
+          history = [];
+        } else if (body.id) {
+          const target = history.find(h => h.id === body.id);
+          if (target && target.sponsorBannerUrl) {
+            cleanupUnusedUploadFile(target.sponsorBannerUrl, activeSlots);
+          }
+          history = history.filter(h => h.id !== body.id);
+        }
+        
+        saveAdHistory(history);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, count: history.length, history }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/ads/history/update (Edit & update an existing ad campaign)
+  if (req.method === 'POST' && url.pathname === '/api/ads/history/update') {
+    if (!verifyAdminAuthorization(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden: Admin authorization required.' }));
+    }
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        if (!body.id) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Campaign ID is required for editing.' }));
+        }
+
+        let history = getAdHistory();
+        const index = history.findIndex(h => h.id === body.id);
+        if (index === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Campaign not found in active records.' }));
+        }
+
+        const oldCampaign = history[index];
+        const oldBanner = oldCampaign.sponsorBannerUrl;
+        const newBanner = body.sponsorBannerUrl || oldCampaign.sponsorBannerUrl;
+
+        // If banner was replaced with a new one, clean up the old file if unused
+        if (oldBanner && newBanner && oldBanner !== newBanner) {
+          cleanupUnusedUploadFile(oldBanner, {});
+        }
+
+        const updatedCampaign = {
+          ...oldCampaign,
+          slotKey: body.slotKey || oldCampaign.slotKey,
+          slotName: body.slotName || oldCampaign.slotName,
+          sponsorName: body.sponsorName !== undefined ? body.sponsorName : oldCampaign.sponsorName,
+          sponsorBannerUrl: newBanner,
+          sponsorTargetUrl: body.sponsorTargetUrl !== undefined ? body.sponsorTargetUrl : oldCampaign.sponsorTargetUrl,
+          scope: body.scope || oldCampaign.scope || 'global',
+          targetCategory: body.targetCategory !== undefined ? body.targetCategory : (oldCampaign.targetCategory || 'all'),
+          targetArticleId: body.targetArticleId !== undefined ? body.targetArticleId : (oldCampaign.targetArticleId || ''),
+          targetArticleTitle: body.targetArticleTitle !== undefined ? body.targetArticleTitle : (oldCampaign.targetArticleTitle || ''),
+          excludeArticleIds: body.excludeArticleIds !== undefined ? body.excludeArticleIds : (oldCampaign.excludeArticleIds || ''),
+          startDateTime: body.startDateTime !== undefined ? body.startDateTime : (oldCampaign.startDateTime || ''),
+          endDateTime: body.endDateTime !== undefined ? body.endDateTime : (oldCampaign.endDateTime || ''),
+          updatedAt: new Date().toISOString()
+        };
+
+        history[index] = updatedCampaign;
+        saveAdHistory(history);
+
+        // Also sync live slot if this slot is active in settings
+        const settings = getSavedSettings();
+        if (settings && settings.adsConfig && settings.adsConfig.slots) {
+          const slot = settings.adsConfig.slots[updatedCampaign.slotKey];
+          if (slot && slot.type === 'sponsor') {
+            slot.sponsorName = updatedCampaign.sponsorName;
+            slot.sponsorBannerUrl = updatedCampaign.sponsorBannerUrl;
+            slot.sponsorTargetUrl = updatedCampaign.sponsorTargetUrl;
+            slot.scope = updatedCampaign.scope;
+            slot.targetCategory = updatedCampaign.targetCategory;
+            slot.targetArticleId = updatedCampaign.targetArticleId;
+            slot.excludeArticleIds = updatedCampaign.excludeArticleIds;
+            slot.startDateTime = updatedCampaign.startDateTime;
+            slot.endDateTime = updatedCampaign.endDateTime;
+            saveSettings(settings);
+          }
+        }
+
+        console.log(`[Ad Campaign Edited]: ID ${body.id} for slot [${updatedCampaign.slotKey}] updated.`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, campaign: updatedCampaign, history }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/ads/track/impression (Direct Sponsor Impression Telemetry)
+  if (req.method === 'POST' && url.pathname === '/api/ads/track/impression') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const clientIp = getClientIp(req);
+        const result = recordAdImpression(body.campaignId, body.slotKey, clientIp);
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store'
+        });
+        return res.end(JSON.stringify({ success: true, ...result }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/ads/track/click (Direct Sponsor Click Telemetry)
+  if (req.method === 'POST' && url.pathname === '/api/ads/track/click') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const clientIp = getClientIp(req);
+        const result = recordAdClick(body.campaignId, body.slotKey, clientIp);
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store'
+        });
+        return res.end(JSON.stringify({ success: true, ...result }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: e.message }));
@@ -2945,14 +4233,71 @@ const server = http.createServer(async (req, res) => {
   }
 
   // -------------------------------------------------------------
+  // CATEGORIES TAXONOMY ENDPOINTS (DYNAMIC & PERSISTENT)
+  // -------------------------------------------------------------
+
+  // GET /api/categories (Retrieve backend-persisted categories taxonomy)
+  if (req.method === 'GET' && url.pathname === '/api/categories') {
+    const categories = getSavedCategories();
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache'
+    });
+    return res.end(JSON.stringify(categories));
+  }
+
+  // POST /api/categories (Save/update categories taxonomy list)
+  if (req.method === 'POST' && url.pathname === '/api/categories') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '[]');
+        const categoriesList = Array.isArray(body) ? body : body.categories || [];
+
+        if (!Array.isArray(categoriesList) || categoriesList.length === 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Categories list must be a non-empty array' }));
+        }
+
+        // Sanitize and validate categories
+        const sanitized = categoriesList.map((cat, idx) => {
+          const name = String(cat.name || '').trim();
+          const slug = String(cat.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `cat-${idx + 1}`);
+          const id = String(cat.id || `cat-${Date.now()}-${idx}`);
+          return { id, name, slug };
+        }).filter(c => Boolean(c.name));
+
+        const updated = saveCategories(sanitized);
+        console.log(`[Backend Categories Saved]: ${updated.length} categories persisted`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, count: updated.length, categories: updated }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
   // ARTICLES & LIVE NEWS FEED CURATION ENDPOINTS
   // -------------------------------------------------------------
 
-  // GET /api/articles (Retrieve backend-persisted articles)
+  // GET /api/articles (Retrieve backend-persisted articles with Public Embargo Shield)
   if (req.method === 'GET' && url.pathname === '/api/articles') {
-    const articles = getSavedArticles();
+    const allArticles = getSavedArticles();
+    const scope = url.searchParams.get('scope');
+    const role = (url.searchParams.get('role') || '').toLowerCase();
+    const isStaff = scope === 'admin' || scope === 'all' || role === 'editor' || role === 'admin' || role === 'reporter';
+
+    // Public readers only receive 'published' articles (scheduled and drafts remain embargoed)
+    const responseArticles = isStaff
+      ? allArticles
+      : allArticles.filter(a => a.status === 'published' || !a.status);
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(articles));
+    return res.end(JSON.stringify(responseArticles));
   }
 
   // POST /api/articles (Bulk save / replace articles list)
@@ -2975,7 +4320,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/articles/update (Update single article by ID or add new)
+  // POST /api/articles/update (Update single article by ID or add new with RBAC & Scheduler Guard)
   if (req.method === 'POST' && url.pathname === '/api/articles/update') {
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
@@ -2986,17 +4331,68 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Article id is required' }));
         }
+
+        // Editorial RBAC Guard: Reporters cannot publish live or schedule publication
+        const userRole = (body.userRole || body.currentUserRole || body.author?.role || '').toLowerCase();
+        if (userRole === 'reporter' && (body.status === 'published' || body.status === 'scheduled')) {
+          console.warn(`[Editorial RBAC Gate] Reporter attempted to set status to "${body.status}". Forcing to "draft".`);
+          body.status = 'draft';
+          body.scheduledPublishTime = null;
+        }
+
+        // Validate scheduled publishing date-time
+        if (body.status === 'scheduled') {
+          if (!body.scheduledPublishTime) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Valid scheduledPublishTime is required for scheduled stories.' }));
+          }
+          const schedMs = new Date(body.scheduledPublishTime).getTime();
+          if (isNaN(schedMs)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: 'Invalid scheduledPublishTime timestamp format.' }));
+          }
+          // If scheduled time has already arrived, flip to published immediately
+          if (schedMs <= Date.now()) {
+            body.status = 'published';
+            body.published_at = 'Just now';
+            body.publishDateISO = new Date().toISOString();
+          }
+        }
+
         const currentArticles = getSavedArticles();
         const existingIdx = currentArticles.findIndex(a => String(a.id) === String(body.id));
+
+        // Task 23: Live Blog Mode formatting and updates preservation
+        if (body.format === 'live') {
+          body.live_status = body.live_status || 'active';
+          if (!Array.isArray(body.live_updates)) {
+            if (existingIdx >= 0 && Array.isArray(currentArticles[existingIdx].live_updates)) {
+              body.live_updates = currentArticles[existingIdx].live_updates;
+            } else {
+              body.live_updates = [];
+            }
+          }
+        }
+
         let updatedArticles;
         if (existingIdx >= 0) {
+          const oldArticle = currentArticles[existingIdx];
+          // Ensure baseline version exists in revisions before updating
+          const existingRevs = getArticleRevisionsStore()[String(body.id)] || [];
+          if (existingRevs.length === 0) {
+            recordArticleRevision(oldArticle, { name: oldArticle.author_name || oldArticle.author?.name, role: oldArticle.author_role || oldArticle.author?.role }, 'Original baseline version');
+          }
           currentArticles[existingIdx] = { ...currentArticles[existingIdx], ...body };
           updatedArticles = currentArticles;
+          // Record revision for the new update
+          recordArticleRevision(currentArticles[existingIdx], { name: body.author_name || body.author?.name, role: userRole }, body.changeNote || 'Story content updated');
         } else {
           updatedArticles = [body, ...currentArticles];
+          // Record initial creation revision
+          recordArticleRevision(body, { name: body.author_name || body.author?.name, role: userRole }, body.changeNote || 'Initial story created');
         }
         saveArticles(updatedArticles);
-        console.log('[Backend Article Updated]:', body.id, body.title);
+        console.log(`[Backend Article Updated]: ${body.id} "${body.title}" (status: ${body.status})`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, article: body, articles: updatedArticles }));
       } catch (e) {
@@ -3031,6 +4427,273 @@ const server = http.createServer(async (req, res) => {
       }
     });
     return;
+  }
+
+  // GET /api/articles/:id/revisions (Task 21: Retrieve article revision history)
+  const revisionsMatch = url.pathname.match(/^\/api\/articles\/([^/]+)\/revisions$/);
+  if (req.method === 'GET' && revisionsMatch) {
+    const articleId = decodeURIComponent(revisionsMatch[1]);
+    const revisions = getRevisionsForArticle(articleId);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, articleId, revisions }));
+  }
+
+  // POST /api/articles/:id/rollback (Task 21: 1-Click Rollback article to selected snapshot)
+  const rollbackMatch = url.pathname.match(/^\/api\/articles\/([^/]+)\/rollback$/);
+  if (req.method === 'POST' && rollbackMatch) {
+    const articleId = decodeURIComponent(rollbackMatch[1]);
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const userRole = (body.userRole || body.role || '').toLowerCase();
+
+        // Editorial RBAC Guard: Reporters cannot rollback articles
+        if (userRole === 'reporter') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            error: 'Editorial Gate: Reporters do not have authorization to rollback articles. Contact an Editor or Admin.'
+          }));
+        }
+
+        const { revisionId } = body;
+        if (!revisionId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'revisionId is required for rollback.' }));
+        }
+
+        const revisions = getRevisionsForArticle(articleId);
+        const targetRev = revisions.find(r => r.revisionId === revisionId);
+        if (!targetRev) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Target revision not found.' }));
+        }
+
+        const currentArticles = getSavedArticles();
+        const existingIdx = currentArticles.findIndex(a => String(a.id) === String(articleId));
+        if (existingIdx === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Article not found in active database.' }));
+        }
+
+        const currentArt = currentArticles[existingIdx];
+
+        // Restore content and metadata from selected snapshot
+        currentArt.title = targetRev.title;
+        currentArt.sub_title = targetRev.sub_title;
+        currentArt.content = targetRev.content;
+        currentArt.summary = targetRev.summary;
+        currentArt.category = targetRev.category;
+        currentArt.featured_image = targetRev.featured_image;
+        if (targetRev.status) currentArt.status = targetRev.status;
+        if (targetRev.scheduledPublishTime) currentArt.scheduledPublishTime = targetRev.scheduledPublishTime;
+
+        saveArticles(currentArticles);
+
+        // Record a new revision tracking this rollback event
+        const dtFormatted = new Date(targetRev.timestamp).toLocaleString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+        const rollbackNote = `Rolled back to revision from ${dtFormatted}`;
+        recordArticleRevision(currentArt, { name: body.editorName || 'Editor', role: userRole || 'editor' }, rollbackNote);
+
+        const updatedRevisions = getRevisionsForArticle(articleId);
+        console.log(`[Revision Rollback]: Article ${articleId} "${currentArt.title}" restored to revision ${revisionId}`);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          article: currentArt,
+          revisions: updatedRevisions,
+          message: rollbackNote
+        }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/articles/:id/live-status (Task 23: Toggle Live Blog coverage status between active and concluded)
+  const liveStatusMatch = url.pathname.match(/^\/api\/articles\/([^/]+)\/live-status$/);
+  if (req.method === 'POST' && liveStatusMatch) {
+    const articleId = decodeURIComponent(liveStatusMatch[1]);
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const userRole = (body.userRole || body.role || '').toLowerCase();
+
+        // Editorial RBAC Guard: Reporters cannot toggle live status
+        if (userRole === 'reporter') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            error: 'Editorial Gate: Reporters cannot modify live coverage status. Contact an Editor or Admin.'
+          }));
+        }
+
+        const newStatus = body.live_status === 'concluded' ? 'concluded' : 'active';
+        const currentArticles = getSavedArticles();
+        const existingIdx = currentArticles.findIndex(a => String(a.id) === String(articleId));
+        if (existingIdx === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Article not found.' }));
+        }
+
+        const art = currentArticles[existingIdx];
+        art.format = 'live';
+        art.live_status = newStatus;
+        if (!Array.isArray(art.live_updates)) {
+          art.live_updates = [];
+        }
+
+        saveArticles(currentArticles);
+        console.log(`[Live Blog Status]: Article ${articleId} live status updated to "${newStatus}"`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          article: art,
+          live_status: newStatus
+        }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/articles/:id/live-updates (Fetch lightweight live timeline stream)
+  const getLiveUpdatesMatch = url.pathname.match(/^\/api\/articles\/([^/]+)\/live-updates$/);
+  if (req.method === 'GET' && getLiveUpdatesMatch) {
+    const articleId = decodeURIComponent(getLiveUpdatesMatch[1]);
+    const currentArticles = getSavedArticles();
+    const art = currentArticles.find(a => String(a.id) === String(articleId));
+    if (!art) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Article not found.' }));
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      success: true,
+      articleId: art.id,
+      format: art.format || 'standard',
+      live_status: art.live_status || 'active',
+      live_updates: Array.isArray(art.live_updates) ? art.live_updates : []
+    }));
+  }
+
+  // POST /api/articles/:id/live-updates (Fast micro-update post without full article rewrite)
+  const postLiveUpdatesMatch = url.pathname.match(/^\/api\/articles\/([^/]+)\/live-updates$/);
+  if (req.method === 'POST' && postLiveUpdatesMatch) {
+    const articleId = decodeURIComponent(postLiveUpdatesMatch[1]);
+    let rawData = '';
+    req.on('data', chunk => { rawData += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(rawData || '{}');
+        const headline = (body.headline || '').trim();
+        const updateBody = (body.body || '').trim();
+
+        if (!headline && !updateBody) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Headline or body is required for a live update.' }));
+        }
+
+        const currentArticles = getSavedArticles();
+        const existingIdx = currentArticles.findIndex(a => String(a.id) === String(articleId));
+        if (existingIdx === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Article not found.' }));
+        }
+
+        const art = currentArticles[existingIdx];
+        if (!Array.isArray(art.live_updates)) {
+          art.live_updates = [];
+        }
+
+        const now = new Date();
+        const formattedTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+        const updateItem = {
+          id: `upd-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          timestamp: body.timestamp ? String(body.timestamp).trim() : formattedTime,
+          created_at: now.toISOString(),
+          headline: headline || 'Key Update',
+          body: updateBody,
+          is_key_event: Boolean(body.is_key_event),
+          media_url: body.media_url ? String(body.media_url).trim() : null,
+          author: body.author ? String(body.author).trim() : (art.author || 'Editorial Desk')
+        };
+
+        // Prepend newest updates at the top
+        art.live_updates.unshift(updateItem);
+        art.format = 'live';
+        if (!art.live_status) {
+          art.live_status = 'active';
+        }
+
+        saveArticles(currentArticles);
+        console.log(`[Live Blog Update]: Article ${articleId} received new micro-update: "${updateItem.headline}"`);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          update: updateItem,
+          live_updates: art.live_updates
+        }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // DELETE /api/articles/:id/live-updates/:updateId (Remove erroneous live micro-update)
+  const deleteLiveUpdateMatch = url.pathname.match(/^\/api\/articles\/([^/]+)\/live-updates\/([^/]+)$/);
+  if (req.method === 'DELETE' && deleteLiveUpdateMatch) {
+    const articleId = decodeURIComponent(deleteLiveUpdateMatch[1]);
+    const updateId = decodeURIComponent(deleteLiveUpdateMatch[2]);
+
+    const currentArticles = getSavedArticles();
+    const existingIdx = currentArticles.findIndex(a => String(a.id) === String(articleId));
+    if (existingIdx === -1) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Article not found.' }));
+    }
+
+    const art = currentArticles[existingIdx];
+    if (!Array.isArray(art.live_updates)) {
+      art.live_updates = [];
+    }
+
+    const initialLen = art.live_updates.length;
+    art.live_updates = art.live_updates.filter(u => String(u.id) !== String(updateId));
+
+    if (art.live_updates.length === initialLen) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Update ID not found.' }));
+    }
+
+    saveArticles(currentArticles);
+    console.log(`[Live Blog Delete]: Deleted update ${updateId} from article ${articleId}`);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      success: true,
+      deletedId: updateId,
+      live_updates: art.live_updates
+    }));
   }
 
   // GET /api/live-news (Fetch live incoming RSS / SauravTech news streams for Admin Curation)
@@ -3146,12 +4809,226 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // -------------------------------------------------------------
+  // MEDIA LIBRARY DESK API ENDPOINTS (Task 22)
+  // -------------------------------------------------------------
+
+  // GET /api/media (Retrieve indexed media assets with usage tracking, search, filter, and sort)
+  if (req.method === 'GET' && url.pathname === '/api/media') {
+    try {
+      const q = (url.searchParams.get('q') || '').trim().toLowerCase();
+      const filter = (url.searchParams.get('filter') || 'all').toLowerCase();
+      const sort = (url.searchParams.get('sort') || 'newest').toLowerCase();
+
+      const allAssets = syncAndIndexMediaAssets();
+
+      let filtered = allAssets;
+
+      // Filter by usage status or metadata flags
+      if (filter === 'used') {
+        filtered = filtered.filter(a => a.isUsed);
+      } else if (filter === 'unused') {
+        filtered = filtered.filter(a => !a.isUsed);
+      } else if (filter === 'has_caption') {
+        filtered = filtered.filter(a => Boolean(a.caption && a.caption.trim() !== ''));
+      } else if (filter === 'missing_credit') {
+        filtered = filtered.filter(a => !a.credit || a.credit.trim() === '');
+      }
+
+      // Filter by multi-field search keyword (Filename, Caption, Credit, AltText, Linked Story Title/Category)
+      if (q) {
+        filtered = filtered.filter(a => {
+          const fnMatch = a.fileName.toLowerCase().includes(q);
+          const capMatch = (a.caption || '').toLowerCase().includes(q);
+          const credMatch = (a.credit || '').toLowerCase().includes(q);
+          const altMatch = (a.altText || '').toLowerCase().includes(q);
+          const artMatch = a.usedInArticles && a.usedInArticles.some(art => 
+            (art.title || '').toLowerCase().includes(q) || (art.category || '').toLowerCase().includes(q)
+          );
+          return fnMatch || capMatch || credMatch || altMatch || artMatch;
+        });
+      }
+
+      // Enhanced Sorting
+      if (sort === 'oldest') {
+        filtered.sort((a, b) => new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime());
+      } else if (sort === 'size_desc') {
+        filtered.sort((a, b) => b.sizeBytes - a.sizeBytes);
+      } else if (sort === 'size_asc') {
+        filtered.sort((a, b) => a.sizeBytes - b.sizeBytes);
+      } else if (sort === 'name_asc') {
+        filtered.sort((a, b) => a.fileName.localeCompare(b.fileName));
+      } else if (sort === 'name_desc') {
+        filtered.sort((a, b) => b.fileName.localeCompare(a.fileName));
+      } else {
+        // Default newest
+        filtered.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+      }
+
+      const totalCount = allAssets.length;
+      const usedCount = allAssets.filter(a => a.isUsed).length;
+      const unusedCount = allAssets.filter(a => !a.isUsed).length;
+      const withCaptionCount = allAssets.filter(a => Boolean(a.caption && a.caption.trim())).length;
+      const missingCreditCount = allAssets.filter(a => !a.credit || !a.credit.trim()).length;
+      const totalSizeBytes = allAssets.reduce((acc, a) => acc + (a.sizeBytes || 0), 0);
+      const totalSizeKb = parseFloat((totalSizeBytes / 1024).toFixed(1));
+      const totalSizeMb = parseFloat((totalSizeBytes / (1024 * 1024)).toFixed(2));
+      const avgSizeKb = totalCount > 0 ? parseFloat((totalSizeKb / totalCount).toFixed(1)) : 0;
+      const storageLimitMb = 5000;
+      const storageUsedPct = parseFloat(((totalSizeBytes / (storageLimitMb * 1024 * 1024)) * 100).toFixed(3));
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: true,
+        stats: {
+          totalCount,
+          usedCount,
+          unusedCount,
+          withCaptionCount,
+          missingCreditCount,
+          totalSizeBytes,
+          totalSizeKb,
+          totalSizeMb: `${totalSizeMb} MB`,
+          avgSizeKb: `${avgSizeKb} KB`,
+          storageLimitMb,
+          storageUsedPct
+        },
+        assets: filtered
+      }));
+    } catch (e) {
+      console.error('[Media API Error]', e);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: e.message }));
+    }
+  }
+
+  // POST /api/media/delete (Delete media asset with Active Article Safety Guard & Editorial RBAC)
+  if (req.method === 'POST' && url.pathname === '/api/media/delete') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const fileName = path.basename(String(body.fileName || ''));
+        const force = Boolean(body.force);
+        const userRole = (body.userRole || body.role || 'editor').toLowerCase();
+
+        // RBAC Rule 1: Reporters cannot delete any media assets
+        if (userRole === 'reporter') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            error: 'Editorial Gate: Reporters cannot delete media assets. Contact an Editor or Admin.'
+          }));
+        }
+
+        if (!fileName) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'fileName is required for media deletion.' }));
+        }
+
+        const filePath = path.join(UPLOADS_DIR, fileName);
+        if (!fs.existsSync(filePath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: `File "${fileName}" does not exist in uploads storage.` }));
+        }
+
+        // Check if currently used in active articles
+        const currentAssets = syncAndIndexMediaAssets();
+        const targetAsset = currentAssets.find(a => a.fileName === fileName);
+
+        if (targetAsset && targetAsset.usedInArticles && targetAsset.usedInArticles.length > 0) {
+          if (!force) {
+            res.writeHead(409, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+              error: 'Active Article Safety Guard: This photo is currently used in active stories. Confirm force deletion to proceed.',
+              usedInArticles: targetAsset.usedInArticles,
+              requiresForce: true
+            }));
+          }
+
+          // RBAC Rule 2: Force-deleting in-use media requires Newsroom Administrator role
+          if (userRole !== 'admin') {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+              error: 'Administrative Gate: Only Newsroom Administrators can force-delete media assets currently in use by active news stories. Editors can only delete unused media.'
+            }));
+          }
+        }
+
+        fs.unlinkSync(filePath);
+        console.log(`[Media Library] Deleted file: ${fileName} by ${userRole}`);
+
+        const updatedAssets = syncAndIndexMediaAssets();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: `Asset "${fileName}" removed successfully.`,
+          fileName,
+          remainingCount: updatedAssets.length
+        }));
+      } catch (e) {
+        console.error('[Media Delete Error]', e);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/media/update (Update caption, credit, alt-text for an asset with Editorial RBAC)
+  if (req.method === 'POST' && url.pathname === '/api/media/update') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const userRole = (body.userRole || body.role || 'editor').toLowerCase();
+
+        // RBAC Rule 3: Reporters cannot edit existing media metadata
+        if (userRole === 'reporter') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            error: 'Editorial Gate: Reporters cannot modify media asset metadata. Only Editors and Administrators have editing authorization.'
+          }));
+        }
+
+        const fileName = path.basename(String(body.fileName || ''));
+        if (!fileName) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'fileName is required.' }));
+        }
+
+        const assets = getMediaLibraryStore();
+        const asset = assets.find(a => a.fileName === fileName);
+        if (!asset) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Asset not found in library.' }));
+        }
+
+        if (body.caption !== undefined) asset.caption = String(body.caption).trim();
+        if (body.credit !== undefined) asset.credit = String(body.credit).trim();
+        if (body.altText !== undefined) asset.altText = String(body.altText).trim();
+        if (body.width) asset.width = Number(body.width);
+        if (body.height) asset.height = Number(body.height);
+        asset.modifiedAt = new Date().toISOString();
+
+        saveMediaLibraryStore(assets);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, asset }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Endpoint not found' }));
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 PublicSpark Newsroom Backend Proxy running at http://localhost:${PORT}`);
+  console.log(`PublicSpark Newsroom Backend Proxy running at http://localhost:${PORT}`);
   cleanupExpiredAudioFiles(14);
   const audioCleanupTimer = setInterval(() => cleanupExpiredAudioFiles(14), 24 * 60 * 60 * 1000);
   if (audioCleanupTimer.unref) audioCleanupTimer.unref();

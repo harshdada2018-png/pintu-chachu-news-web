@@ -1,4 +1,4 @@
-# 🏗️ PublicSpark — Complete Backend Architecture & Mermaid System Guide
+#  PublicSpark — Complete Backend Architecture & Mermaid System Guide
 
 **Project:** PublicSpark Digital Newsroom Platform  
 **Backend Runtime:** Node.js Native HTTP Proxy Server (`server/server.js`) on `http://localhost:5000`  
@@ -8,7 +8,7 @@
 
 ---
 
-## 🌟 UNIFIED MASTER BACKEND ARCHITECTURE DIAGRAM (Pura Backend Ek Hi Diagram Me)
+##  UNIFIED MASTER BACKEND ARCHITECTURE DIAGRAM (Pura Backend Ek Hi Diagram Me)
 
 Is single diagram me **Frontend SPA**, **Node.js Native Proxy Gateway (`server/server.js`)**, **All REST API Endpoints**, **In-Memory Caches**, **Geolocation & Fallback Engines**, **All External AI Providers (TTS & Translation Tiers)**, aur **Multi-DB Storage Infrastructure (Supabase, Turso, Cloudflare R2)** ko ek saath connect karke dikhaya gaya hai:
 
@@ -18,17 +18,17 @@ flowchart TD
     %% UNIFIED MASTER BACKEND ARCHITECTURE DIAGRAM
     %% ==========================================
 
-    subgraph CLIENT_LAYER ["📱 1. Client Browser SPA Layer (React 19 / Vite)"]
+    subgraph CLIENT_LAYER [" 1. Client Browser SPA Layer (React 19 / Vite)"]
         UI_SPA["React SPA UI\n(Reader & Admin)"]
         Audio_Player["Audio Player & Speech Engine"]
         Trans_Comp["18-Lang Switcher"]
         Analytics_Tracker["Analytics & Heartbeat Client\n(Sends ping every 15s)"]
     end
 
-    subgraph BACKEND_GATEWAY ["🚀 2. Node.js Native HTTP Proxy Server (server/server.js on Port 5000)"]
+    subgraph BACKEND_GATEWAY [" 2. Node.js Native HTTP Proxy Server (server/server.js on Port 5000)"]
         HTTP_Router{"HTTP API Router\n(CORS & Secret Key Shield)"}
 
-        subgraph RAM_CACHES ["⚡ In-Memory RAM Caching & State Store"]
+        subgraph RAM_CACHES [" In-Memory RAM Caching & State Store"]
             Cache_Audio[("serverAudioCache\nMap<cacheKey, Base64_MP3>")]
             Cache_Trans[("serverTranslationCache\nMap<targetLang:text, Translation>")]
             Cache_Progress[("serverAudioProgressMap\nMap<article_lang, PositionSecs>")]
@@ -38,13 +38,13 @@ flowchart TD
             Map_DailyStats[("articleStatsDaily\nMap<articleId_date, Summary>")]
         end
 
-        subgraph CORE_ENGINES ["🧠 Backend Processing & Geolocation Engines"]
+        subgraph CORE_ENGINES [" Backend Processing & Geolocation Engines"]
             Engine_Geo["IP Geolocation Resolver\n(resolveIpToCountry)\ncf-ipcountry -> x-forwarded-for -> IP Hash"]
             Engine_TTSChunker["Safe Audio Chunker\n(splitTextIntoSafeChunks 140 chars\n+ Base64 MP3 Buffer Stitcher)"]
             Engine_Cron["Daily Aggregation Cron Job\n(setInterval 30 mins -> Aggregates Views,\nUniques, Avg Duration & Countries)"]
         end
 
-        subgraph API_ENDPOINTS ["🔌 REST API Endpoint Handlers"]
+        subgraph API_ENDPOINTS [" REST API Endpoint Handlers"]
             EP_TTS["POST /api/tts\n(18-Language Voice Router)"]
             EP_Translate["POST /api/translate\n(4-Tier Fallback Translator)"]
             EP_Views["POST /api/views/start\nPOST /api/views/heartbeat\nPOST /api/views/end"]
@@ -56,7 +56,7 @@ flowchart TD
         end
     end
 
-    subgraph AI_SERVICES ["🤖 3. External AI APIs & Multi-Tier Fallbacks"]
+    subgraph AI_SERVICES [" 3. External AI APIs & Multi-Tier Fallbacks"]
         subgraph TTS_PROVIDERS ["Text-To-Speech Providers"]
             AI_GoogleTTS["Google Cloud TTS API\n(Neural2 & Wavenet Models)"]
             AI_Sarvam["Sarvam AI API (bulbul:v1)\n(Odia & Assamese Speakers)"]
@@ -71,7 +71,7 @@ flowchart TD
         end
     end
 
-    subgraph STORAGE_TIERS ["🗄️ 4. Multi-Tier Infrastructure & Database System"]
+    subgraph STORAGE_TIERS [" 4. Multi-Tier Infrastructure & Database System"]
         DB_Supabase[("Tier 1: Supabase PostgreSQL (Master DB)\n• Articles, Categories, User Auth, Roles\n• Row Level Security (RLS) & WebSockets\n• Free Limit: 500 MB DB / 50k MAU")]
         DB_Turso[("Tier 2: Turso LibSQL Edge SQLite\n• 18-Language Cached Article Translations\n• Ultra Low Latency (<10ms Edge Reads)\n• Free Limit: 9 GB / 1 Billion Reads/mo")]
         Storage_R2[("Tier 3: Cloudflare R2 Object Storage\n• Generated MP3 Audio Files & WebP Images\n• Zero Egress Bandwidth Fees\n• Free Limit: 10 GB Storage / 10M Ops")]
@@ -149,7 +149,7 @@ flowchart TD
 
 ---
 
-## 📌 Executive Summary (Backend Kaise Kaam Kar Raha Hai?)
+##  Executive Summary (Backend Kaise Kaam Kar Raha Hai?)
 
 PublicSpark ka backend zero-cost, high-performance architecture par design kiya gaya hai. Isme koi heavy Express ya framework installation ki zaroorat nahi hai. Yeh poora backend Node.js ke standard `node:http` module par chal raha hai aur iske 5 main pillars hain:
 
@@ -161,7 +161,7 @@ PublicSpark ka backend zero-cost, high-performance architecture par design kiya 
 
 ---
 
-## ⚡ 2. Backend API Endpoint Map
+##  2. Backend API Endpoint Map
 
 Backend Proxy server par all available REST API Endpoints and unki responsibility:
 
@@ -201,7 +201,7 @@ mindmap
 
 ---
 
-## 🎙️ 3. Text-to-Speech (TTS) Flow & Voice Routing Engine
+##  3. Text-to-Speech (TTS) Flow & Voice Routing Engine
 
 Backend `/api/tts` endpoint 18 languages ko support karta hai. Odia (`or`) aur Assamese (`as`) ke liye **Sarvam AI** provider selected hai, baki languages ke liye **Google Cloud TTS** Neural2/Wavenet voices selected hain. Agar official keys miss ho jayein, toh backend 140-character safe chunking algorithm se high-definition fallback audio synthesize karke Base64 Data URI serve karta hai.
 
@@ -233,13 +233,13 @@ Backend `/api/tts` endpoint 18 languages ko support karta hai. Odia (`or`) aur A
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as 👤 Reader
-    participant SPA as 📱 Frontend SPA
-    participant Server as 🚀 server.js Proxy
-    participant Cache as ⚡ serverAudioCache
-    participant Sarvam as 🤖 Sarvam AI API
-    participant Google as 🤖 Google Cloud TTS
-    participant Fallback as 🔄 Google Translate TTS Fallback
+    actor User as  Reader
+    participant SPA as  Frontend SPA
+    participant Server as  server.js Proxy
+    participant Cache as  serverAudioCache
+    participant Sarvam as  Sarvam AI API
+    participant Google as  Google Cloud TTS
+    participant Fallback as  Google Translate TTS Fallback
 
     User->>SPA: Click "Play Audio" Button
     SPA->>Server: POST /api/tts { articleId, text, langCode }
@@ -285,7 +285,7 @@ sequenceDiagram
 
 ---
 
-## 🌐 4. Multi-Tier Translation Engine Flow
+##  4. Multi-Tier Translation Engine Flow
 
 Backend ka `/api/translate` endpoint 4 levels par translation fallbacks try karta hai. Single point of failure bilkul nahi hai:
 
@@ -320,7 +320,7 @@ flowchart TD
 
 ---
 
-## 📊 5. Real-Time Analytics, Heartbeat & Geolocation System
+##  5. Real-Time Analytics, Heartbeat & Geolocation System
 
 PublicSpark newsroom real-time engagement monitoring support karta hai. Reader activity teen simple events se capture hoti hai:
 
@@ -345,13 +345,13 @@ PublicSpark newsroom real-time engagement monitoring support karta hai. Reader a
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Reader as 👤 Reader
-    participant Client as 📱 Frontend Analytics Client
-    participant Server as 🚀 server.js Backend
-    participant SessMap as 🧠 activeViewSessions
-    participant ViewsArray as 📜 articleViews Array
-    participant LikesArray as ❤️ articleLikes Array
-    participant DailyMap as 📊 articleStatsDaily Map
+    actor Reader as  Reader
+    participant Client as  Frontend Analytics Client
+    participant Server as  server.js Backend
+    participant SessMap as  activeViewSessions
+    participant ViewsArray as  articleViews Array
+    participant LikesArray as  articleLikes Array
+    participant DailyMap as  articleStatsDaily Map
 
     Reader->>Client: Open Article Page
     Client->>Server: POST /api/views/start { articleId, userId }
@@ -381,7 +381,7 @@ sequenceDiagram
 
 ---
 
-## ⏱️ 6. Daily Aggregation Cron Job Engine
+##  6. Daily Aggregation Cron Job Engine
 
 Server backend par ek automated cron job background me chalti hai har 30 minute me:
 
@@ -401,7 +401,7 @@ setInterval(runDailyAggregationJob, 30 * 60 * 1000);
 
 ---
 
-## 🗄️ 7. Multi-Tier Database & Storage Strategy (Which DB Where?)
+##  7. Multi-Tier Database & Storage Strategy (Which DB Where?)
 
 Backend architecture me zero-cost rule and infinite performance ensure karne ke liye storage ko 4 specific specialized tiers me divide kiya gaya hai:
 
@@ -449,7 +449,7 @@ erDiagram
 
 ---
 
-## 🧹 8. Storage Diagnostics & Automatic Safeguards
+##  8. Storage Diagnostics & Automatic Safeguards
 
 Server me live RAM usage metrics and cache management ke liye endpoints provided hain:
 
@@ -483,7 +483,7 @@ Server In-Memory RAM caches (`serverAudioCache`, `serverTranslationCache`, `serv
 
 ---
 
-## 🛠️ Summary & Developer Verification
+##  Summary & Developer Verification
 
 Yeh backend system fully self-contained hai (`server/server.js`), zero external libraries se run hota hai (`node server/server.js`), aur pure production standards ke mutabiq multi-level fallback strategies include karta hai.
 

@@ -41,11 +41,11 @@ In a digital newsroom, **Audio and Text can be managed with rolling caches or sm
 ## 3. Storage Provider Comparison Matrix
 
 | Provider | Free Tier Allowance | International Credit Card Required? | Formats Supported | CDN Included? | Lifetime News Photos (at 100KB) |
-| :--- | :---: | :---: | :--- | :---: | :---: |
-| **Local Server (`/uploads`)** | Shared Host Disk (1-10 GB) | ❌ **No** | Images, Audio, Any file | Local Express / Node server | ~10,000 photos per GB |
-| **Cloudinary** | **25 Credits / month** (~15–25 GB) | ❌ **No** (Email/Google login only) | **Images, Audio (MP3), Videos (MP4), PDFs** | ✅ **Global Akamai/Fastly CDN** | **~2,50,000 Photos** (20+ Years capacity) |
-| **Supabase Storage** | **1 GB** dedicated storage | ❌ **No** | Any binary file | ✅ Cloudflare CDN | ~10,000 photos |
-| **ImgBB API** | Unlimited uploads (32 MB max per image) | ❌ **No** | Images only (No Audio/Video) | ✅ Fast CDN | Unlimited |
+| :--- |  :---: | :---: | :--- | :---: | :---: |
+| **Local Server (`/uploads`)** | Shared Host Disk (1-10 GB) | [No] **No** | Images, Audio, Any file | Local Express / Node server | ~10,000 photos per GB |
+| **Cloudinary** | **25 Credits / month** (~15–25 GB) | [No] **No** (Email/Google login only) | **Images, Audio (MP3), Videos (MP4), PDFs** | [Completed] **Global Akamai/Fastly CDN** | **~2,50,000 Photos** (20+ Years capacity) |
+| **Supabase Storage** | **1 GB** dedicated storage | [No] **No** | Any binary file | [Completed] Cloudflare CDN | ~10,000 photos |
+| **ImgBB API** | Unlimited uploads (32 MB max per image) | [No] **No** | Images only (No Audio/Video) | [Completed] Fast CDN | Unlimited |
 
 ---
 

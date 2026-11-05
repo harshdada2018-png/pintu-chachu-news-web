@@ -146,18 +146,7 @@ export default function PollManager() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
       {/* HEADER ACTION BAR */}
-      <div style={{
-        background: 'var(--bg-surface)',
-        padding: '1.25rem 1.5rem',
-        borderRadius: 'var(--radius-md)',
-        border: '1px solid var(--border-medium)',
-        boxShadow: 'var(--shadow-sm)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '1rem'
-      }}>
+      <div className="poll-header-card">
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <div style={{
@@ -168,15 +157,16 @@ export default function PollManager() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'var(--accent-indigo)'
+              color: 'var(--accent-indigo)',
+              flexShrink: 0
             }}>
               <BarChart3 size={18} />
             </div>
             <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '900', color: 'var(--text-main)', margin: 0 }}>
+              <h2 style={{ fontSize: 'clamp(1.1rem, 4vw, 1.25rem)', fontWeight: '900', color: 'var(--text-main)', margin: 0, lineHeight: 1.25 }}>
                 Daily Reader Poll Manager (दैनिक पाठक पोल)
               </h2>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', margin: '0.15rem 0 0 0' }}>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', margin: '0.15rem 0 0 0', lineHeight: 1.35 }}>
                 Control live homepage public voting, customize question/options, and monitor reader engagement.
               </p>
             </div>
@@ -184,7 +174,7 @@ export default function PollManager() {
         </div>
 
         {/* Master ON/OFF Switch & Save */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="poll-header-actions">
           {/* Toggle Switch */}
           <button
             type="button"
@@ -193,7 +183,7 @@ export default function PollManager() {
               setPoll(prev => ({ ...prev, enabled: nextState }));
             }}
             style={{
-              padding: '0.5rem 0.9rem',
+              padding: '0.5rem 0.85rem',
               borderRadius: 'var(--radius-sm)',
               border: poll.enabled ? '2px solid var(--accent-emerald)' : '1px solid var(--border-medium)',
               background: poll.enabled ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-secondary)',
@@ -201,8 +191,9 @@ export default function PollManager() {
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '0.45rem',
-              fontSize: '0.85rem',
+              fontSize: '0.82rem',
               fontWeight: '800',
               transition: 'all 0.15s ease'
             }}
@@ -219,11 +210,12 @@ export default function PollManager() {
             disabled={saving}
             className="btn btn-primary"
             style={{
-              padding: '0.55rem 1.25rem',
-              fontSize: '0.85rem',
+              padding: '0.55rem 1.15rem',
+              fontSize: '0.82rem',
               fontWeight: '800',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '0.45rem',
               background: 'var(--accent-indigo)',
               color: '#fff',
@@ -261,50 +253,38 @@ export default function PollManager() {
       <div className="poll-desk-layout">
         
         {/* LEFT COLUMN: EDIT FORM */}
-        <div style={{
-          background: 'var(--bg-surface)',
-          padding: '1.5rem',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--border-medium)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1.5rem'
-        }}>
+        <div className="poll-edit-card">
           
           {/* Visibility Banner Status */}
-          <div style={{
-            padding: '0.75rem 1rem',
-            borderRadius: 'var(--radius-sm)',
+          <div className="poll-status-banner" style={{
             background: poll.enabled ? 'rgba(16, 185, 129, 0.08)' : 'rgba(100, 116, 139, 0.08)',
-            borderLeft: `4px solid ${poll.enabled ? 'var(--accent-emerald)' : 'var(--text-subtle)'}`,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
+            borderLeft: `4px solid ${poll.enabled ? 'var(--accent-emerald)' : 'var(--text-subtle)'}`
           }}>
-            <div>
-              <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)', lineHeight: 1.3 }}>
                 Poll Status: {poll.enabled ? 'Active & Visible' : 'Disabled & Hidden'}
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.2rem', lineHeight: 1.35, wordBreak: 'break-word' }}>
                 {poll.enabled 
                   ? 'Readers see this poll on the homepage sidebar.'
                   : 'Poll card is completely hidden from public view with zero empty space.'}
               </div>
             </div>
-            <span style={{
+            <span className="poll-status-badge" style={{
               fontSize: '0.72rem',
               fontWeight: '800',
               padding: '0.2rem 0.6rem',
               borderRadius: '999px',
               background: poll.enabled ? 'var(--accent-emerald)' : 'var(--text-subtle)',
-              color: '#fff'
+              color: '#fff',
+              flexShrink: 0
             }}>
               {poll.enabled ? 'LIVE' : 'OFF'}
             </span>
           </div>
 
           {/* 1. QUESTION INPUT */}
-          <div>
+          <div style={{ width: '100%', boxSizing: 'border-box' }}>
             <label style={{
               fontSize: '0.88rem',
               fontWeight: '800',
@@ -321,6 +301,8 @@ export default function PollManager() {
               placeholder="e.g. क्या आप मानते हैं कि AI डिजिटल पत्रकारिता को बेहतर बना रहा है?"
               style={{
                 width: '100%',
+                maxWidth: '100%',
+                boxSizing: 'border-box',
                 padding: '0.75rem',
                 borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border-medium)',
@@ -333,15 +315,15 @@ export default function PollManager() {
                 resize: 'vertical'
               }}
             />
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '0.25rem' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '0.25rem', lineHeight: 1.3 }}>
               Write in Hindi, English, or any regional language. Keep questions clear and thought-provoking.
             </div>
           </div>
 
           {/* 2. OPTIONS EDITOR */}
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-              <label style={{ fontSize: '0.88rem', fontWeight: '800', color: 'var(--text-main)' }}>
+          <div style={{ width: '100%', boxSizing: 'border-box' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+              <label style={{ fontSize: '0.88rem', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
                 Poll Options ({poll.options.length})
               </label>
               {poll.options.length < 5 && (
@@ -359,7 +341,8 @@ export default function PollManager() {
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.3rem'
+                    gap: '0.3rem',
+                    flexShrink: 0
                   }}
                 >
                   <Plus size={14} /> Add Option
@@ -367,91 +350,60 @@ export default function PollManager() {
               )}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', width: '100%' }}>
               {poll.options.map((opt, index) => {
                 const pct = totalCalculatedVotes > 0 
                   ? Math.round(((opt.votes || 0) / totalCalculatedVotes) * 100) 
                   : 0;
 
                 return (
-                  <div
-                    key={opt.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.6rem',
-                      background: 'var(--bg-secondary)',
-                      padding: '0.5rem 0.75rem',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-light)'
-                    }}
-                  >
-                    <span style={{
-                      fontSize: '0.75rem',
-                      fontWeight: '800',
-                      color: 'var(--text-subtle)',
-                      width: '24px',
-                      textAlign: 'center',
-                      flexShrink: 0
-                    }}>
-                      #{index + 1}
-                    </span>
-
-                    <input
-                      type="text"
-                      value={opt.label}
-                      onChange={(e) => handleOptionChange(opt.id, e.target.value)}
-                      placeholder={`Option ${index + 1} text`}
-                      style={{
-                        flex: 1,
-                        padding: '0.45rem 0.65rem',
-                        fontSize: '0.85rem',
-                        fontWeight: '600',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--border-medium)',
-                        background: 'var(--bg-main)',
-                        color: 'var(--text-main)'
-                      }}
-                    />
-
-                    {/* Current Votes Badge */}
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'flex-end',
-                      flexShrink: 0,
-                      minWidth: '65px'
-                    }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: '800', color: 'var(--text-main)' }}>
-                        {opt.votes || 0} votes
-                      </span>
-                      <span style={{ fontSize: '0.68rem', fontWeight: '700', color: 'var(--accent-indigo)' }}>
-                        {pct}%
-                      </span>
+                  <div key={opt.id} className="poll-option-item">
+                    {/* Main input & index */}
+                    <div className="poll-option-main">
+                      <span className="poll-option-index">#{index + 1}</span>
+                      <input
+                        type="text"
+                        value={opt.label}
+                        onChange={(e) => handleOptionChange(opt.id, e.target.value)}
+                        placeholder={`Option ${index + 1} text`}
+                        className="poll-option-input"
+                      />
+                      {poll.options.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteOption(opt.id)}
+                          className="poll-option-delete show-on-mobile-inline"
+                          title="Delete option"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
 
-                    {/* Delete Option Button */}
-                    {poll.options.length > 2 && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteOption(opt.id)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--accent-crimson)',
-                          cursor: 'pointer',
-                          padding: '0.3rem',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}
-                        title="Delete option"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
+                    {/* Stats & Desktop Delete */}
+                    <div className="poll-option-meta">
+                      <span className="poll-option-meta-label show-on-mobile-inline" style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', fontWeight: '600' }}>
+                        Reader Responses:
+                      </span>
+                      <div className="poll-option-stats">
+                        <span className="poll-option-votes">
+                          {opt.votes || 0} votes
+                        </span>
+                        <span className="poll-option-pct">
+                          {pct}%
+                        </span>
+                      </div>
+                      {poll.options.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteOption(opt.id)}
+                          className="poll-option-delete hide-on-mobile"
+                          title="Delete option"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -464,7 +416,9 @@ export default function PollManager() {
             paddingTop: '1.25rem',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.75rem'
+            gap: '0.75rem',
+            width: '100%',
+            boxSizing: 'border-box'
           }}>
             <div style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--text-main)' }}>
               New Poll Topic & Vote Reset
@@ -502,25 +456,28 @@ export default function PollManager() {
                 borderRadius: 'var(--radius-sm)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.6rem'
+                gap: '0.6rem',
+                width: '100%',
+                boxSizing: 'border-box'
               }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--accent-crimson)' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: '800', color: 'var(--accent-crimson)', lineHeight: 1.35 }}>
                   Are you sure? This will wipe all {totalCalculatedVotes} votes back to 0.
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     onClick={() => handleSave(true)}
                     disabled={saving}
                     style={{
-                      padding: '0.4rem 0.85rem',
+                      padding: '0.45rem 0.85rem',
                       borderRadius: 'var(--radius-sm)',
                       background: 'var(--accent-crimson)',
                       color: '#fff',
                       border: 'none',
                       fontSize: '0.78rem',
                       fontWeight: '800',
-                      cursor: saving ? 'not-allowed' : 'pointer'
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      flex: '1 1 auto'
                     }}
                   >
                     Yes, Reset Votes to 0 & Save
@@ -529,14 +486,15 @@ export default function PollManager() {
                     type="button"
                     onClick={() => setShowResetConfirm(false)}
                     style={{
-                      padding: '0.4rem 0.85rem',
+                      padding: '0.45rem 0.85rem',
                       borderRadius: 'var(--radius-sm)',
                       background: 'var(--bg-main)',
                       color: 'var(--text-subtle)',
                       border: '1px solid var(--border-medium)',
                       fontSize: '0.78rem',
                       fontWeight: '700',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      flex: '1 1 auto'
                     }}
                   >
                     Cancel
@@ -548,14 +506,8 @@ export default function PollManager() {
         </div>
 
         {/* RIGHT COLUMN: REAL-TIME HOMEPAGE PREVIEW */}
-        <div style={{
-          position: 'sticky',
-          top: '1.5rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="poll-preview-sticky">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
             <span style={{ fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-subtle)' }}>
               Live Homepage Preview
             </span>
@@ -564,8 +516,8 @@ export default function PollManager() {
                 type="button"
                 onClick={() => setPreviewVoted(false)}
                 style={{
-                  padding: '0.2rem 0.55rem',
-                  fontSize: '0.72rem',
+                  padding: '0.25rem 0.6rem',
+                  fontSize: '0.74rem',
                   fontWeight: '700',
                   borderRadius: '4px',
                   border: '1px solid',
@@ -581,8 +533,8 @@ export default function PollManager() {
                 type="button"
                 onClick={() => setPreviewVoted(true)}
                 style={{
-                  padding: '0.2rem 0.55rem',
-                  fontSize: '0.72rem',
+                  padding: '0.25rem 0.6rem',
+                  fontSize: '0.74rem',
                   fontWeight: '700',
                   borderRadius: '4px',
                   border: '1px solid',
