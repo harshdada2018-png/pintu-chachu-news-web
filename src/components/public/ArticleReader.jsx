@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Eye, Share2, Bookmark, ArrowLeft, ArrowRight, ShieldCheck, Flame, Radio, Languages, Loader2, Heart, Copy, Check, Send, X, ExternalLink, ThumbsUp, Lightbulb, Zap, Type, Sparkles, CheckCircle, RefreshCw, FileText, BookOpen, AlertCircle, Award } from 'lucide-react';
+import { Clock, Eye, Share2, Bookmark, ArrowLeft, ArrowRight, ShieldCheck, Flame, Radio, Languages, Loader2, Heart, Copy, Check, Send, X, ExternalLink, ThumbsUp, Lightbulb, Zap, Type, Sparkles, CheckCircle, RefreshCw, FileText, BookOpen, AlertCircle, Award, Calendar } from 'lucide-react';
 import TextToSpeech from './TextToSpeech';
 import VideoEmbedPlayer from './VideoEmbedPlayer';
 import MarkdownRenderer from '../../utils/markdownRenderer';
@@ -10,6 +10,8 @@ import { stopAudioSpeech, clearArticleAudioCache } from '../../services/speechEn
 import { t, translateCategoryName } from '../../services/uiTranslations';
 import { buildWhatsAppShareText, getWhatsAppShareUrl, copyFormattedShareCard } from '../../services/shareService';
 import { getMidArticleStory, getEndArticleStories } from '../../services/recommendationService';
+import { calculateReadingTime } from '../../utils/readingTime';
+import { isArticleOffline, toggleArticleOffline } from '../../services/bookmarkStorageService';
 
 const WhatsAppIcon = ({ size = 16, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -177,11 +179,19 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
     });
   }, [article?.id]);
 
-  // Fetch Bookmark status for Article
+  // Fetch Bookmark / Offline status for Article
   useEffect(() => {
     if (!article || !article.id) return;
-    const localBookmarked = localStorage.getItem(`ps_bookmark_${article.id}`) === 'true';
-    setIsBookmarked(localBookmarked);
+    setIsBookmarked(isArticleOffline(article.id));
+
+    const handleStorageChange = (e) => {
+      if (!e.detail || !e.detail.articleId || String(e.detail.articleId) === String(article.id)) {
+        setIsBookmarked(isArticleOffline(article.id));
+      }
+    };
+
+    window.addEventListener('ps_offline_bookmarks_changed', handleStorageChange);
+    return () => window.removeEventListener('ps_offline_bookmarks_changed', handleStorageChange);
   }, [article?.id]);
 
   // Task 23 Subtopic B: Background Auto-Polling for Active Live Blogs
@@ -246,11 +256,14 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
 
   const handleBookmarkToggle = () => {
     if (!article || !article.id) return;
-    const nextState = !isBookmarked;
-    setIsBookmarked(nextState);
-    localStorage.setItem(`ps_bookmark_${article.id}`, String(nextState));
+    const targetArticle = activeArticle || article;
+    const res = toggleArticleOffline(targetArticle);
+    setIsBookmarked(res.isSaved);
     if (onShowToast) {
-      onShowToast(nextState ? `${t('saved', currentLanguage)}: ${t('savedBookmarks', currentLanguage)}` : t('remove', currentLanguage));
+      onShowToast(res.isSaved 
+        ? `${t('saved', currentLanguage)}: ${t('savedBookmarks', currentLanguage)} (Offline Ready)` 
+        : t('remove', currentLanguage)
+      );
     }
   };
 
@@ -316,6 +329,9 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
   const safeDisplayArticle = isCorruptedContent ? article : (displayArticle || article);
   const activeArticle = showOriginal ? article : safeDisplayArticle;
   const activeLang = showOriginal ? 'hi' : currentLanguage;
+
+  // Task 27 Subtopic B: Dynamic Script-Aware Reading Duration Badge
+  const readingDuration = calculateReadingTime(activeArticle?.content || '', activeLang);
 
   // Task 25 Subtopic A: Fact-Check Data Model & Resolution
   const factCheck = activeArticle?.fact_check || {
@@ -503,15 +519,15 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
         </div>
       </div>
 
-      {/* Lazy Translation Status Banner */}
+      {/* Editorial Translation Progress Banner */}
       {isTranslating && (
         <div style={{
-          background: 'var(--accent-indigo-bg, rgba(99, 102, 241, 0.08))',
-          border: '1px solid var(--accent-indigo, #6366f1)',
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-medium)',
           color: 'var(--text-main)',
-          padding: '0.85rem 1.25rem',
+          padding: '0.65rem 1rem',
           borderRadius: 'var(--radius-sm)',
-          marginBottom: '1.5rem',
+          marginBottom: '1.25rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -519,13 +535,13 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
           boxShadow: 'var(--shadow-sm)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-            <Loader2 size={18} className="spin-animation" color="var(--accent-indigo)" />
-            <span style={{ fontWeight: '800', fontSize: '0.95rem' }}>
-              अनुवाद बन रहा है... (Translating...)
+            <Loader2 size={16} className="spin-animation" color="var(--accent-crimson)" />
+            <span style={{ fontWeight: '700', fontSize: '0.85rem' }}>
+              {t('translatingNotice', currentLanguage) || 'Translating into selected language...'}
             </span>
           </div>
-          <span style={{ fontSize: '0.825rem', color: 'var(--text-subtle)' }}>
-            मूल समाचार प्रदर्शित हो रहा है (Hindi view)
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+            Broadsheet Reader Engine
           </span>
         </div>
       )}
@@ -533,7 +549,7 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
       {/* Top / Header Leaderboard Ad Unit (Evaluated by Backend for this Article) */}
       <PartnerUnit position="header" category={activeArticle.category} articleId={activeArticle.id} />
 
-      <div>
+      <div style={{ opacity: isTranslating ? 0.6 : 1, transition: 'opacity 0.25s ease' }}>
           {/* Category Badge & Breaking Flag */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
             <span className="story-category-tag">{translateCategoryName(activeArticle.category, currentLanguage)}</span>
@@ -627,10 +643,13 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
             </div>
 
             <div className="reader-byline-meta">
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                <Clock size={13} /> {activeArticle.published_at} ({activeArticle.reading_time_mins} {t('minsRead', currentLanguage)})
+              <span className="byline-meta-item byline-published-at" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                <Calendar size={13} /> {activeArticle.published_at || t('justNow', currentLanguage)}
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: '600', color: 'var(--text-main)' }}>
+              <span className="reader-reading-badge">
+                <Clock size={12} color="var(--accent-crimson)" /> {readingDuration.minutes} {t('minsRead', currentLanguage)}
+              </span>
+              <span className="byline-meta-item byline-views" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: '600', color: 'var(--text-main)' }}>
                 <Eye size={13} color="var(--accent-crimson)" /> {(viewsCount || 1240).toLocaleString()} {t('views', currentLanguage)}
               </span>
               <button
@@ -1393,8 +1412,8 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
                     color: 'var(--text-subtle)'
                   }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                      <Clock size={12} />
-                      {story.read_time ? `${story.read_time} min read` : '2 min read'}
+                      <Clock size={12} color="var(--accent-crimson)" />
+                      {calculateReadingTime(story.content || '', currentLanguage).minutes} {t('minsRead', currentLanguage)}
                     </span>
                     <span style={{
                       display: 'inline-flex',

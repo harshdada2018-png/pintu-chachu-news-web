@@ -42,13 +42,14 @@
 | 24 | **WhatsApp Smart Formatted Share Card & Viral Bulletin Engine** | Reader Engagement & Virality | `Completed` | Custom message builder in `src/services/shareService.js` (bold headline, 3 bullet points, dateline, clean URL), 1-tap WhatsApp buttons in ArticleReader top/bottom toolbars, Share Modal with live bulletin preview & 1-click clipboard copy, and direct feed card WhatsApp share buttons in `src/App.jsx`. Verified via automated tests (`test_share_service.mjs`), `npm run build` (556ms), and `npm run lint` (0 errors). |
 | 25 | **Fact-Check & Source Credibility Box** | Reader Trust & Verification | `Completed` | Interactive Credibility Shield badge and Editorial Fact-Check Dossier modal (`FactCheckDossierModal`) in `ArticleReader.jsx`, broadsheet Official Sources & Gazette Citations Box with document classification tags, category-based institutional fallback (PIB, Gazette of India, ISRO Bulletin, RBI), 1-click presets in `StoryEditorModal` and `ReporterWorkspace.jsx`, and certification in `EditorWorkspace.jsx`. Verified via 33 automated tests (`test_task_25_fact_check.mjs`), `npm run build` (637ms), and `npm run lint` (0 errors). |
 | 26 | **In-Article Smart Related Stories ("Ye Bhi Padhein")** | Reader Retention & Discovery | `Completed` | Category-matched scoring algorithm in `src/services/recommendationService.js`, mid-article inline callout ("ये भी पढ़ें") after paragraph 4 in `markdownRenderer.jsx`, and 3-card broadsheet responsive grid at the end of the article with 1-tap navigation and smooth scroll. Verified via 19 automated tests, `npm run build` (628ms), and `npm run lint` (0 errors). |
+| 27 | **Hairline Reading Progress Bar & "X Min Read" Badge** | Reader Experience & Polish | `Completed` | 60fps butter-smooth top reading progress bar (`scrollProgress %`) with mobile 52px app bar alignment, plus script-aware reading duration utility (`readingTime.js`) calibrated for Latin (200 WPM), Indic (160 WPM), and CJK (350 CPM) with byline clock badge, related story cards duration, and backend auto-calculation. Verified via 12 automated unit tests across subtopics, `npm run build` (673ms, exit code 0), and `npm run lint` (0 errors). |
 
 ---
 
 ## Section 2: In-Progress Tasks (Jin Par Kaam Chal Raha Hai)
 
-- **Currently In Progress**: **Task 27 - Hairline Reading Progress Bar & "X Min Read" Badge** (Subtopic A Completed & Verified; Subtopic B Planned for after approval).
-- **Next Task in Queue**: Task 27 - Subtopic B: Calculated reading duration badge.
+- **Currently In Progress**: **Task 28: Saved Stories / Bookmark (Offline Reading Mode)** (Subtopic A Completed & Verified; Subtopic B awaiting Boss approval).
+- **Next Task in Queue**: Task 28 - Subtopic B: Dedicated "Saved Stories" reading drawer.
 
 ---
 
@@ -128,13 +129,22 @@
   - [x] *Subtopic A*: Category-matched recommendation algorithm. `Completed`
   - [x] *Subtopic B*: Mid-article and end-of-article broadsheet related cards. `Completed`
 
-- [/] **Task 27: Hairline Reading Progress Bar & "X Min Read" Badge** `In Progress`
+- [x] **Task 27: Hairline Reading Progress Bar & "X Min Read" Badge** `Completed`
   - [x] *Subtopic A*: Top broadsheet scroll indicator line (`scrollProgress %`). `Completed`
-  - [ ] *Subtopic B*: Calculated reading duration badge. `Planned`
+  - [x] *Subtopic B*: Calculated reading duration badge. `Completed`
 
-- [ ] **Task 28: Saved Stories / Bookmark (Offline Reading Mode)**
-  - *Subtopic A*: Offline storage of bookmarked stories via `localStorage`.
-  - *Subtopic B*: Dedicated "Saved Stories" reading drawer.
+- [/] **Task 28: Saved Stories / Bookmark (Offline Reading Mode)** `In Progress`
+  - [x] *Subtopic A*: Offline storage of bookmarked stories via `localStorage`. `Completed`
+  - [ ] *Subtopic B*: Dedicated "Saved Stories" reading drawer. `Planned`
+
+- [x] **Super-Strict Critic UI/UX & Architecture Audit Fixes** `Completed`
+  - [x] *Fix 1*: AI-slop masthead gradient text-clipping removed; restored solid obsidian broadsheet letterpress ink.
+  - [x] *Fix 2*: Mobile navigation touch targets upgraded to 40px–44px standard with 8px adjacent spacing in `Header.jsx`.
+  - [x] *Fix 3*: Synchronized all 5 reading duration card calculations in `App.jsx` with `calculateReadingTime`.
+  - [x] *Fix 4*: Replaced 14px mobile bubble radius on hero card with 4px broadsheet token (`--radius-bento`).
+  - [x] *Fix 5*: Purged all 184 lines of dead Vite starter boilerplate CSS from `src/App.css`.
+  - [x] *Fix 6*: Enforced `font-variant-numeric: tabular-nums` on metadata counters and eliminated subpixel hover jitter.
+  - [x] *Fix 7*: Replaced hardcoded Devanagari translation banner with smooth opacity transition in `ArticleReader.jsx`.
 
 - [ ] **Task 29: Statutory Grievance Redressal / Complaint Form (IT Rules 2021 India)**
   - *Subtopic A*: Reader complaint submission modal with category & grievance officer routing.

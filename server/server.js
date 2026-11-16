@@ -4374,6 +4374,20 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
+        // Task 27 Subtopic B: Dynamic Reading Duration Calculation
+        if (body.content) {
+          const rawWords = String(body.content)
+            .replace(/!\[.*?\]\(.*?\)/g, '')
+            .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+            .replace(/[#*`_~><[\]()]/g, ' ')
+            .split(/\s+/)
+            .filter(Boolean);
+          const isIndic = ['hi', 'mr', 'bn', 'te', 'ta', 'gu', 'kn', 'ml', 'pa', 'or', 'as', 'ur'].includes((body.originalLanguage || 'hi').toLowerCase());
+          const wpm = isIndic ? 160 : 200;
+          body.word_count = rawWords.length;
+          body.reading_time_mins = Math.max(1, Math.ceil(rawWords.length / wpm));
+        }
+
         let updatedArticles;
         if (existingIdx >= 0) {
           const oldArticle = currentArticles[existingIdx];

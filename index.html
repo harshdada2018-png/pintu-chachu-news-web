@@ -68,31 +68,6 @@
         }
       }, 3500);
     </script>
-    <script type="module">
-      const preStatus = document.getElementById('preloader-status');
-      if (preStatus) preStatus.innerText = 'Initializing Newsroom scripts...';
-
-      import('/src/main.jsx')
-        .then(() => {
-          console.log('[PublicSpark main.jsx loaded cleanly]');
-        })
-        .catch((err) => {
-          console.error('[PublicSpark Startup Error]:', err);
-          const bg = document.querySelector('.preloader-bg');
-          if (bg) {
-            bg.innerHTML = '<img src="/logo.png" alt="PUBLIC SPARK" style="height: 70px; margin-bottom: 1rem;" />' +
-              '<div style="background: #FEF2F2; border: 2px solid #EF4444; padding: 1.5rem; border-radius: 8px; max-width: 600px; text-align: left; color: #991B1B;">' +
-                '<h3 style="margin: 0 0 0.5rem 0; font-size: 1.1rem; color: #B91C1C;">Startup Error Detected</h3>' +
-                '<p style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;">' + (err?.message || 'Module script failed to load') + '</p>' +
-                '<pre style="background: #FFF; padding: 0.75rem; border-radius: 4px; font-size: 0.8rem; overflow-x: auto; color: #DC2626; border: 1px solid #FCA5A5;">' + (err?.stack || String(err)) + '</pre>' +
-                '<div style="margin-top: 1rem; display: flex; gap: 0.5rem;">' +
-                  '<button onclick="localStorage.clear(); sessionStorage.clear(); window.location.reload();" style="background: #C5221F; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; cursor: pointer;">' +
-                    'Reset Cache & Reload' +
-                  '</button>' +
-                '</div>' +
-              '</div>';
-          }
-        });
-    </script>
+        <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

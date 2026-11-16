@@ -18,6 +18,8 @@ import { DEFAULT_REGIONAL_FONTS } from './components/admin/VisualFontPicker';
 import { DEFAULT_THEME_PALETTE } from './components/admin/ColorPaletteCustomizer';
 import { t, translateCategoryName } from './services/uiTranslations';
 import { getWhatsAppShareUrl } from './services/shareService';
+import { getOfflineArticles, removeArticleOffline, syncLegacyBookmarks, getOfflineStorageMetrics } from './services/bookmarkStorageService';
+import { calculateReadingTime } from './utils/readingTime';
 import { Clock, Eye, Sparkles, TrendingUp, Flame, ShieldCheck, Volume2, Pause, Play, Heart, Bookmark, Send, Share2, BarChart3, Vote, X, VolumeX, ThumbsUp, ThumbsDown, HelpCircle, Newspaper, Check, Radio } from 'lucide-react';
 
 const WhatsAppIcon = ({ size = 18, color = '#ffffff' }) => (
@@ -110,7 +112,7 @@ export default function App() {
 
   // Live Daily Reader Poll State (Managed via Admin Desk & Backend Synced)
   const [pollData, setPollData] = useState({
-    enabled: true,
+    enabled: false,
     id: 'poll-default-v1',
     question: 'क्या आप मानते हैं कि AI न्यूज़ रीडर डिजिटल पत्रकारिता की गति और विश्वसनीयता को बढ़ाते हैं?',
     options: [
@@ -127,11 +129,17 @@ export default function App() {
     fetch('/api/poll')
       .then(res => res.json())
       .then(data => {
-        if (data && data.question) {
-          setPollData(data);
-          const savedVote = localStorage.getItem(`ps_news_poll_vote_${data.id}`);
-          if (savedVote) {
-            setUserVotedChoice(savedVote);
+        if (data) {
+          setPollData(prev => ({
+            ...prev,
+            ...data,
+            enabled: Boolean(data.enabled && data.question)
+          }));
+          if (data.id) {
+            const savedVote = localStorage.getItem(`ps_news_poll_vote_${data.id}`);
+            if (savedVote) {
+              setUserVotedChoice(savedVote);
+            }
           }
         }
       })
@@ -450,11 +458,15 @@ export default function App() {
 
             const merged = [...localOnly, ...data];
             saveNewsToCache(merged);
+            syncLegacyBookmarks(merged);
             return merged;
           });
         }
       })
       .catch(err => console.warn('[Backend Sync] Articles offline fallback:', err.message));
+
+    // Also hydrate legacy bookmarks from local cache if offline
+    syncLegacyBookmarks(baseArticles);
   }, []);
 
   const getFormattedWhatsAppLink = (input) => {
@@ -646,11 +658,15 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [baseArticles]);
 
-  // Synchronize deep-link route once base articles load from server
+  // Synchronize deep-link route once base articles load from server (or offline store)
   useEffect(() => {
     const route = parseRouteFromUrl();
     if (route.view === 'article' && route.idOrSlug && !selectedArticle) {
-      const found = baseArticles.find(a => a.id === route.idOrSlug || a.slug === route.idOrSlug);
+      let found = baseArticles.find(a => a.id === route.idOrSlug || a.slug === route.idOrSlug);
+      if (!found) {
+        const offlineList = getOfflineArticles();
+        found = offlineList.find(a => a.id === route.idOrSlug || a.slug === route.idOrSlug);
+      }
       if (found) {
         setSelectedArticle(found);
         setActiveView('article');
@@ -781,31 +797,40 @@ export default function App() {
     setIsToastOpen(true);
   };
 
+  // Subscribe to offline bookmarks changes across all components
+  useEffect(() => {
+    const handleBookmarkChange = () => {
+      setBookmarkRefresh(prev => prev + 1);
+    };
+    window.addEventListener('ps_offline_bookmarks_changed', handleBookmarkChange);
+    return () => window.removeEventListener('ps_offline_bookmarks_changed', handleBookmarkChange);
+  }, []);
+
   const handleRemoveBookmark = (e, art) => {
     e.stopPropagation();
-    localStorage.setItem(`ps_bookmark_${art.id}`, 'false');
+    removeArticleOffline(art.id);
     setBookmarkRefresh(prev => prev + 1);
     setToastMessage('Article removed from Bookmarks.');
     setIsToastOpen(true);
   };
 
-  // Filter articles by active category or bookmarks (Guarded by Reader Embargo)
-  const displayedArticles = publishedArticles.filter(art => {
-    // Public Reader Embargo Guard: Hide drafts and future-scheduled stories from reader view
-    if (art.status === 'hidden' || art.status === 'draft') return false;
-    if (art.status === 'scheduled') {
-      if (art.scheduledPublishTime && new Date(art.scheduledPublishTime).getTime() <= Date.now()) {
-        return true;
-      }
-      return false;
-    }
-    if (activeCategory === 'bookmarks') {
-      // Reference bookmarkRefresh state so filter re-evaluates on bookmark toggle
-      if (bookmarkRefresh < 0) return false; 
-      return localStorage.getItem(`ps_bookmark_${art.id}`) === 'true';
-    }
-    return activeCategory === 'all' ? true : art.category_slug === activeCategory;
-  });
+  // Dedicated offline saved stories (instant access even with zero internet)
+  const offlineArticlesList = activeCategory === 'bookmarks' ? getOfflineArticles() : [];
+
+  // Filter articles by active category or offline bookmarks (Guarded by Reader Embargo)
+  const displayedArticles = activeCategory === 'bookmarks'
+    ? offlineArticlesList
+    : publishedArticles.filter(art => {
+        // Public Reader Embargo Guard: Hide drafts and future-scheduled stories from reader view
+        if (art.status === 'hidden' || art.status === 'draft') return false;
+        if (art.status === 'scheduled') {
+          if (art.scheduledPublishTime && new Date(art.scheduledPublishTime).getTime() <= Date.now()) {
+            return true;
+          }
+          return false;
+        }
+        return activeCategory === 'all' ? true : art.category_slug === activeCategory;
+      });
 
   const heroArticle = displayedArticles[0];
   const secondaryArticles = displayedArticles.slice(1, 3);
@@ -847,21 +872,27 @@ export default function App() {
             {/* DEDICATED BOOKMARKS VIEW */}
             {activeCategory === 'bookmarks' ? (
               <div style={{ padding: '1rem 0 3rem 0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem', borderBottom: '2px solid #f59e0b', paddingBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem', borderBottom: '2px solid #f59e0b', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                   <h2 style={{ fontSize: '1.5rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-main)', margin: 0 }}>
                     <Bookmark size={24} color="#f59e0b" fill="#f59e0b" /> {t('savedBookmarks', currentLanguage)} ({displayedArticles.length})
                   </h2>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    {t('savedBookmarks', currentLanguage)}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-subtle)', background: 'var(--bg-secondary)', padding: '0.2rem 0.55rem', borderRadius: '4px', border: '1px solid var(--border-medium)', fontFamily: 'var(--font-mono)' }}>
+                      {getOfflineStorageMetrics().formattedSize} • Offline Storage
+                    </span>
+                  </div>
                 </div>
 
                 {displayedArticles.length > 0 ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '2rem' }}>
                     {displayedArticles.map((art) => (
                       <div key={art.id} className="story-card-secondary" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
-                        <div className="img-container" style={{ height: '200px' }}>
-                          <img src={art.featured_image} alt={art.title} />
+                        <div className="img-container" style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {art.featured_image ? (
+                            <img src={art.featured_image} alt={art.title} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                          ) : (
+                            <Newspaper size={32} color="var(--text-subtle)" />
+                          )}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0.6rem 0' }}>
                           <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
@@ -890,7 +921,7 @@ export default function App() {
                         </p>
                         <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-subtle)', flexWrap: 'wrap' }}>
                           <span>{t('byAuthor', currentLanguage)} {art.author?.name || 'Editorial Desk'}</span>
-                          <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                          <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
                         </div>
                       </div>
                     ))}
@@ -918,7 +949,13 @@ export default function App() {
                     {/* Main Hero Column */}
                     <div className="story-card-hero" onClick={() => handleSelectArticle(heroArticle)} style={{ cursor: 'pointer' }}>
                       <div className="img-container">
-                        <img src={heroArticle.featured_image} alt={heroArticle.title} />
+                        {heroArticle.featured_image ? (
+                          <img src={heroArticle.featured_image} alt={heroArticle.title} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: 'var(--text-subtle)' }}>
+                            <Newspaper size={44} />
+                          </div>
+                        )}
                         {heroArticle.video_url && (
                           <div style={{ position: 'absolute', bottom: '12px', right: '12px', background: 'rgba(197, 34, 31, 0.92)', color: '#fff', padding: '0.25rem 0.65rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.35rem', boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
                             <Play size={12} fill="#fff" /> VIDEO
@@ -996,7 +1033,7 @@ export default function App() {
                       <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8rem' }}>
                         <span style={{ fontWeight: '700', color: 'var(--text-main)' }}>{t('byAuthor', currentLanguage)} {heroArticle.author?.name || 'Staff Reporter'}</span>
                         <span>• {heroArticle.published_at}</span>
-                        <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((heroArticle.content?.split(/\s+/).length || 320) / 180))} {t('minsRead', currentLanguage)}</span>
+                        <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {heroArticle.reading_time_mins || calculateReadingTime(heroArticle.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
                       </div>
                     </div>
 
@@ -1006,7 +1043,13 @@ export default function App() {
                         <div key={art.id} className="story-card-secondary" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
                           <div className="secondary-card-img-wrap">
                             <div className="img-container">
-                              <img src={art.featured_image} alt={art.title} loading="lazy" />
+                              {art.featured_image ? (
+                                <img src={art.featured_image} alt={art.title} loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: 'var(--text-subtle)' }}>
+                                  <Newspaper size={24} />
+                                </div>
+                              )}
                               {art.video_url && (
                                 <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(197, 34, 31, 0.9)', color: '#fff', padding: '0.15rem 0.45rem', borderRadius: '3px', fontSize: '0.65rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                                   <Play size={10} fill="#fff" />
@@ -1072,7 +1115,7 @@ export default function App() {
                             <h3 className="story-card-title">{art.title}</h3>
                             <div className="story-meta" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.35rem', fontSize: '0.75rem' }}>
                               <span>{art.published_at}</span>
-                              <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                              <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
                             </div>
                           </div>
                         </div>
@@ -1288,7 +1331,7 @@ export default function App() {
                                 <span>•</span>
                                 <span>{art.published_at}</span>
                                 <span>•</span>
-                                <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                                <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
                               </div>
                             </div>
                           </div>
@@ -1320,7 +1363,13 @@ export default function App() {
                         {videoArticles.map((art) => (
                           <div key={art.id} className="video-card" onClick={() => handleSelectArticle(art)}>
                             <div className="video-thumbnail-wrap">
-                              <img src={art.featured_image} alt={art.title} loading="lazy" />
+                              {art.featured_image ? (
+                                <img src={art.featured_image} alt={art.title} loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: 'var(--text-subtle)', background: 'var(--bg-secondary)' }}>
+                                  <Newspaper size={24} />
+                                </div>
+                              )}
                               <div className="video-play-overlay">
                                 <Play size={18} fill="#FFFFFF" color="#FFFFFF" style={{ marginLeft: '2px' }} />
                               </div>
@@ -1352,7 +1401,13 @@ export default function App() {
                         <div key={art.id} className="story-card-secondary" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
                           <div className="secondary-card-img-wrap">
                             <div className="img-container">
-                              <img src={art.featured_image} alt={art.title} loading="lazy" />
+                              {art.featured_image ? (
+                                <img src={art.featured_image} alt={art.title} loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                              ) : (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: 'var(--text-subtle)' }}>
+                                  <Newspaper size={24} />
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="secondary-card-content">
@@ -1399,7 +1454,7 @@ export default function App() {
                               <span>•</span>
                               <span>{art.published_at}</span>
                               <span>•</span>
-                              <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {Math.max(1, Math.ceil((art.content?.split(/\s+/).length || 200) / 180))} {t('minsRead', currentLanguage)}</span>
+                              <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
                             </div>
                           </div>
                         </div>

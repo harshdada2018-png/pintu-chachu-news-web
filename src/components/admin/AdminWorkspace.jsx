@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Settings, Users, FolderTree, DollarSign, Plus, Trash2, CheckCircle2,
-  BarChart2, HardDrive, Share2, Send, Newspaper, Eye, EyeOff, Edit3,
+  BarChart2, HardDrive, Share2, Newspaper, Eye, EyeOff, Edit3,
   Radio, Search, Flame, Sparkles, X, RefreshCw, RotateCcw, Check, ExternalLink, ShieldAlert,
   Type, Sliders, Globe, Languages, MapPin, Palette, Monitor, Smartphone, BarChart3,
   Clock, ShieldCheck, History, Image as ImageIcon, FileText
@@ -70,7 +70,7 @@ import PollManager from './PollManager';
 // Story Editor Modal Component (with Task 20 Future Auto-Publish Scheduler & Task 21 Revisions)
 function StoryEditorModal({ article, categories, onClose, onSave, onOpenRevisions, currentRole = 'admin' }) {
   const isReporter = currentRole === 'reporter';
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(() => ({
     id: article?.id || `art-${Date.now()}`,
     originalLanguage: article?.originalLanguage || (article ? 'hi' : ''),
     title: article?.title || '',
@@ -96,7 +96,7 @@ function StoryEditorModal({ article, categories, onClose, onSave, onOpenRevision
     fact_check_desk: article?.fact_check?.desk || 'PublicSpark Fact Desk',
     fact_check_claim: article?.fact_check?.claim || '',
     sources: Array.isArray(article?.sources) ? article.sources : []
-  });
+  }));
 
   const [newSourceTitle, setNewSourceTitle] = useState('');
   const [newSourceUrl, setNewSourceUrl] = useState('');
@@ -1132,25 +1132,27 @@ export default function AdminWorkspace({
   const [selectedRegionalLang, setSelectedRegionalLang] = useState('hi'); // default to Hindi
   const [langSearchQuery, setLangSearchQuery] = useState('');
 
-  useEffect(() => {
-    if (typography) {
-      setLocalTypography(prev => ({
-        ...prev,
-        ...typography,
-        headingWeight: typography.headingWeight || prev.headingWeight || 700,
-        bodyWeight: typography.bodyWeight || prev.bodyWeight || 400,
-        mobileHeadingScale: typography.mobileHeadingScale || prev.mobileHeadingScale || 85,
-        mobileBodySize: typography.mobileBodySize || prev.mobileBodySize || 15,
-        regionalFonts: typography.regionalFonts || prev.regionalFonts || DEFAULT_REGIONAL_FONTS
-      }));
-      setHasUnsavedTypographyChanges(false);
-    }
-  }, [typography]);
+  const [prevTypography, setPrevTypography] = useState(typography);
+  if (typography !== prevTypography) {
+    setPrevTypography(typography);
+    setLocalTypography(prev => ({
+      ...prev,
+      ...typography,
+      headingWeight: typography?.headingWeight || prev.headingWeight || 700,
+      bodyWeight: typography?.bodyWeight || prev.bodyWeight || 400,
+      mobileHeadingScale: typography?.mobileHeadingScale || prev.mobileHeadingScale || 85,
+      mobileBodySize: typography?.mobileBodySize || prev.mobileBodySize || 15,
+      regionalFonts: typography?.regionalFonts || prev.regionalFonts || DEFAULT_REGIONAL_FONTS
+    }));
+    setHasUnsavedTypographyChanges(false);
+  }
 
   // Sync state if props update from parent
-  useEffect(() => {
+  const [prevPropArticles, setPrevPropArticles] = useState(propArticles);
+  if (propArticles !== prevPropArticles) {
+    setPrevPropArticles(propArticles);
     if (propArticles) setArticles(propArticles);
-  }, [propArticles]);
+  }
 
   const [filterStatus, setFilterStatus] = useState('all'); // all | published | hidden | live_feed
   const [searchQuery, setSearchQuery] = useState('');
@@ -1193,15 +1195,8 @@ export default function AdminWorkspace({
     { id: 'u-4', name: 'Rohan Sharma', email: 'rohan@gmail.com', role: 'registered', created: '2026-04-12' },
   ]);
 
-  // Ad Slot Placements
-  const [adSlots, setAdSlots] = useState([
-    { id: 'ad-1', name: 'Top Masthead Banner', position: 'top_header', enabled: true },
-    { id: 'ad-2', name: 'In-Article Middle Slot', position: 'article_middle', enabled: true },
-    { id: 'ad-3', name: 'Sidebar Sticky Unit', position: 'sidebar_sticky', enabled: false }
-  ]);
-
   // Fetch Live News Stream (Google RSS & Topic Feeds)
-  const fetchLiveNewsStream = (streamKey = wireStreamKey) => {
+  const fetchLiveNewsStream = useCallback((streamKey = wireStreamKey) => {
     setIsLoadingLiveFeed(true);
     let targetUrl = '/api/live-news?provider=google&topic=GENERAL&lang=hi';
 
@@ -1247,10 +1242,19 @@ export default function AdminWorkspace({
         }
       })
       .finally(() => setIsLoadingLiveFeed(false));
-  };
+  }, [wireStreamKey, onShowToast]);
 
   useEffect(() => {
-    fetchLiveNewsStream('google_hi');
+    let isCancelled = false;
+    fetch('/api/live-news?provider=google&topic=GENERAL&lang=hi')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!isCancelled && data && Array.isArray(data.items) && data.items.length > 0) {
+          setLiveFeedItems(data.items);
+        }
+      })
+      .catch(() => {});
+    return () => { isCancelled = true; };
   }, []);
 
   // 1-Click Show/Hide Toggle (Guarded by Editorial RBAC & Scheduled Support)
@@ -1508,10 +1512,6 @@ export default function AdminWorkspace({
 
     setFeedbackMsg(`Removed category "${target.name}".`);
     setTimeout(() => setFeedbackMsg(''), 3000);
-  };
-
-  const handleToggleAdSlot = (slotId) => {
-    setAdSlots(adSlots.map(s => s.id === slotId ? { ...s, enabled: !s.enabled } : s));
   };
 
   // Filtered Articles List (with Scheduled & Live Blog Filters Support)
@@ -2031,8 +2031,17 @@ export default function AdminWorkspace({
                               onClick={() => { setEditingArticle(art); setIsEditModalOpen(true); }}
                               title="Click to Edit Story Details"
                             >
-                              <div style={{ width: '80px', height: '60px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border-light)' }}>
-                                <img src={art.featured_image} alt={art.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              <div style={{ width: '80px', height: '60px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {art.featured_image ? (
+                                  <img 
+                                    src={art.featured_image} 
+                                    alt={art.title} 
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                  />
+                                ) : (
+                                  <Newspaper size={18} color="var(--text-subtle)" />
+                                )}
                               </div>
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
@@ -2695,7 +2704,6 @@ export default function AdminWorkspace({
             };
 
             const handleMakeBothFontsGlobal = (targetHeadFont, targetBodyFont) => {
-              const currentReg = localTypography.regionalFonts || DEFAULT_REGIONAL_FONTS;
               const updatedRegional = {};
               Object.keys(DEFAULT_REGIONAL_FONTS).forEach(langKey => {
                 updatedRegional[langKey] = {

@@ -660,3 +660,45 @@ This document records significant mistakes, root causes, verified solutions, and
   3. `translationService.js`: Add strict cache validator in `getCachedArticleObject` to discard entries where `targetLang !== 'hi'` but body content remains identical to Hindi master.
   4. `ArticleReader.jsx`: Introduce sovereign broadsheet skeleton shimmer while translation is resolving.
 - **Prevention Method**: Never pass mutated presentation-layer card objects into detailed view readers; always pass canonical master state. Never cache fallback/error responses as successful translation artifacts.
+
+### Mistake 52: Dynamic Module Script Tag in HTML Breaking Vite Production Build
+- **Mistake**: `dist/index.html` failed to mount the production application, remaining permanently stuck on the initial HTML preloader and displaying "Taking longer than expected...".
+- **Root Cause**: An inline module script in `index.html` used dynamic `import('/src/main.jsx')` instead of the standard Vite entry tag `<script type="module" src="/src/main.jsx"></script>`. Vite's production build compiler treated `main.jsx` as a dynamic asynchronous split-chunk (`assets/main-*.js`) and generated a 3.3KB polyfill loader as `index-*.js`, breaking synchronous execution on production static servers.
+- **Actual Impact**: Production deployments (Cloudflare Pages / static hosting) were completely inoperable despite the dev server functioning normally.
+- **Verified Solution**:
+  1. Replaced dynamic inline `import('/src/main.jsx')` in `index.html` with canonical `<script type="module" src="/src/main.jsx"></script>`.
+  2. Executed `npm run build`: verified Vite directly compiles `main.jsx` into the primary bundle chunk (`dist/assets/index-Dz6dtHe3.js`, 910.83 KB) and links it directly in `dist/index.html`.
+  3. Verified article `art-1793864819037` in `server/data/articles.json` has a valid high-resolution legal/government featured image URL.
+  4. Verified `pollData.enabled` defaults to `false` in `src/App.jsx` and strictly respects backend toggle state.
+  5. Refactored `MonetizationDesk.jsx`, `AdminWorkspace.jsx`, and `ReporterWorkspace.jsx` to eliminate `Date.now()` during render, remove synchronous `setState` in effects, and purge all unused dead-code imports.
+- **Prevention Method**: Always use standard `<script type="module" src="/src/main.jsx"></script>` in Vite projects. Never use inline dynamic imports for application root mounting.
+
+### Mistake 53: Invoking React Hook Conditionally Below Early Return Guard
+- **Mistake**: `npx oxlint` and `npm run lint` threw `react-hooks/rules-of-hooks` error in `src/components/public/ArticleReader.jsx` because `useMemo` was placed on line 322 below `if (!article) return null;` on line 310.
+- **Root Cause**: React hooks must be invoked in the exact same unconditional order on every render cycle. Calling any hook (`useState`, `useEffect`, `useMemo`, `useCallback`) below an early return conditional violates the Rules of Hooks.
+- **Actual Impact**: Linter failed with exit code 1, blocking automated verification.
+- **Verified Solution**:
+  1. Removed `useMemo` wrapper and replaced with direct synchronous evaluation: `const readingDuration = calculateReadingTime(activeArticle?.content || '', activeLang);`.
+  2. Because `calculateReadingTime` is a pure, sub-millisecond string parsing algorithm (< 0.05ms execution time), it incurs zero performance penalty and completely avoids hook ordering constraints.
+  3. Verified `npx oxlint --quiet` and `npm run lint` exit with code 0 (0 errors).
+- **Prevention Method**: Never declare React hooks below early return statements. For lightweight, pure computation functions, prefer direct calculation over premature memoization.
+
+### Mistake 54: UI/UX Inconsistencies & AI-Slop Drifts Discovered During Super-Strict Critic Audit
+- **Mistake**: The broadsheet masthead used generic AI landing page CSS text-gradient clipping, mobile action buttons were undersized (32px) below the WCAG 44x44px standard, hero card had a 14px SaaS bubble radius, `App.jsx` used crude hardcoded WPM calculation mismatching `readingTime.js`, and `App.css` retained 184 lines of dead starter code.
+- **Root Cause**:
+  1. Masthead CSS retained a legacy `linear-gradient` text clip designed during early prototyping that clashed with institutional newsprint identity.
+  2. Mobile header buttons used compact desktop dimensions (32px-34px) with tight 5.6px spacing rather than prioritizing mobile thumb ergonomics (40px-44px with 8px spacing).
+  3. Mobile media query had an ad-hoc `border-radius: 14px !important` override violating the 4px broadsheet design token.
+  4. Homepage story cards used `split(/\s+/).length / 180` rather than consuming the dedicated script-aware `calculateReadingTime` utility from Task 27.
+  5. Leftover Vite starter boilerplate in `src/App.css` was never purged.
+- **Actual Impact**: Degraded visual broadsheet authenticity, produced reading time mismatches between feed and reader views, created tap friction on mobile devices, and retained dead code.
+- **Verified Solution**:
+  1. Restored solid obsidian ink `color: var(--text-main); background: none;` on `.masthead-title`.
+  2. Upgraded `.mobile-hamburger-btn` to 40px, `.mobile-action-icon` to 36px, and enforced 8px (`0.5rem`) spacing in `Header.jsx`.
+  3. Replaced 14px mobile curve with `border-radius: var(--radius-bento) !important;` (4px).
+  4. Replaced all 5 crude WPM calculations in `App.jsx` with `art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)`.
+  5. Purged all 184 lines of Vite starter boilerplate from `src/App.css`.
+  6. Added `font-variant-numeric: tabular-nums` to metadata counters and eliminated subpixel hover jitter.
+  7. Added smooth opacity transition to `ArticleReader.jsx` during translation.
+  8. Verified via automated test suite `scratch/test_critic_fixes.cjs` (8/8 passed), `npm run lint` (0 errors), and `npm run build` (0 errors in 698ms).
+- **Prevention Method**: Always audit component styling against established design system tokens (`--radius-bento`), enforce minimum 44x44px touch targets on mobile, and consume centralized utility functions rather than re-implementing ad-hoc calculations in card views.

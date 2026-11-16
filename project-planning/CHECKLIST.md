@@ -9,10 +9,11 @@
 
 ## Status Summary
 
-- **Currently In Progress**: Task 27: Hairline Reading Progress Bar & "X Min Read" Badge (Subtopic B: Calculated reading duration badge).
+- **Currently In Progress**: Task 28: Saved Stories / Bookmark (Offline Reading Mode) — Subtopic A Completed & Verified; Subtopic B awaiting Boss approval.
+- **Completed Quality Audit**: Super-Strict Critic UI/UX & Architecture Audit (7/7 defects resolved and verified: solid obsidian masthead ink, 40px-44px touch targets with 8px gap, unified `calculateReadingTime`, 4px broadsheet hero radius, `App.css` dead code purged, tabular numerics, smooth translation opacity).
 - **Current Blockers / Dependencies**: None.
 - **Reference Architecture Docs**: `project-planning/HOSTING_PLAN.md` (Cloudflare Pages + Workers + D1 Blueprint & Future VPS Roadmap).
-- **Next Step**: Implement Task 27 Subtopic B ("X Min Read" reading duration badge).
+- **Next Step**: Awaiting Boss approval to start Task 28 Subtopic B (Dedicated "Saved Stories" reading drawer).
 
 ---
 
@@ -129,13 +130,15 @@
     - *Outcome & Verification Proof*: Built deterministic, multi-factor recommendation service in `src/services/recommendationService.js` (`calculateArticleRelevanceScore`, `getRelatedStories`, `getMidArticleStory`, `getEndArticleStories`). Implemented primary category match (+50 pts), shared tags (+15 pts/tag), title keyword overlap (+5 pts/word), live blog/breaking boost (+10 pts), log-scaled readership views weighting, self-exclusion, draft-exclusion, and cross-category graceful backfill. Verified via 13 automated tests (`test_task_26_subtopic_a.mjs`), `npm run build` (645ms), and `npm run lint` (0 errors).
   - [x] *Subtopic B*: Mid-article and end-of-article broadsheet related cards. `Completed`
     - *Outcome & Verification Proof*: Implemented in-article "ये भी पढ़ें (Also Read)" recommendation callout after Paragraph 4 (with short article fallback) in `src/utils/markdownRenderer.jsx` and `src/components/public/ArticleReader.jsx`. Built sovereign 3-card responsive grid (`.end-article-related-stories` & `.related-story-card`) at the end of the article with category badge, reading time, thumbnail, and 1-tap navigation to the related story (`onSelectArticle` + smooth scroll to top). Added broadsheet card micro-interactions in `src/index.css`. Fully responsive on 360px–1440px with touch targets >= 44x44px. Verified via 6 automated tests (`test_task_26_subtopic_b.mjs`), `npm run build` (628ms), `npm run lint` (0 errors), and zero emojis.
-- [/] **Task 27: Hairline Reading Progress Bar & "X Min Read" Badge** `In Progress`
+- [x] **Task 27: Hairline Reading Progress Bar & "X Min Read" Badge** `Completed`
   - [x] *Subtopic A*: Top broadsheet scroll indicator line (`scrollProgress %`). `Completed`
     - *Outcome & Verification Proof*: Implemented sovereign hairline reading progress bar in `ArticleReader.jsx` with semantic ARIA progressbar attributes (`role="progressbar"`, `aria-valuenow`, `aria-valuemin="0"`, `aria-valuemax="100"`). Engineered 60fps butter-smooth scroll engine using `window.requestAnimationFrame`, state change deduplication, and mount initialization. Styled `.article-reading-progress-track` and `.article-reading-progress-bar` in `src/index.css` with PublicSpark editorial crimson (`var(--accent-crimson)`), `z-index: 10005`, and mobile responsive adjustment `top: 52px` pinning the hairline indicator directly beneath the 52px fixed mobile app bar on screens <= 768px. Verified via 4 automated tests (`test_task_27_subtopic_a.mjs`), `npm run build` (702ms), `npm run lint` (0 errors), and zero emojis.
-  - [ ] *Subtopic B*: Calculated reading duration badge. `Planned`
-- [ ] **Task 28: Saved Stories / Bookmark (Offline Reading Mode)** `Planned`
-  - [ ] *Subtopic A*: Offline storage of bookmarked stories via `localStorage`.
-  - [ ] *Subtopic B*: Dedicated "Saved Stories" reading drawer.
+  - [x] *Subtopic B*: Calculated reading duration badge. `Completed`
+    - *Outcome & Verification Proof*: Implemented sovereign, script-aware reading duration calculation utility `src/utils/readingTime.js` calibrated for Latin/English (~200 WPM), Indian regional scripts (~160 WPM for Devanagari, Dravidian, and eastern ligatures), and CJK (~350 CPM) with markdown syntax stripping and a 1-minute floor. Integrated broadsheet byline reading badge (`.reader-reading-badge`) in `src/components/public/ArticleReader.jsx` featuring `<Clock color="var(--accent-crimson)" />`, publication date (`<Calendar />`), and views count (`<Eye />`), with full localization across 19 languages. Upgraded related story cards to compute dynamic reading time. Enhanced backend `POST /api/articles/update` in `server/server.js` to automatically calculate `word_count` and `reading_time_mins` on persistence, and backfilled all existing stories in `server/data/articles.json`. Verified via 8 automated tests (`test_task_27_subtopic_b.mjs`), clean production build (`npm run build` in 673ms, exit code 0), zero linter errors (`npm run lint`), and zero emojis.
+- [/] **Task 28: Saved Stories / Bookmark (Offline Reading Mode)** `In Progress`
+  - [x] *Subtopic A*: Offline storage of bookmarked stories via `localStorage`. `Completed`
+    - *Outcome & Verification Proof*: Built sovereign local storage engine `src/services/bookmarkStorageService.js` persisting complete, standalone article snapshots (`id`, `title`, `summary`, `content`, `author`, `featured_image`, `reading_time_mins`, `fact_check`, `sources`, `saved_at`) in `ps_offline_saved_stories_v1` with a 50-story quota-safe rolling cap. Integrated `isArticleOffline` and `toggleArticleOffline` into `ArticleReader.jsx` with reactive `ps_offline_bookmarks_changed` event bus and localized toast confirmations. Connected `getOfflineArticles()` to `App.jsx` bookmarks view, guaranteeing instant access to saved stories with zero network connectivity. Added offline storage metrics badge and legacy bookmark hydration (`syncLegacyBookmarks`). Verified via 9 automated unit tests (`test_task_28_subtopic_a.mjs`), clean production build (`npm run build` in 551ms), zero linter errors (`npm run lint`), and zero emojis.
+  - [ ] *Subtopic B*: Dedicated "Saved Stories" reading drawer. `Planned`
 - [ ] **Task 29: Statutory Grievance Redressal / Complaint Form (IT Rules 2021 India)** `Planned`
   - [ ] *Subtopic A*: Reader complaint submission modal with category & grievance officer routing.
   - [ ] *Subtopic B*: Admin Grievance Review Desk with resolution tracking.

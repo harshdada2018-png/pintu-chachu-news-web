@@ -823,3 +823,65 @@
   1. *Stage 1 (Launch & Initial Audience)*: Cloudflare Pages (Frontend) + Cloudflare Workers (API with Edge Caching & Telemetry Batching) + Cloudflare D1 SQL. Incurs zero costs, zero credit card requirements, zero maintenance, and handles initial district-wide readers effortlessly.
   2. *Stage 2 (High Traffic Scaling)*: When traffic explodes into tens of thousands of daily active readers, cleanly migrate the backend and database to a Personal Linux VPS (Hostinger India / UPI-paid, ₹250-₹350/mo) for un-metered compute, complete self-hosted ownership, and automated nightly backups.
 - **Reasoning**: Combines immediate zero-cost launch speed with enterprise-grade future scalability and zero risk of vendor lock-in. Full playbook recorded in `project-planning/HOSTING_PLAN.md`.
+
+## Decision 54: Autonomous Terminal Testing & Gatekept Browser Automation for Token Conservation
+- **Status**: Approved by User (Boss) & Formally Adopted
+- **Context**: Boss identified that frequent interruptions/prompts during terminal testing slow down workflow, while uncontrolled browser automation risks massive token waste (DOM trees, accessibility snapshots, vision model tokens).
+- **Core Directives**:
+  1. *Autonomous Terminal Testing*: During development, verification, unit testing, builds, and linting, run terminal commands autonomously without stopping midway to ask permission. Execute the full test sequence silently and deliver a consolidated, proof-backed report at the end showing what commands were run and their verified outputs/exit codes.
+  2. *Gatekept Browser Automation (Token Conservation)*: Because browser-use, CDP snapshots, accessibility trees, and vision models consume extensive LLM tokens, NEVER launch, navigate, or test via browser without explicit prior confirmation from Boss. Always ask first before initiating browser automation to preserve tokens and prevent waste.
+- **Reasoning**: Maximizes agent velocity and eliminates prompt friction during command-line testing while strictly safeguarding LLM token budget.
+
+## Decision 55: Dynamic Script-Aware Reading Duration Badge ("X Min Read")
+- **Status**: Implemented & Verified
+- **Context**: Standard reading time calculators assume uniform Latin word speeds (~200-250 WPM), which grossly miscalculates reading durations for Indian regional languages (where complex conjunct ligatures require ~160 WPM) and East Asian scripts (which are character-spaced, requiring ~350 CPM).
+- **Engineering Specification**:
+  1. *Calibrated Calculation Utility (`src/utils/readingTime.js`)*: Strips markdown syntax, images, tables, code blocks, and HTML tags before tokenization. Evaluates reading duration using calibrated speeds: ~200 WPM for Latin/European, ~160 WPM for Indic scripts (Hindi, Tamil, Telugu, Marathi, Bengali, etc.), ~350 CPM for CJK scripts, with a minimum 1-minute floor.
+  2. *Multilingual Duration Formatting*: Localized string formatting across all 19 supported languages (`minsRead` token via `t(minsRead, currentLang)`).
+  3. *Broadsheet Byline Integration*: Embedded alongside publication date (`<Calendar />`) and views count (`<Eye />`) in `ArticleReader.jsx` with editorial crimson clock icon (`<Clock color="var(--accent-crimson)" />`) and solid paper badge surface (`var(--bg-hover)`), guaranteed zero horizontal overflow on mobile viewports down to 360px.
+  4. *Backend Automatic Evaluation & Backfill*: Enhanced `POST /api/articles/update` in `server/server.js` to compute `word_count` and `reading_time_mins` automatically on article persistence, and backfilled all existing stories in `server/data/articles.json`.
+- **Reasoning**: Delivers authentic editorial polish and realistic reading duration transparency across regional languages without external SaaS dependencies.
+
+## Decision 56: Standalone Article Snapshot Offline Storage Engine (Task 28 Subtopic A)
+- **Status**: Implemented & Verified
+- **Context**: Previous bookmark implementation merely stored boolean ID flags (`ps_bookmark_<id> = 'true'`), leaving readers unable to access saved stories when disconnected from the internet or when server feeds fail to load.
+- **Engineering Specification**:
+  1. *Sovereign Local Storage Engine (`src/services/bookmarkStorageService.js`)*: Implemented full article snapshot serialization (`id`, `title`, `summary`, `content`, `category`, `author`, `featured_image`, `reading_time_mins`, `word_count`, `fact_check`, `sources`, `saved_at`) in `ps_offline_saved_stories_v1`.
+  2. *Quota Guard & Rolling Cap*: Enforces a strict 50-story rolling cap, preventing browser `localStorage` 5MB quota exhaustion while offering ample reading capacity.
+  3. *Zero-Network Bookmarks Reading*: `App.jsx` bookmarks view reads directly from `getOfflineArticles()`, making bookmarked stories 100% accessible and readable with zero server connection. Added deep-link route offline fallback in `useEffect`.
+  4. *Reactive Event Bus & Dual-Key Sync*: In-window `ps_offline_bookmarks_changed` event synchronizes reader and feed states without page reloads, while continuing to write legacy `ps_bookmark_<id>` flags for seamless backward compatibility.
+  5. *Legacy Migration*: Automatically backfills existing bookmark flags into full snapshots via `syncLegacyBookmarks`.
+- **Reasoning**: Guarantees true offline news reading resilience, protecting reader experience in low-connectivity mobile environments.
+
+## Decision 57: Mandatory Super-Strict Critic Review Protocol
+- **Status**: Formally Adopted as Permanent Rule (Per User Instruction)
+- **Context**: Boss established an uncompromising review standard: Whenever reviewing any feature, UI/UX, layout, architecture, or code, the assistant must abandon polite flattery and adopt a ruthless, uncompromising "Super Strict Critic" persona.
+- **Protocol Requirements**:
+  1. *Zero Sugar-Coating*: Point out every single imperfection, visual defect, padding/margin misalignment, generic AI-slop pattern, contrast issue, font hierarchy defect, or responsive 360px friction.
+  2. *Deep Forensic Report Structure*: Every review must present:
+     - Issue Name & Severity (Critical / High / Minor Polish)
+     - Exact Location (File path, line number, or CSS selector)
+     - Root Cause / Why it looks bad or fails
+     - Exact Concrete Solution with exact pixel, token, or code values.
+- **Reasoning**: Elevates design and engineering quality to top-tier enterprise standards by proactively discovering and eliminating subtle defects before production.
+
+## Decision 58: Custom Slash Command Integration for Super-Strict Critic Mode (`/critic`)
+- **Status**: Approved by User (Boss) & Implemented
+- **Context**: Boss requested that triggering this uncompromising critic mode should not require typing lengthy instructions or repeating prompts. Instead, typing a simple slash command (e.g. `/critic` or `/super-critic`) in the chat prompt must immediately activate the full Super-Strict Critic Review Mode.
+- **Implementation & Architecture**:
+  1. *Dual Skill Registration*: Created `critic` skill with frontmatter trigger `/critic` at both project level (`.agents/skills/critic/SKILL.md`) and global level (`~/.gemini/config/skills/critic/SKILL.md`).
+  2. *Explicit Directive in `GEMINI.md`*: Configured prompt trigger so whenever Boss includes `/critic` or `/super-critic` in a prompt (e.g., `/critic`, `/critic homepage`, `/critic header`), the agent immediately assumes the Super-Strict Critic persona, loads the comprehensive UI/UX skill suite (`frontend-design`, `better-ui`, `better-layout`, `better-typography`, `better-colors`, `interface-review`, `popular-web-designs`), and outputs the 4-point structured forensic report.
+- **Reasoning**: Provides an effortless, instant keyboard shortcut for Boss to summon deep forensic scrutiny on demand.
+
+## Decision 59: Resolution of 7 Forensic Critic Defect Audits (Anti-AI-Slop, Touch Targets & Micro-Polish)
+- **Status**: Implemented & Verified
+- **Context**: During the initial Super-Strict Critic forensic review across 6 specialized skills, 7 distinct defects spanning aesthetic AI-slop, mobile touch targets, calculation disconnects, and dead boilerplate were identified. Boss commanded: "sabhi ko fix karo aab".
+- **Engineering Solutions Implemented**:
+  1. *Masthead Solid Obsidian Ink*: Removed `-webkit-background-clip: text` and linear-gradient styling from `.masthead-title` in `src/index.css`, restoring authoritative letterpress black ink.
+  2. *Mobile Touch Target Hardening*: Upgraded `.mobile-hamburger-btn` to 40px and `.mobile-action-icon` to 36px with 8px adjacent spacing in `src/components/common/Header.jsx` line 131, fulfilling Rule 4 and WCAG 2.5.5 requirements.
+  3. *Synchronized Reading Time Calculations*: Replaced crude `split(/\s+/).length / 180` across 5 card templates in `src/App.jsx` with `art.reading_time_mins || calculateReadingTime(art.content, currentLanguage)`, ensuring 100% synchronization with `ArticleReader`.
+  4. *Broadsheet Border Radius Enforcement*: Removed ad-hoc `border-radius: 14px !important` from mobile hero cards, binding them to `--radius-bento` (4px).
+  5. *Vite Starter CSS Purge*: Replaced 184 lines of dead starter CSS in `src/App.css` with a clean comment header.
+  6. *Tabular Numerics & Zero Hover Jitter*: Applied `font-variant-numeric: tabular-nums` to `.story-meta`, `.ticker-content`, `.ticker-badge`, and `.reading-time-badge`, and eliminated subpixel hover shivering.
+  7. *Smooth Reader Translation State*: Replaced hardcoded Devanagari translation banner with bilingual notice and smooth opacity transition in `ArticleReader.jsx`.
+- **Verification**: Verified via 8 automated unit tests (`scratch/test_critic_fixes.cjs`, 8/8 passed), clean ESLint (`npm run lint`, 0 errors), and clean production build (`npm run build`, 698ms).

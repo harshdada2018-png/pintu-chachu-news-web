@@ -18,7 +18,7 @@ import {
 
 export default function PollManager() {
   const [poll, setPoll] = useState({
-    enabled: true,
+    enabled: false,
     id: 'poll-default-v1',
     question: 'क्या आप मानते हैं कि AI न्यूज़ रीडर डिजिटल पत्रकारिता की गति और विश्वसनीयता को बढ़ाते हैं?',
     options: [

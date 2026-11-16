@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Filter, Clock, Eye, ArrowLeft } from 'lucide-react';
+import { Search, Filter, Clock, Eye, ArrowLeft, Newspaper } from 'lucide-react';
 import { MOCK_CATEGORIES } from '../../services/mockData';
 import { t, translateCategoryName } from '../../services/uiTranslations';
 
@@ -87,11 +87,18 @@ export default function SearchPage({ articles, categories, onSelectArticle, onBa
                 transition: 'var(--transition-fast)'
               }}
             >
-              <img 
-                src={art.featured_image} 
-                alt={art.title} 
-                style={{ width: '100%', height: '100px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} 
-              />
+              {art.featured_image ? (
+                <img 
+                  src={art.featured_image} 
+                  alt={art.title} 
+                  style={{ width: '100%', height: '100px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} 
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              ) : (
+                <div style={{ width: '100%', height: '100px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-subtle)' }}>
+                  <Newspaper size={24} />
+                </div>
+              )}
               <div>
                 <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
                 <h3 className="story-card-title" style={{ fontSize: '1.25rem', margin: '0.2rem 0 0.4rem 0' }}>

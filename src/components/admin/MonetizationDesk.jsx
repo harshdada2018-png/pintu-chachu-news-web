@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  DollarSign, Check, Save, Sparkles, AlertCircle, ExternalLink, 
+  DollarSign, Check, Save, Sparkles, ExternalLink, 
   ToggleLeft, ToggleRight, Layout, Smartphone, Monitor, Image as ImageIcon, 
-  Link as LinkIcon, RefreshCw, ShieldCheck, HelpCircle,
-  Calendar, Globe, Tag, FileText, Clock, Search, Filter, X, ChevronDown, CheckCircle,
-  History, RotateCcw, Trash2, ArrowUpRight, Copy, Eye, Layers, Edit3,
+  RefreshCw, ShieldCheck,
+  Calendar, Globe, Tag, FileText, Clock, Search, X,
+  History, RotateCcw, Trash2, Copy, Eye, Edit3,
   BarChart2, TrendingUp, MousePointer, Share2, MessageCircle, Maximize2
 } from 'lucide-react';
-import { getAdSettings, syncAdSettingsServer, fetchAdSettings, fetchAdHistory, deleteAdHistoryItem, updateAdHistoryItem, parseSponsorTargetUrl, getSlotDimensionGuard, SLOT_DIMENSION_GUARDS } from '../../services/monetizationService';
+import { getAdSettings, syncAdSettingsServer, fetchAdSettings, fetchAdHistory, deleteAdHistoryItem, updateAdHistoryItem, parseSponsorTargetUrl, getSlotDimensionGuard } from '../../services/monetizationService';
 import { compressImageToWebP } from '../../services/mediaService';
 import { MOCK_CATEGORIES } from '../../services/mockData';
 
@@ -38,6 +38,7 @@ function formatDisplayDateTime(dtStr) {
  * Uses neutral identifiers to avoid client-side browser extension blocking
  */
 export default function MonetizationDesk({ onShowToast, articles = [], categories = [] }) {
+  const [referenceTime] = useState(() => Date.now());
   const [adConfig, setAdConfig] = useState(() => getAdSettings());
   const [articleList, setArticleList] = useState(articles || []);
   const [categoryList, setCategoryList] = useState(() => (categories && categories.length > 0 ? categories : MOCK_CATEGORIES));
@@ -93,9 +94,7 @@ export default function MonetizationDesk({ onShowToast, articles = [], categorie
       }
     });
 
-    if (articles && articles.length > 0) {
-      setArticleList(articles);
-    } else {
+    if (!articles || articles.length === 0) {
       fetch('/api/articles')
         .then(res => res.json())
         .then(data => {
@@ -106,9 +105,7 @@ export default function MonetizationDesk({ onShowToast, articles = [], categorie
         .catch(() => {});
     }
 
-    if (categories && categories.length > 0) {
-      setCategoryList(categories);
-    } else {
+    if (!categories || categories.length === 0) {
       fetch('/api/categories')
         .then(res => res.json())
         .then(data => {
@@ -477,7 +474,7 @@ export default function MonetizationDesk({ onShowToast, articles = [], categorie
 
   // Filtered campaign history list
   const filteredHistory = useMemo(() => {
-    const nowMs = Date.now();
+    const nowMs = referenceTime;
     return campaignHistory.filter(camp => {
       if (historySearchQuery.trim()) {
         const q = historySearchQuery.toLowerCase();
@@ -504,11 +501,11 @@ export default function MonetizationDesk({ onShowToast, articles = [], categorie
 
       return true;
     });
-  }, [campaignHistory, historySearchQuery, historySlotFilter, historyStatusFilter]);
+  }, [campaignHistory, historySearchQuery, historySlotFilter, historyStatusFilter, referenceTime]);
 
   // Compute live history stats counters including Impressions, Clicks, and Average CTR
   const historyStats = useMemo(() => {
-    const nowMs = Date.now();
+    const nowMs = referenceTime;
     let live = 0, scheduled = 0, expired = 0, totalImpressions = 0, totalClicks = 0;
     campaignHistory.forEach(camp => {
       const startMs = camp.startDateTime ? new Date(camp.startDateTime).getTime() : 0;
@@ -522,7 +519,7 @@ export default function MonetizationDesk({ onShowToast, articles = [], categorie
     });
     const avgCtr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(1) : '0.0';
     return { total: campaignHistory.length, live, scheduled, expired, totalImpressions, totalClicks, avgCtr };
-  }, [campaignHistory]);
+  }, [campaignHistory, referenceTime]);
 
   const pubId = adConfig.adSensePublisherId?.trim() || '';
   const isPubIdValid = /^(ca-)?pub-[0-9]{16}$/.test(pubId);
@@ -1862,7 +1859,7 @@ export default function MonetizationDesk({ onShowToast, articles = [], categorie
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {filteredHistory.map(camp => {
-                const nowMs = Date.now();
+                const nowMs = referenceTime;
                 const startMs = camp.startDateTime ? new Date(camp.startDateTime).getTime() : 0;
                 const endMs = camp.endDateTime ? new Date(camp.endDateTime).getTime() : 0;
                 

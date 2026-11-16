@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { PenTool, Upload, FileText, Send, CheckCircle, Clock, AlertCircle, Image as ImageIcon, Sparkles, Plus, Trash2, Check, RefreshCw, Languages, Lock, FolderOpen, X, Radio, Edit3, XCircle, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { PenTool, FileText, Send, CheckCircle, Clock, AlertCircle, Image as ImageIcon, Sparkles, Plus, Trash2, Check, RefreshCw, Languages, Lock, FolderOpen, X, Radio, Edit3, XCircle, ShieldCheck } from 'lucide-react';
 import { MOCK_CATEGORIES } from '../../services/mockData';
 import { compressImageToWebP } from '../../services/mediaService';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
@@ -45,7 +45,6 @@ export default function ReporterWorkspace({
   const [imageCaption, setImageCaption] = useState(initialDraft?.imageCaption || '');
   const [mediaCredits, setMediaCredits] = useState(initialDraft?.mediaCredits || 'PublicSpark Bureau');
   const [isCompressing, setIsCompressing] = useState(false);
-  const [isImageReady, setIsImageReady] = useState(!!initialDraft?.imagePreview);
   const [imageStats, setImageStats] = useState(null);
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
 
@@ -189,13 +188,20 @@ export default function ReporterWorkspace({
           updated_at: 'आज, 14:20 IST'
         }
       ];
-    } catch(e) {
+    } catch {
       return [];
     }
   });
 
   // Keep myStories synchronized with App-level status changes (Rejection, Approval/Publishing, Review queue)
+  const isFirstSyncRef = useRef(true);
   useEffect(() => {
+    if (isFirstSyncRef.current) {
+      isFirstSyncRef.current = false;
+      if (rejectedArticles.length === 0 && pendingArticles.length === 0 && publishedArticles.length === 0) {
+        return;
+      }
+    }
     setMyStories(prevStories => {
       let hasChanges = false;
       const updated = prevStories.map(story => {

@@ -20,7 +20,8 @@ export default function Header({
   onLanguageChange,
   isTranslating,
   categories = MOCK_CATEGORIES,
-  articles = []
+  articles = [],
+  onOpenSavedDrawer
 }) {
   const breakingItems = useMemo(() => {
     const fromArticles = (articles || []).filter(a => a.is_breaking).map(a => a.title);
@@ -128,7 +129,7 @@ export default function Header({
           </div>
 
           {/* Right: Language Pill, Search & Dark/Light Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
             {/* Quick Mobile Language Select */}
             <div className="mobile-lang-pill">
               <Languages size={13} color="var(--accent-crimson)" style={{ flexShrink: 0 }} />
@@ -160,6 +161,17 @@ export default function Header({
               aria-label="Search"
             >
               <Search size={15} />
+            </button>
+
+            {/* Quick Saved Stories Drawer Trigger */}
+            <button 
+              onClick={() => onOpenSavedDrawer ? onOpenSavedDrawer() : onSelectCategory('bookmarks')} 
+              className="mobile-action-icon"
+              title={t('savedBookmarks', currentLanguage)}
+              aria-label="Open Saved Stories"
+              style={{ color: '#f59e0b' }}
+            >
+              <Bookmark size={15} fill="#f59e0b" color="#f59e0b" />
             </button>
 
             {/* Dark / Light Toggle */}
