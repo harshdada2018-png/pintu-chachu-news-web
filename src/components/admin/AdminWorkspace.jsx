@@ -12,6 +12,7 @@ import MediaLibraryDesk from './MediaLibraryDesk';
 import LiveUpdatesModal from './LiveUpdatesModal';
 import GrievanceDesk from './GrievanceDesk';
 import DeveloperRescueDesk from './DeveloperRescueDesk';
+import ConfidentialTipsDesk from './ConfidentialTipsDesk';
 
 /**
  * Format ISO / datetime-local string to clean Indian standard readable format (e.g. 4 Nov 2026, 07:00 AM)
@@ -1549,6 +1550,9 @@ export default function AdminWorkspace({
     { id: 'ads', label: 'Ad Slot Placements', shortLabel: 'Ad Slots', icon: DollarSign, group: 'Operations & Monetization' },
     { id: 'storage', label: 'Storage & Backups Desk', shortLabel: 'Backups', icon: HardDrive, group: 'Operations & Monetization' },
     { id: 'grievance', label: 'Statutory Grievances', shortLabel: 'Grievances', icon: Scale, group: 'Operations & Monetization' },
+    ...((currentRole === 'admin' || currentRole === 'developer') ? [
+      { id: 'tips', label: 'Confidential Tips (Gupt)', shortLabel: 'Gupt Tips', icon: EyeOff, group: 'Operations & Monetization' }
+    ] : []),
     { id: 'users', label: `Team & Permissions ${staffCount > 0 ? `(${staffCount})` : ''}`, shortLabel: `Team ${staffCount > 0 ? `(${staffCount})` : ''}`, icon: Users, group: 'Operations & Monetization' },
     ...(currentRole === 'developer' ? [
       { id: 'developer', label: 'Developer Rescue & Diagnostics', shortLabel: 'Rescue Desk', icon: Terminal, group: 'Operations & Monetization' }
@@ -1651,6 +1655,9 @@ export default function AdminWorkspace({
               <option value="ads">Ad Slot Placements</option>
               <option value="storage">Storage & Cache</option>
               <option value="grievance">Statutory Grievances (IT Rules)</option>
+              {(currentRole === 'admin' || currentRole === 'developer') && (
+                <option value="tips">Confidential Tips (Admin Only)</option>
+              )}
               <option value="users">Team & Permissions {staffCount > 0 ? `(${staffCount})` : ''}</option>
               {currentRole === 'developer' && (
                 <option value="developer">Developer Rescue & Diagnostics</option>
@@ -1782,6 +1789,15 @@ export default function AdminWorkspace({
               >
                 <Scale size={16} /> Statutory Grievances
               </button>
+              {(currentRole === 'admin' || currentRole === 'developer') && (
+                <button
+                  onClick={() => setActiveTab('tips')}
+                  className={`sidebar-nav-link ${activeTab === 'tips' ? 'active' : ''}`}
+                  style={{ width: '100%' }}
+                >
+                  <EyeOff size={16} /> Confidential Tips (Admin Only)
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('users')}
                 className={`sidebar-nav-link ${activeTab === 'users' ? 'active' : ''}`}
@@ -2362,6 +2378,30 @@ export default function AdminWorkspace({
           {activeTab === 'poll' && <PollManager />}
           {activeTab === 'storage' && <StorageSettings />}
           {activeTab === 'grievance' && <GrievanceDesk onShowToast={onShowToast} />}
+          {activeTab === 'tips' && (currentRole === 'admin' || currentRole === 'developer') && (
+            <ConfidentialTipsDesk
+              onShowToast={onShowToast}
+              onConvertTipToDraft={(tip) => {
+                const draftContent = [
+                  tip.location ? `**स्थान:** ${tip.location}` : '',
+                  tip.incidentDate ? `**घटना की तारीख:** ${tip.incidentDate}` : '',
+                  tip.involvedEntities ? `**शामिल विभाग/संस्था:** ${tip.involvedEntities}` : '',
+                  tip.evidenceUrl ? `**सबूत लिंक:** ${tip.evidenceUrl}` : '',
+                  '',
+                  tip.details || ''
+                ].filter(Boolean).join('\n');
+                setEditingArticle({
+                  title: tip.title || '',
+                  summary: (tip.details || '').slice(0, 180),
+                  category: categories[0]?.name || 'General',
+                  status: 'draft',
+                  content: draftContent,
+                  originalLanguage: 'hi'
+                });
+                setIsEditModalOpen(true);
+              }}
+            />
+          )}
 
           {activeTab === 'users' && <StaffPermissionsDesk onShowToast={onShowToast} />}
 

@@ -36,11 +36,14 @@ export function pauseTwoStageAudio() {
 }
 
 export function resumeTwoStageAudio() {
-  if (activeAudio && activeAudio.paused) {
+  if (activeAudio && activeAudio.src && currentClipType && activeAudio.paused) {
     try {
-      activeAudio.play();
+      const p = activeAudio.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch((err) => console.warn('[TTS Resume Error]', err.message));
+      }
       return true;
-    } catch (e) {}
+    } catch (_e) {}
   }
   return false;
 }
@@ -96,9 +99,14 @@ export async function playTwoStageAudio({
   try {
     const p = unlockedAudio.play();
     if (p !== undefined) {
-      p.then(() => unlockedAudio.pause()).catch(() => {});
+      p.then(() => {
+        // Only pause the silent primer if real Clip 1 hasn't already started
+        if (currentClipType === null && sessionId === activeSessionId) {
+          unlockedAudio.pause();
+        }
+      }).catch(() => {});
     }
-  } catch (e) {}
+  } catch (_e) {}
   activeAudio = unlockedAudio;
 
   // Guardrail: Assamese voice is explicitly not supported

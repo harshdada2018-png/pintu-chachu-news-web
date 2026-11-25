@@ -317,14 +317,16 @@
   - Automatically pushed `public/_redirects` (`/* /index.html 200`) ensuring zero 404 errors on deep linking and hard refreshes.
   - Verified live deployment at `https://pintu-chachu-news-web.pages.dev`: HTTP 200 OK, SSL active, Mumbai (BOM) edge node delivery, verified bundle JS/CSS streaming, and SPA routing confirmed.
 
-- [ ] **Task 40.3: Sovereign Full-Mechanism Audio Player & Gemini Neural TTS Overhaul** `Planned`
+- [x] **Task 40.3: Sovereign Full-Mechanism Audio Player & Gemini Neural TTS Overhaul** `Completed`
+  - Overhauled `TextToSpeech.jsx` & `geminiAudioEngine.js` (fixed button click bubbling, silent WAV primer race condition, `resumeTwoStageAudio` state validation, duplicate fallback guard, 2-color `--accent-crimson` tokens, and 36px+ touch targets). Verified via `npx oxlint src/` (0 errors) and `npm run build` (831ms).
 
-- [ ] **Task 43: Sovereign Anonymous Whistleblower & Confidential News Tip Desk ("गुप्त सूचना केंद्र")** `In Progress`
+- [x] **Task 43: Sovereign Anonymous Whistleblower & Confidential News Tip Desk ("गुप्त सूचना केंद्र")** `Completed`
   - [x] *Subtopic A*: Zero-Trace Backend Storage & Tip Submission API (zero IP/device logging, tracking ID generator, RBAC admin triage API). `Completed`
     - Implemented `confidential_tips.json` store and 5 REST endpoints (`/api/tips/submit`, `/api/tips/status/:trackingId`, `/api/admin/tips`, `/api/admin/tips/update`, `/api/admin/tips/delete`) in `server/server.js`. Verified 5/5 live HTTP tests + syntax check.
   - [x] *Subtopic B*: Public Confidential Tip Form & Anonymity Assurance UI (`ConfidentialTipModal.jsx`, tracking receipt & status check). `Completed`
     - Built `ConfidentialTipModal.jsx` and wired Footer triggers in `App.jsx` with 2-color broadsheet UI, 8,000-char detailed report form, Tracking ID receipt & status lookup, and locked `/api/admin/tips*` strictly to Admin-only (`requireAdminAuth`). Verified with `oxlint` (0 errors) and `npm run build` (1.21s).
-  - *Subtopic C*: Editorial Investigation Desk & 1-Click Draft Conversion (`AdminWorkspace.jsx`, 360px responsive verification). `Planned`
+  - [x] *Subtopic C*: Admin-Only Investigation Desk & 1-Click Draft Conversion (`ConfidentialTipsDesk.jsx`, `AdminWorkspace.jsx`, 360px responsive verification). `Completed`
+    - Built `ConfidentialTipsDesk.jsx` and wired into `AdminWorkspace.jsx` strictly for `admin` & `developer` roles (`403` for Editor/Reporter). Verified 5/5 live RBAC tests, `oxlint` (0 errors), and `npm run build` (711ms).
 
 
 

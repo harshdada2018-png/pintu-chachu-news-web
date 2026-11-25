@@ -456,8 +456,36 @@ function getTranslationsStore() {
   return {};
 }
 
+function isPoisonedTranslation(article, lang, record) {
+  if (!record || !record.title || !String(record.title).trim()) return true;
+  if (record.status && record.status !== 'done') return true;
+  if (!article) return false;
+
+  const origLang = normalizeLanguageCode(article.originalLanguage || 'hi');
+  const targetLang = normalizeLanguageCode(lang || 'hi');
+  if (origLang === targetLang) return false;
+
+  const origTitle = String(article.title || '').trim();
+  const transTitle = String(record.title || '').trim();
+  if (origTitle && transTitle === origTitle) return true;
+
+  if (record.body && article.content) {
+    const origBody = String(article.content || '').trim();
+    const transBody = String(record.body || '').trim();
+    if (origBody.length > 30 && transBody === origBody) return true;
+  }
+  return false;
+}
+
 function saveTranslationRecord(articleId, lang, record) {
   try {
+    const articles = getSavedArticles();
+    const srcArticle = articles.find(a => String(a.id) === String(articleId));
+    if (isPoisonedTranslation(srcArticle, lang, record)) {
+      console.warn(`[Anti-Poison Cache Guard] Refused to cache untranslated/invalid record for ${articleId}:${lang}`);
+      return false;
+    }
+
     const store = getTranslationsStore();
     const key = `${articleId}:${lang}`;
     store[key] = {
@@ -468,8 +496,10 @@ function saveTranslationRecord(articleId, lang, record) {
       last_accessed_at: record.last_accessed_at || new Date().toISOString()
     };
     fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(store, null, 2));
+    return true;
   } catch (e) {
     console.error('[Save Translation Error]', e.message);
+    return false;
   }
 }
 
@@ -650,13 +680,17 @@ function purgeOrphanedSatelliteData() {
     const articles = getSavedArticles();
     const validArticleIds = new Set(articles.map(a => String(a.id)));
 
-    // 1. Sweep translations.json
+    // 1. Sweep translations.json (orphaned + poisoned untranslated entries)
     if (fs.existsSync(TRANSLATIONS_FILE)) {
+      const articleMap = new Map(articles.map(a => [String(a.id), a]));
       const transStore = getTranslationsStore();
       let transChanged = false;
       for (const [key, val] of Object.entries(transStore)) {
         const artId = String(val.article_id || key.split(':')[0] || '');
-        if (artId && !validArticleIds.has(artId)) {
+        const srcArt = articleMap.get(artId);
+        const isOrphan = artId && !validArticleIds.has(artId);
+        const isPoisoned = srcArt ? isPoisonedTranslation(srcArt, val.lang || key.split(':')[1], val) : false;
+        if (isOrphan || isPoisoned) {
           delete transStore[key];
           transChanged = true;
           orphanedTranslationsPurged++;
@@ -2663,15 +2697,31 @@ ${Array.isArray(highlights) ? JSON.stringify(highlights) : '[]'}
 BODY:
 ${body || ''}`;
 
-  const textOutput = await callGeminiApi(prompt, true);
-  const cleanJson = textOutput.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-  const parsed = JSON.parse(cleanJson);
-  return {
-    title: parsed.title || title,
-    summary: parsed.summary || summary || (Array.isArray(parsed.highlights) ? parsed.highlights[0] : ''),
-    highlights: Array.isArray(parsed.highlights) ? parsed.highlights : (highlights || []),
-    body: parsed.body || body
-  };
+  try {
+    const textOutput = await callGeminiApi(prompt, true);
+    const cleanJson = textOutput.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(cleanJson);
+    return {
+      title: parsed.title || title,
+      summary: parsed.summary || summary || (Array.isArray(parsed.highlights) ? parsed.highlights[0] : ''),
+      highlights: Array.isArray(parsed.highlights) ? parsed.highlights : (highlights || []),
+      body: parsed.body || body
+    };
+  } catch (geminiErr) {
+    console.warn(`[Gemini Full-Article Fallback -> Google GTX] (${targetLang}):`, geminiErr.message);
+    const [tTitle, tSummary, tBody, ...tHighlights] = await Promise.all([
+      translateTextWithGoogleGtx(title || '', targetLang, sourceLang),
+      summary ? translateTextWithGoogleGtx(summary, targetLang, sourceLang) : Promise.resolve(''),
+      body ? translateTextWithGoogleGtx(body, targetLang, sourceLang) : Promise.resolve(''),
+      ...(Array.isArray(highlights) ? highlights.map(h => translateTextWithGoogleGtx(h, targetLang, sourceLang)) : [])
+    ]);
+    return {
+      title: tTitle || title,
+      summary: tSummary || summary || tHighlights[0] || '',
+      highlights: tHighlights.length > 0 ? tHighlights : (highlights || []),
+      body: tBody || body
+    };
+  }
 }
 
 function validateTranslationIntegrity(originalTitle, originalBody, translatedTitle, translatedBody) {
@@ -3122,18 +3172,31 @@ ${JSON.stringify(items.map(it => ({ id: it.id, title: it.title || '', summary: i
 
   try {
     const rawJson = await callGeminiApi(prompt, true);
-    if (!rawJson) return items;
-    const cleanJson = typeof rawJson === 'string'
-      ? rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
-      : JSON.stringify(rawJson);
-    const parsed = JSON.parse(cleanJson);
-    if (Array.isArray(parsed)) {
-      return parsed;
+    if (rawJson) {
+      const cleanJson = typeof rawJson === 'string'
+        ? rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+        : JSON.stringify(rawJson);
+      const parsed = JSON.parse(cleanJson);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
     }
-    return items;
   } catch (err) {
-    console.warn('[Gemini Batch Translation Error]:', err.message);
-    return items;
+    console.warn('[Gemini Batch Translation Fallback -> Google GTX]:', err.message);
+  }
+
+  try {
+    const fallbackItems = await Promise.all(items.map(async (it) => {
+      const [tTitle, tSummary] = await Promise.all([
+        translateTextWithGoogleGtx(it.title || '', normalizedTarget, 'auto'),
+        (it.summary || it.excerpt) ? translateTextWithGoogleGtx(it.summary || it.excerpt, normalizedTarget, 'auto') : Promise.resolve('')
+      ]);
+      return { id: it.id, title: tTitle || it.title, summary: tSummary || '' };
+    }));
+    return fallbackItems;
+  } catch (gtxErr) {
+    console.error('[Batch Translation All Providers Failed]:', gtxErr.message);
+    return null;
   }
 }
 
@@ -3868,10 +3931,11 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
-        // Save newly translated items into translationsStore permanently
+        // Save newly translated items ONLY if actually translated (never poison cache with untranslated source text)
         if (Array.isArray(translatedItems)) {
           for (const trans of translatedItems) {
-            if (trans && trans.id && trans.title) {
+            const orig = uncachedItems.find(u => String(u.id) === String(trans?.id));
+            if (trans && trans.id && trans.title && (!orig || trans.title.trim() !== String(orig.title || '').trim())) {
               saveTranslationRecord(trans.id, normalizedTarget, {
                 title: trans.title,
                 summary: trans.summary || '',

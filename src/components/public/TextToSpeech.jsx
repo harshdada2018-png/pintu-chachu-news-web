@@ -97,8 +97,11 @@ export default function TextToSpeech({
 
     // Begin fresh 2-stage audio stream
     setIsLoading(true);
+    let fallbackTriggered = false;
 
     const triggerBrowserFallback = (textToSpeak) => {
+      if (fallbackTriggered) return;
+      fallbackTriggered = true;
       console.log('[TTS] Smoothly falling back to native browser speech...');
       isUsingBrowserFallback.current = true;
       setClipStatus('browser');
@@ -207,12 +210,13 @@ export default function TextToSpeech({
   return (
     <div 
       className={`audio-player-bar ${isExpanded ? 'expanded' : ''}`} 
-      onClick={handleToggleSpeech} 
       title={isPlaying ? t('clickToPauseAudio', currentLanguage) : t('clickToPlayAudio', currentLanguage)}
     >
       {/* Round Play/Pause Button */}
       <button 
+        type="button"
         className="audio-btn" 
+        onClick={handleToggleSpeech}
         aria-label={isPlaying ? "Pause Audio Reader" : "Play Story Audio Reader"}
       >
         {isLoading ? (
@@ -226,9 +230,12 @@ export default function TextToSpeech({
 
       {/* Collapsed State Label */}
       {!isExpanded ? (
-        <div style={{ fontSize: '0.875rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>
+        <div
+          onClick={handleToggleSpeech}
+          style={{ fontSize: '0.875rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-main)', whiteSpace: 'nowrap', cursor: 'pointer' }}
+        >
           <span>{t('listenToStory', currentLanguage)}</span>
-          <Volume2 size={15} color="var(--accent-indigo)" />
+          <Volume2 size={15} color="var(--accent-crimson)" />
         </div>
       ) : (
         /* Rollout Expanded Interactive Audio Timeline Bar */
@@ -236,16 +243,16 @@ export default function TextToSpeech({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1, minWidth: '180px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-main)' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Volume2 size={14} color="var(--accent-indigo)" />
+                <Volume2 size={14} color="var(--accent-crimson)" />
                 {isLoading ? (
                   t('generatingVoice', currentLanguage)
                 ) : clipStatus === 'chime' ? (
-                  <span style={{ color: 'var(--accent-amber)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                  <span style={{ color: 'var(--accent-crimson)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                     <Bell size={12} /> {t('upNextBody', currentLanguage)}
                   </span>
                 ) : clipStatus === 'clip_1' ? (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                    <Sparkles size={12} color="var(--accent-indigo)" /> {t('part1Audio', currentLanguage)}
+                    <Sparkles size={12} color="var(--accent-crimson)" /> {t('part1Audio', currentLanguage)}
                   </span>
                 ) : clipStatus === 'clip_2' ? (
                   t('part2Audio', currentLanguage)
@@ -273,7 +280,7 @@ export default function TextToSpeech({
                 width: '100%',
                 height: '5px',
                 borderRadius: '3px',
-                accentColor: 'var(--accent-indigo)',
+                accentColor: 'var(--accent-crimson)',
                 cursor: 'pointer',
                 background: 'var(--border-medium)'
               }}
@@ -294,16 +301,21 @@ export default function TextToSpeech({
           {/* Restart Button */}
           {currentTime > 0 && (
             <button
+              type="button"
               onClick={handleRestart}
               title="Restart Audio"
               style={{
                 background: 'none',
-                border: 'none',
-                color: 'var(--text-subtle)',
+                border: '1px solid var(--border-light)',
+                borderRadius: '4px',
+                color: 'var(--text-main)',
                 cursor: 'pointer',
-                padding: '0.2rem',
-                display: 'flex',
-                alignItems: 'center'
+                minWidth: '36px',
+                minHeight: '36px',
+                padding: '0.3rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
             >
               <RotateCcw size={15} />
@@ -312,13 +324,15 @@ export default function TextToSpeech({
 
           {/* Speed Selector */}
           <button
+            type="button"
             onClick={handleCycleSpeed}
             title="Reading Speed"
             style={{
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
               gap: '0.35rem',
               padding: '0.35rem 0.65rem',
+              minHeight: '36px',
               borderRadius: '20px',
               background: 'var(--bg-secondary)',
               border: '1px solid var(--border-medium)',
@@ -329,7 +343,7 @@ export default function TextToSpeech({
               whiteSpace: 'nowrap'
             }}
           >
-            <Gauge size={13} color="var(--accent-indigo)" />
+            <Gauge size={13} color="var(--accent-crimson)" />
             <span>{currentSpeed}x {t('speed', currentLanguage)}</span>
           </button>
         </div>
