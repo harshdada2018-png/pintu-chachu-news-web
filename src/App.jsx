@@ -9,6 +9,7 @@ import AdminWorkspace from './components/admin/AdminWorkspace';
 import SearchPage from './components/public/SearchPage';
 import LegalModal from './components/common/LegalModal';
 import GrievanceModal from './components/public/GrievanceModal';
+import ConfidentialTipModal from './components/public/ConfidentialTipModal';
 import SavedStoriesDrawer from './components/public/SavedStoriesDrawer';
 import SearchDrawer from './components/public/SearchDrawer';
 import CategoryShelvesSection from './components/public/CategoryShelvesSection';
@@ -201,6 +202,7 @@ export default function App() {
 
   // Statutory Grievance Redressal Modal (IT Rules 2021 India - Task 29)
   const [isGrievanceModalOpen, setIsGrievanceModalOpen] = useState(false);
+  const [isTipModalOpen, setIsTipModalOpen] = useState(false);
   const [grievanceArticle, setGrievanceArticle] = useState(null);
 
   const handleOpenGrievance = (article = null) => {
@@ -1829,7 +1831,7 @@ export default function App() {
               </p>
 
               {/* Official Social Media Channel Icons */}
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
                 {/* WhatsApp */}
                 <a 
                   href={getFormattedWhatsAppLink(socialLinks.whatsapp)} 
@@ -1839,8 +1841,8 @@ export default function App() {
                     display: 'inline-flex', 
                     alignItems: 'center', 
                     justifyContent: 'center', 
-                    width: '38px', 
-                    height: '38px', 
+                    width: '44px', 
+                    height: '44px', 
                     borderRadius: '50%', 
                     background: '#25D366', 
                     color: '#ffffff', 
@@ -1852,7 +1854,7 @@ export default function App() {
                   onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-3px)'}
                   onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                 >
-                  <WhatsAppIcon size={18} color="#ffffff" />
+                  <WhatsAppIcon size={20} color="#ffffff" />
                 </a>
 
                 {/* Instagram */}
@@ -1864,8 +1866,8 @@ export default function App() {
                     display: 'inline-flex', 
                     alignItems: 'center', 
                     justifyContent: 'center', 
-                    width: '38px', 
-                    height: '38px', 
+                    width: '44px', 
+                    height: '44px', 
                     borderRadius: '50%', 
                     background: 'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)', 
                     color: '#ffffff', 
@@ -1877,7 +1879,7 @@ export default function App() {
                   onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-3px)'}
                   onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                 >
-                  <InstagramIcon size={18} color="#ffffff" />
+                  <InstagramIcon size={20} color="#ffffff" />
                 </a>
 
                 {/* Facebook */}
@@ -1889,8 +1891,8 @@ export default function App() {
                     display: 'inline-flex', 
                     alignItems: 'center', 
                     justifyContent: 'center', 
-                    width: '38px', 
-                    height: '38px', 
+                    width: '44px', 
+                    height: '44px', 
                     borderRadius: '50%', 
                     background: '#1877F2', 
                     color: '#ffffff', 
@@ -1902,7 +1904,7 @@ export default function App() {
                   onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-3px)'}
                   onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                 >
-                  <FacebookIcon size={18} color="#ffffff" />
+                  <FacebookIcon size={20} color="#ffffff" />
                 </a>
 
                 {/* X (Twitter) */}
@@ -1914,8 +1916,8 @@ export default function App() {
                     display: 'inline-flex', 
                     alignItems: 'center', 
                     justifyContent: 'center', 
-                    width: '38px', 
-                    height: '38px', 
+                    width: '44px', 
+                    height: '44px', 
                     borderRadius: '50%', 
                     background: '#000000', 
                     color: '#ffffff', 
@@ -1928,7 +1930,7 @@ export default function App() {
                   onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-3px)'}
                   onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
                 >
-                  <XTwitterIcon size={18} color="#ffffff" />
+                  <XTwitterIcon size={20} color="#ffffff" />
                 </a>
               </div>
             </div>
@@ -1937,25 +1939,30 @@ export default function App() {
               <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: '0.85rem', letterSpacing: '0.08em' }}>
                 मानक व नीतियां (Standards)
               </h4>
-              <ul style={{ listStyle: 'none', fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <ul style={{ listStyle: 'none', fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 <li>
-                  <button onClick={() => { setLegalModalTab('ethics'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                  <button type="button" className="footer-nav-link" onClick={() => { setLegalModalTab('ethics'); setIsLegalModalOpen(true); }}>
                     संपादकीय आचार संहिता (Ethics)
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => { setLegalModalTab('accessibility'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                  <button type="button" className="footer-nav-link" onClick={() => { setLegalModalTab('accessibility'); setIsLegalModalOpen(true); }}>
                     सुलभता व पाठक सहायता (Accessibility)
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => { setLegalModalTab('advertise'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                  <button type="button" className="footer-nav-link" onClick={() => { setLegalModalTab('advertise'); setIsLegalModalOpen(true); }}>
                     विज्ञापन दें (Direct Sponsor)
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => { setLegalModalTab('contact'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                  <button type="button" className="footer-nav-link" onClick={() => { setLegalModalTab('contact'); setIsLegalModalOpen(true); }}>
                     शिकायत निवारण अधिकारी (IT Rules)
+                  </button>
+                </li>
+                <li>
+                  <button type="button" className="footer-nav-link" style={{ color: 'var(--accent-crimson)', fontWeight: 800 }} onClick={() => setIsTipModalOpen(true)}>
+                    गुप्त सूचना / खबर भेजें (Send Tip)
                   </button>
                 </li>
               </ul>
@@ -1964,24 +1971,24 @@ export default function App() {
               <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: '0.85rem', letterSpacing: '0.08em' }}>
                 विधिक व अनुपालन (Compliance)
               </h4>
-              <ul style={{ listStyle: 'none', fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <ul style={{ listStyle: 'none', fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 <li>
-                  <button onClick={() => { setLegalModalTab('terms'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                  <button type="button" className="footer-nav-link" onClick={() => { setLegalModalTab('terms'); setIsLegalModalOpen(true); }}>
                     सेवा की शर्तें (Terms of Use)
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => { setLegalModalTab('privacy'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                  <button type="button" className="footer-nav-link" onClick={() => { setLegalModalTab('privacy'); setIsLegalModalOpen(true); }}>
                     गोपनीयता नीति (Privacy Policy)
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => { setLegalModalTab('cookies'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                  <button type="button" className="footer-nav-link" onClick={() => { setLegalModalTab('cookies'); setIsLegalModalOpen(true); }}>
                     डेटा व कुकी नियंत्रण (Do Not Sell Info)
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => { setLegalModalTab('disclaimer'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                  <button type="button" className="footer-nav-link" onClick={() => { setLegalModalTab('disclaimer'); setIsLegalModalOpen(true); }}>
                     सुरक्षित आश्रय (Safe Harbor)
                   </button>
                 </li>
@@ -2061,7 +2068,44 @@ export default function App() {
             >
               सुरक्षित आश्रय अस्वीकरण
             </button>
+            <span className="footer-compliance-divider" aria-hidden="true">•</span>
+
+            <button
+              type="button"
+              className="footer-compliance-link"
+              style={{ color: 'var(--accent-crimson)', fontWeight: 800 }}
+              onClick={() => setIsTipModalOpen(true)}
+            >
+              गुप्त सूचना केंद्र (Send Tip)
+            </button>
           </nav>
+
+          {/* Editorial, Regional & Safe Harbor Disclaimers (Task 38 Subtopic B) */}
+          <div className="footer-editorial-disclaimer" role="note" aria-label="Editorial and Regional Disclaimers">
+            <div>
+              <strong style={{ color: 'var(--text-main)' }}>संपादकीय एवं क्षेत्रीय अस्वीकरण:</strong> भ्रष्टाचार-विरोधी एवं जनसरोकार से जुड़ी खबरें आधिकारिक दस्तावेजों, आरटीआई (RTI) एवं प्रमाणित तथ्यों पर आधारित होती हैं। ज्योतिष, धर्म एवं पर्यटन विषयक सामग्री संबंधित क्षेत्र के विशेषज्ञों के निजी विचार व सांस्कृतिक जानकारी मात्र हैं, जिनका उद्देश्य केवल पाठक जागरूकता है।
+            </div>
+            <div className="footer-editorial-disclaimer-row">
+              <span>बाहरी वेबसाइटों की सामग्री के लिए पब्लिक स्पार्क उत्तरदायी नहीं है।</span>
+              <button
+                type="button"
+                className="footer-safe-harbor-link"
+                onClick={() => { setLegalModalTab('disclaimer'); setIsLegalModalOpen(true); }}
+              >
+                बाहरी लिंक्स के प्रति हमारी नीति पढ़ें
+              </button>
+              <span className="footer-compliance-divider" aria-hidden="true">|</span>
+              <span>संपादकीय संपर्क: <strong style={{ color: 'var(--text-main)' }}>publicspark.in@gmail.com</strong></span>
+              <span className="footer-compliance-divider" aria-hidden="true">|</span>
+              <button
+                type="button"
+                className="footer-safe-harbor-link"
+                onClick={() => { setLegalModalTab('contact'); setIsLegalModalOpen(true); }}
+              >
+                शिकायत निवारण प्रकोष्ठ (IT Rules 2021)
+              </button>
+            </div>
+          </div>
 
           <div style={{ 
             borderTop: '1px solid var(--border-light)', 
@@ -2084,7 +2128,7 @@ export default function App() {
                   background: 'none',
                   border: '1px solid var(--border-medium)',
                   borderRadius: 'var(--radius-sm, 4px)',
-                  minHeight: '38px',
+                  minHeight: '44px',
                   padding: '0.45rem 0.95rem',
                   color: 'var(--text-subtle)',
                   cursor: 'pointer',
@@ -2216,6 +2260,12 @@ export default function App() {
         }}
         initialArticle={grievanceArticle}
         currentLanguage={currentLanguage}
+      />
+
+      {/* Anonymous Whistleblower & Confidential News Tip Modal (Task 43 Subtopic B) */}
+      <ConfidentialTipModal
+        isOpen={isTipModalOpen}
+        onClose={() => setIsTipModalOpen(false)}
       />
 
       {/* Mobile Sticky Anchor Ad Slot (Automatically active only on mobile when enabled) */}

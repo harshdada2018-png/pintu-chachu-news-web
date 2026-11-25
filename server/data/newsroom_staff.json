@@ -2,28 +2,17 @@
   {
     "id": "staff_admin_01",
     "name": "Chief Editor / Super Admin",
-    "email": "admin@publicspark.in",
+    "email": "publicspark.in@gmail.com",
     "role": "admin",
-    "passwordHash": "5e90a573fd1b3089c19f26a0dfb7902f289fae5f41f0db17d72530bb70932a6cf3a0005ff5f90c9461ee728bad9e2972d1938b1ca41ae856d481d968825cc4c8",
-    "passwordSalt": "64c3da6324a5497ba3f928c886592569",
+    "passwordHash": "46f15e423f7144e527a6d1552a87476b03539987455d1574a1b6f364e49fc410141466f019cd9a6366888f244433e939646eed40aa0367848ff39a78cc2e499f",
+    "passwordSalt": "daaa73307d11f803aa9e0ccb3891921f",
     "status": "active",
     "createdAt": "2026-11-15T08:43:30.735Z",
-    "twoFactorEnabled": true,
-    "twoFactorSecret": "HGBA4SRTYYXPXEKBYOJQRNN67YS4TV6U",
-    "twoFactorRecoveryCodes": [
-      "2bc1deb55bcdbb70f5f8cb972513e9430428875cbd2aeb2fdf3124cb1613a192",
-      "8e173a4634a75679d4e947a6fba561df3262e491df7e5b25c5c906b54b4f93a8",
-      "5fc41387d32c817d09ba4171882af4bb705212c7570d996183807e14a3bb8cc8",
-      "cb5e248bbef91a0918bcb462e83e03662180ce558854f220d91fbad71c9e814f",
-      "b4bfe99427a4cd93877c7d1051bdacbabdbb2ad9d0ce337e9e684c0f82791341",
-      "01af0ceb4ff23c9c72e37f974198927b59834b7078bdf7fc0f9aae0966fd10b7",
-      "39d84b9855e32818799ca21d18fc4614b954f85a91f324990253e9363718abba",
-      "c176e73c86c5ae939eb241f96e2605dfab5a83d5c051de35b59b2375dd6bcaa2",
-      "5ab75c04321199099ea32c34280aa5451bf1e6139b03c966f74e1de8a8509837",
-      "533c618afd95363c9e62b18861d29fa8cb44256d495640e41d09ddb3d6fb88f5"
-    ],
-    "twoFactorActivatedAt": "2026-11-16T07:07:40.422Z",
-    "updatedAt": "2026-11-16T07:07:40.422Z"
+    "twoFactorEnabled": false,
+    "twoFactorSecret": null,
+    "twoFactorRecoveryCodes": [],
+    "twoFactorActivatedAt": null,
+    "updatedAt": "2026-11-25T11:49:17.776Z"
   },
   {
     "id": "staff_rep_01",
@@ -34,7 +23,7 @@
     "passwordSalt": "02261f5088fd90900ec001e130fbadd2",
     "status": "active",
     "createdAt": "2026-11-15T08:43:30.760Z",
-    "updatedAt": "2026-11-15T13:34:21.230Z"
+    "updatedAt": "2026-11-25T11:29:24.042Z"
   },
   {
     "id": "staff_ed_01",
@@ -57,32 +46,7 @@
     "status": "active",
     "emailVerified": true,
     "createdAt": "2026-11-15T08:44:58.712Z",
-    "updatedAt": "2026-11-15T12:51:22.142Z"
-  },
-  {
-    "id": "staff_1794733405663_kaqb",
-    "name": "Harsh Mishra",
-    "email": "harshdada2018@gmail.com",
-    "phone": "6268466656",
-    "role": "admin",
-    "passwordHash": "b8053b0dbe0577d181ec1352f3869bab249abc4e7995678d6e201c74f09fb903df52884bffcd65bc467a2f0ffa7bcab5f4f91fab9f86925787be94a5e3845de8",
-    "passwordSalt": "24b7412e8d7dc3a3ec91840a9b2aca77",
-    "status": "active",
-    "emailVerified": true,
-    "createdAt": "2026-11-15T09:03:25.664Z"
-  },
-  {
-    "id": "staff_1794744968657_rirj",
-    "name": "Harsh Mishra",
-    "email": "harsh2018vardhanmishra@gmail.com",
-    "phone": "6268466656",
-    "role": "admin",
-    "passwordHash": "9b480405f79939b2fb38d6eba06ef02655e80571bafe18955091b9549401a33813a0c8fd2e6ad44c463c410d5b7a810e8917cf7dc8640c038026c026054ae4e5",
-    "passwordSalt": "3d062dd8eed11140ad3732ba7844899f",
-    "emailVerified": true,
-    "emailVerifiedAt": "2026-11-15T12:16:08.657Z",
-    "status": "active",
-    "createdAt": "2026-11-15T12:16:08.657Z"
+    "updatedAt": "2026-11-25T11:18:16.789Z"
   },
   {
     "id": "staff_test_rep_vikram",

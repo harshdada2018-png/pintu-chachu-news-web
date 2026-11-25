@@ -34,6 +34,7 @@ import {
   updateStaffStatus,
   deleteStaffMember,
   adminResetStaffPassword,
+  updateStaffEmail,
   createTemp2faToken,
   verifyTemp2faToken,
   getStaff2faStatus,
@@ -362,7 +363,56 @@ User-agent: WhatsApp
 Allow: /
 
 Sitemap: ${siteUrl}/sitemap.xml
+Sitemap: ${siteUrl}/news-sitemap.xml
+Sitemap: ${siteUrl}/rss.xml
 `;
+}
+
+function generateRss2Feed(articles, host = 'localhost:5000') {
+  const protocol = host.includes('localhost') || host.includes('127.0.0.1') ? 'http' : 'https';
+  const siteUrl = `${protocol}://${host}`;
+  const published = articles.filter(a => a.status === 'published' || !a.status).slice(0, 30);
+
+  let itemsXml = '';
+  for (const art of published) {
+    const slugOrId = art.slug || art.id;
+    const link = `${siteUrl}/article/${encodeURIComponent(slugOrId)}`;
+    const pubDate = new Date(art.createdAt || Date.now()).toUTCString();
+    const desc = escapeXml((art.summary || art.content || '').replace(/<[^>]+>/g, '').slice(0, 480));
+    const title = escapeXml(art.title || 'Untitled');
+    const category = escapeXml(art.category || 'News');
+    const author = escapeXml(art.author || 'PublicSpark Desk');
+    const imgUrl = art.image && !art.image.startsWith('data:')
+      ? (art.image.startsWith('http') ? art.image : `${siteUrl}${art.image}`)
+      : '';
+    const mediaXml = imgUrl
+      ? `      <media:content url="${escapeXml(imgUrl)}" medium="image" />\n      <media:thumbnail url="${escapeXml(imgUrl)}" />\n`
+      : '';
+
+    itemsXml += `    <item>
+      <title>${title}</title>
+      <link>${link}</link>
+      <guid isPermaLink="true">${link}</guid>
+      <pubDate>${pubDate}</pubDate>
+      <category>${category}</category>
+      <dc:creator>${author}</dc:creator>
+      <description>${desc}</description>
+${mediaXml}    </item>
+`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>PUBLIC SPARK - Latest News</title>
+    <link>${siteUrl}</link>
+    <description>Independent Digital Newsroom - Breaking News, Fact-Checked Reports &amp; Regional Journalism</description>
+    <language>hi-IN</language>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+    <ttl>15</ttl>
+    <atom:link href="${siteUrl}/rss.xml" rel="self" type="application/rss+xml" />
+${itemsXml}  </channel>
+</rss>`;
 }
 
 function computeContentHash(str) {
@@ -1444,6 +1494,36 @@ function saveSettings(newSettings) {
 
 const PRESETS_FILE = path.join(DATA_DIR, 'presets.json');
 const GRIEVANCES_FILE = path.join(DATA_DIR, 'grievances.json');
+const CONFIDENTIAL_TIPS_FILE = path.join(DATA_DIR, 'confidential_tips.json');
+
+function getSavedConfidentialTips() {
+  try {
+    if (fs.existsSync(CONFIDENTIAL_TIPS_FILE)) {
+      const raw = fs.readFileSync(CONFIDENTIAL_TIPS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error reading confidential tips file:', e);
+  }
+  return [];
+}
+
+function saveConfidentialTips(tips) {
+  try {
+    fs.writeFileSync(CONFIDENTIAL_TIPS_FILE, JSON.stringify(tips, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('Error saving confidential tips file:', e);
+    return false;
+  }
+}
+
+function generateTipTrackingId() {
+  const num = crypto.randomInt(1000, 9999);
+  const code = crypto.randomBytes(2).toString('hex').toUpperCase();
+  return `TIP-${num}-${code}`;
+}
 
 function getSavedGrievances() {
   try {
@@ -2448,13 +2528,11 @@ async function callGeminiApi(prompt, isJson = false) {
     throw new Error('GEMINI_API_KEY is not configured in backend environment.');
   }
 
-  // Use current fast, high-quota recommended models in order of availability
+  // Prioritize fastest low-latency model first (gemini-3.5-flash-lite), then fallback models
   const models = [
-    'gemini-3.5-flash',
     'gemini-3.5-flash-lite',
-    'gemini-3.7-flash',
-    'gemini-3.8-flash',
-    'gemini-flash-latest'
+    'gemini-3.5-flash',
+    'gemini-3.8-flash'
   ];
   let lastError = null;
 
@@ -2473,6 +2551,7 @@ async function callGeminiApi(prompt, isJson = false) {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(5000),
         body: JSON.stringify(payload)
       });
 
@@ -2510,6 +2589,42 @@ async function callGeminiApi(prompt, isJson = false) {
   }
 
   throw lastError || new Error('All Gemini translation models failed to return content');
+}
+
+async function translateTextWithGoogleGtx(text, targetLang, sourceLang = 'auto') {
+  const raw = String(text || '');
+  if (!raw.trim()) return '';
+  const tl = normalizeLanguageCode(targetLang) === 'zh-TW' ? 'zh-TW' : normalizeLanguageCode(targetLang);
+  const sl = sourceLang && sourceLang !== 'auto' ? normalizeLanguageCode(sourceLang) : 'auto';
+
+  const chunks = [];
+  if (raw.length <= 1800) {
+    chunks.push(raw);
+  } else {
+    let current = '';
+    for (const para of raw.split('\n')) {
+      if ((current.length + para.length + 1) > 1800 && current) {
+        chunks.push(current);
+        current = para;
+      } else {
+        current = current ? `${current}\n${para}` : para;
+      }
+    }
+    if (current) chunks.push(current);
+  }
+
+  const translatedChunks = await Promise.all(chunks.map(async (chunk) => {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&dt=t&q=${encodeURIComponent(chunk)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!res.ok) throw new Error(`Google GTX HTTP ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data) && Array.isArray(data[0])) {
+      return data[0].map(seg => (Array.isArray(seg) ? seg[0] : '')).join('');
+    }
+    return chunk;
+  }));
+
+  return translatedChunks.join('\n');
 }
 
 async function translateWithGemini(title, body, highlights = [], targetLang, sourceLang = 'hi', summary = '') {
@@ -3173,7 +3288,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 1. DYNAMIC GOOGLE NEWS XML SITEMAP
-  if (req.method === 'GET' && url.pathname === '/sitemap.xml') {
+  if (req.method === 'GET' && (url.pathname === '/sitemap.xml' || url.pathname === '/news-sitemap.xml' || url.pathname === '/sitemap-news.xml')) {
     const articles = getSavedArticles();
     const sitemapXml = generateGoogleNewsSitemap(articles, req.headers.host || 'localhost:5000');
     res.writeHead(200, {
@@ -3181,6 +3296,17 @@ const server = http.createServer(async (req, res) => {
       'Cache-Control': 'public, max-age=1800'
     });
     return res.end(sitemapXml);
+  }
+
+  // 1B. RSS 2.0 SYNDICATION FEED
+  if (req.method === 'GET' && (url.pathname === '/rss.xml' || url.pathname === '/feed.xml' || url.pathname === '/feed')) {
+    const articles = getSavedArticles();
+    const rssXml = generateRss2Feed(articles, req.headers.host || 'localhost:5000');
+    res.writeHead(200, {
+      'Content-Type': 'application/rss+xml; charset=utf-8',
+      'Cache-Control': 'public, max-age=900'
+    });
+    return res.end(rssXml);
   }
 
   // 2. SEARCH ENGINE CRAWLER DIRECTIVES (ROBOTS.TXT)
@@ -6414,6 +6540,201 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // -------------------------------------------------------------
+  // TASK 43: ZERO-TRACE ANONYMOUS CONFIDENTIAL NEWS TIP DESK APIS
+  // -------------------------------------------------------------
+
+  // POST /api/tips/submit - Public anonymous crime/corruption tip submission (Zero IP / Zero Device Logging)
+  if (req.method === 'POST' && url.pathname === '/api/tips/submit') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const validCategories = ['corruption', 'crime', 'scam', 'public_issue', 'other'];
+        const category = validCategories.includes(body.category) ? body.category : 'corruption';
+        const title = String(body.title || '').trim().slice(0, 200);
+        const location = String(body.location || '').trim().slice(0, 150);
+        const incidentDate = String(body.incidentDate || '').trim().slice(0, 50);
+        const involvedEntities = String(body.involvedEntities || '').trim().slice(0, 300);
+        const details = String(body.details || '').trim().slice(0, 8000);
+        const optionalContact = String(body.optionalContact || '').trim().slice(0, 150) || 'Anonymous (Gupt)';
+        const rawEvidence = String(body.evidenceUrl || '').trim().slice(0, 500);
+        const evidenceUrl = (/^(https?:\/\/|\/uploads\/)/i.test(rawEvidence)) ? rawEvidence : '';
+
+        if (title.length < 5) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Subject / Title must be at least 5 characters.' }));
+        }
+        if (details.length < 20) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Please provide complete details (minimum 20 characters).' }));
+        }
+
+        const tips = getSavedConfidentialTips();
+        let trackingId = generateTipTrackingId();
+        while (tips.some(t => t.trackingId === trackingId)) {
+          trackingId = generateTipTrackingId();
+        }
+
+        const nowIso = new Date().toISOString();
+        const newTip = {
+          id: `tip_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+          trackingId,
+          category,
+          title,
+          location,
+          incidentDate,
+          involvedEntities,
+          details,
+          evidenceUrl,
+          optionalContact,
+          status: 'pending_review',
+          editorialNote: '',
+          linkedArticleId: '',
+          reviewedBy: '',
+          submittedAt: nowIso,
+          updatedAt: nowIso
+        };
+
+        tips.unshift(newTip);
+        saveConfidentialTips(tips);
+
+        res.writeHead(201, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store'
+        });
+        return res.end(JSON.stringify({
+          success: true,
+          trackingId: newTip.trackingId,
+          status: newTip.status,
+          submittedAt: newTip.submittedAt
+        }));
+      } catch (_err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: 'Invalid tip submission payload.' }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/tips/status/:trackingId - Public anonymous status check (never leaks raw tip details)
+  if (req.method === 'GET' && url.pathname.startsWith('/api/tips/status/')) {
+    const rawId = decodeURIComponent(url.pathname.slice('/api/tips/status/'.length) || '').trim().toUpperCase();
+    if (!rawId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Tracking ID is required.' }));
+    }
+
+    const tips = getSavedConfidentialTips();
+    const tip = tips.find(t => String(t.trackingId || '').toUpperCase() === rawId);
+    if (!tip) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'No confidential tip found with this Tracking ID.' }));
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store'
+    });
+    return res.end(JSON.stringify({
+      success: true,
+      trackingId: tip.trackingId,
+      status: tip.status,
+      submittedAt: tip.submittedAt,
+      updatedAt: tip.updatedAt,
+      editorialNote: tip.editorialNote || ''
+    }));
+  }
+
+  // GET /api/admin/tips - Admin-Only Confidential Tip Desk query (Admin / Developer ONLY)
+  if (req.method === 'GET' && url.pathname === '/api/admin/tips') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    const tips = getSavedConfidentialTips();
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ success: true, tips }));
+  }
+
+  // POST /api/admin/tips/update - Update investigation status & editorial note (Admin / Developer ONLY)
+  if (req.method === 'POST' && url.pathname === '/api/admin/tips/update') {
+    const session = requireAdminAuth(req, res);
+    if (!session) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const tipId = String(body.id || '').trim();
+        const status = String(body.status || '').trim();
+        const validStatuses = ['pending_review', 'under_investigation', 'verified_published', 'dismissed'];
+        if (!tipId || !validStatuses.includes(status)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Valid tip ID and status are required.' }));
+        }
+
+        const tips = getSavedConfidentialTips();
+        const idx = tips.findIndex(t => t.id === tipId);
+        if (idx === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Confidential tip not found.' }));
+        }
+
+        tips[idx] = {
+          ...tips[idx],
+          status,
+          editorialNote: body.editorialNote !== undefined ? String(body.editorialNote || '').trim().slice(0, 1000) : tips[idx].editorialNote,
+          linkedArticleId: body.linkedArticleId !== undefined ? String(body.linkedArticleId || '').trim().slice(0, 120) : tips[idx].linkedArticleId,
+          reviewedBy: session.name || session.email,
+          updatedAt: new Date().toISOString()
+        };
+        saveConfidentialTips(tips);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, tip: tips[idx] }));
+      } catch (_err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: 'Invalid tip update payload.' }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/admin/tips/delete - Remove tip record (Admin / Developer only)
+  if (req.method === 'POST' && url.pathname === '/api/admin/tips/delete') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const tipId = String(body.id || '').trim();
+        if (!tipId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Tip ID is required.' }));
+        }
+
+        const tips = getSavedConfidentialTips();
+        const filtered = tips.filter(t => t.id !== tipId);
+        if (filtered.length === tips.length) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Confidential tip not found.' }));
+        }
+        saveConfidentialTips(filtered);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, deletedId: tipId }));
+      } catch (_err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: 'Invalid delete payload.' }));
+      }
+    });
+    return;
+  }
+
   // GET /api/live-news (Fetch live incoming RSS news streams for Admin Curation)
   if (req.method === 'GET' && url.pathname === '/api/live-news') {
     try {
@@ -7563,6 +7884,44 @@ const server = http.createServer(async (req, res) => {
         }));
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/staff/update-email - Update staff email (Admin email restricted strictly to Developer)
+  if (req.method === 'POST' && url.pathname === '/api/staff/update-email') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const staffId = String(body.staffId || '').trim();
+        const newEmail = String(body.newEmail || '').trim();
+
+        if (!staffId || !newEmail) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Staff ID and newEmail are required.' }));
+        }
+
+        const result = updateStaffEmail({
+          staffId,
+          newEmail,
+          requesterRole: adminSession.role
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: 'Email updated successfully.',
+          result
+        }));
+      } catch (err) {
+        const statusCode = String(err.message || '').startsWith('Forbidden:') ? 403 : 400;
+        res.writeHead(statusCode, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: false, error: err.message }));
       }
     });

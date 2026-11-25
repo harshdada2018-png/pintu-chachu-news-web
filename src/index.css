@@ -2943,6 +2943,29 @@ button {
   margin-bottom: 2rem;
 }
 
+.footer-grid > div {
+  min-width: 0;
+}
+
+.footer-nav-link {
+  background: none;
+  border: none;
+  padding: 0.25rem 0;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.15s ease;
+}
+
+.footer-nav-link:hover,
+.footer-nav-link:focus-visible {
+  color: var(--accent-crimson);
+}
+
 @media (max-width: 768px) {
   .footer-grid {
     grid-template-columns: 1fr;
@@ -5058,6 +5081,73 @@ ins.adsbygoogle[data-ad-status="unfilled"] {
   color: var(--border-medium);
   font-weight: 300;
   user-select: none;
+}
+
+/* Regional & Editorial Disclaimers Strip (Task 38 Subtopic B) */
+.footer-editorial-disclaimer {
+  margin-top: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-left: 3px solid var(--accent-crimson);
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.footer-editorial-disclaimer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.85rem;
+}
+
+.footer-safe-harbor-link {
+  background: none;
+  border: none;
+  padding: 0.25rem 0;
+  color: var(--accent-crimson);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  transition: opacity 0.15s ease;
+}
+
+.footer-safe-harbor-link:hover {
+  opacity: 0.85;
+}
+
+@media (max-width: 480px) {
+  .footer-compliance-strip {
+    justify-content: flex-start;
+    gap: 0.25rem 0.75rem;
+    padding-top: 1rem;
+  }
+
+  .footer-compliance-link {
+    white-space: normal;
+    text-align: left;
+    padding: 0.35rem 0.25rem;
+  }
+
+  .footer-compliance-divider {
+    display: none;
+  }
+
+  .footer-editorial-disclaimer {
+    padding: 0.85rem 1rem;
+    overflow-wrap: anywhere;
+  }
 }
 
 

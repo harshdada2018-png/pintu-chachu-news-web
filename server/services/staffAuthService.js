@@ -82,10 +82,12 @@ export function getSovereignDevConfig() {
   }
   const email = (process.env.SOVEREIGN_DEV_EMAIL || '').trim().toLowerCase();
   const password = (process.env.SOVEREIGN_DEV_PASSWORD || '').trim();
+  const passwordHash = (process.env.SOVEREIGN_DEV_PASSWORD_HASH || '').trim();
+  const passwordSalt = (process.env.SOVEREIGN_DEV_PASSWORD_SALT || '').trim();
   const name = (process.env.SOVEREIGN_DEV_NAME || 'Developer').trim();
   const role = (process.env.SOVEREIGN_DEV_ROLE || 'developer').trim().toLowerCase();
-  if (!email || !password) return null;
-  return { email, password, name, role };
+  if (!email || (!password && (!passwordHash || !passwordSalt))) return null;
+  return { email, password, passwordHash, passwordSalt, name, role };
 }
 
 const DEFAULT_INITIAL_STAFF = [
@@ -204,28 +206,32 @@ export function initStaffStore() {
   const devConfig = getSovereignDevConfig();
   if (devConfig) {
     const existingDev = staffList.find(s => s.email.toLowerCase() === devConfig.email || s.role === 'developer');
-    const { hash, salt } = hashPassword(devConfig.password);
+    const resolvedCreds = (devConfig.passwordHash && devConfig.passwordSalt)
+      ? { hash: devConfig.passwordHash, salt: devConfig.passwordSalt }
+      : hashPassword(devConfig.password);
     if (!existingDev) {
       staffList.push({
         id: 'staff_dev_sovereign',
         name: devConfig.name,
         email: devConfig.email,
         role: devConfig.role,
-        passwordHash: hash,
-        passwordSalt: salt,
+        passwordHash: resolvedCreds.hash,
+        passwordSalt: resolvedCreds.salt,
         status: 'active',
         stealth: true,
         createdAt: new Date().toISOString()
       });
       changed = true;
     } else {
-      const isPwdSame = verifyPassword(devConfig.password, existingDev.passwordHash, existingDev.passwordSalt);
+      const isPwdSame = (devConfig.passwordHash && devConfig.passwordSalt)
+        ? (existingDev.passwordHash === resolvedCreds.hash && existingDev.passwordSalt === resolvedCreds.salt)
+        : verifyPassword(devConfig.password, existingDev.passwordHash, existingDev.passwordSalt);
       if (!isPwdSame || existingDev.email !== devConfig.email || existingDev.name !== devConfig.name || !existingDev.stealth || existingDev.role !== devConfig.role || existingDev.status !== 'active') {
         existingDev.name = devConfig.name;
         existingDev.email = devConfig.email;
         existingDev.role = devConfig.role;
-        existingDev.passwordHash = hash;
-        existingDev.passwordSalt = salt;
+        existingDev.passwordHash = resolvedCreds.hash;
+        existingDev.passwordSalt = resolvedCreds.salt;
         existingDev.status = 'active';
         existingDev.stealth = true;
         existingDev.updatedAt = new Date().toISOString();
@@ -834,6 +840,44 @@ export function adminResetStaffPassword({ staffId, newPassword }) {
   staff.updatedAt = new Date().toISOString();
   saveStaffList(staffList);
   return { success: true, id: staff.id, email: staff.email };
+}
+
+/**
+ * Update a staff member's email address with strict RBAC:
+ * - Reporters & Editors: can be updated by Admin or Sovereign Developer
+ * - Executive Super Admins (role === 'admin'): can ONLY be updated by Sovereign Developer
+ */
+export function updateStaffEmail({ staffId, newEmail, requesterRole }) {
+  const normalizedEmail = String(newEmail || '').trim().toLowerCase();
+  if (!/^[^\s@:]+@[^\s@:]+\.[^\s@:]+$/.test(normalizedEmail)) {
+    throw new Error('Please provide a valid email address (colons are not permitted).');
+  }
+
+  const staffList = getStaffList();
+  const staff = staffList.find(s => s.id === staffId);
+  if (!staff) {
+    throw new Error('Staff member not found.');
+  }
+
+  const devConfig = getSovereignDevConfig();
+  if (staff.role === 'developer' || (devConfig && staff.email.toLowerCase() === devConfig.email)) {
+    throw new Error('Forbidden: Developer email can only be updated directly via .env.');
+  }
+
+  if (staff.role === 'admin' && requesterRole !== 'developer') {
+    throw new Error('Forbidden: Only the Sovereign Developer can change an Executive Super Admin email.');
+  }
+
+  const duplicate = staffList.find(s => s.id !== staffId && s.email.toLowerCase() === normalizedEmail);
+  if (duplicate) {
+    throw new Error('This email address is already registered to another staff account.');
+  }
+
+  const oldEmail = staff.email;
+  staff.email = normalizedEmail;
+  staff.updatedAt = new Date().toISOString();
+  saveStaffList(staffList);
+  return { success: true, id: staff.id, oldEmail, email: staff.email };
 }
 
 // ---------------------------------------------------------------------------

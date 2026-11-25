@@ -31,7 +31,6 @@ export default function StorageSettings() {
   const [feedback, setFeedback] = useState(null);
   const [autoCleanup, setAutoCleanup] = useState(true);
   const [threshold, setThreshold] = useState(85);
-  const [copiedFeed, setCopiedFeed] = useState('');
 
   // -------------------------------------------------------------
   // BACKUP DESK API HANDLERS
@@ -434,26 +433,6 @@ export default function StorageSettings() {
               }}
             >
               <HardDrive size={14} /> Cloud Databases & Cache
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveSubSection('seo')}
-              style={{
-                padding: '0.45rem 0.9rem',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                border: 'none',
-                borderRadius: '3px',
-                cursor: 'pointer',
-                background: activeSubSection === 'seo' ? 'var(--accent-crimson)' : 'transparent',
-                color: activeSubSection === 'seo' ? '#ffffff' : 'var(--text-subtle)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                minHeight: '36px'
-              }}
-            >
-              <FileCode size={14} /> Syndication & SEO
             </button>
           </div>
         </div>
@@ -1204,157 +1183,6 @@ export default function StorageSettings() {
               </button>
             </div>
 
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* TAB 3: SYNDICATION FEEDS & SEARCH ENGINE DIRECTIVES                       */}
-      {/* ========================================================================= */}
-      {activeSubSection === 'seo' && (
-        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-medium)', borderRadius: '4px', padding: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <FileCode size={18} color="var(--accent-indigo)" />
-            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main)' }}>
-              Automated Syndication Feeds & Search Engine Directives
-            </h4>
-          </div>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', margin: '0 0 1rem 0' }}>
-            Permanent zero-dependency live endpoints crawled by Google Newsbot, Bing, Apple News, Feedly, and RSS aggregators.
-          </p>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {/* XML Sitemap */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-medium)', borderRadius: '4px', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <FileCode size={16} color="var(--accent-indigo)" />
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>XML News Sitemap</strong>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'var(--accent-indigo-bg, rgba(99, 102, 241, 0.12))', color: 'var(--accent-indigo)', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
-                      Google News Ready
-                    </span>
-                  </div>
-                  <code style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>/sitemap.xml</code>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const url = `${window.location.origin}/sitemap.xml`;
-                    navigator.clipboard.writeText(url);
-                    setCopiedFeed('sitemap');
-                    setTimeout(() => setCopiedFeed(''), 2000);
-                  }}
-                  className="btn btn-outline"
-                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', minHeight: '36px', cursor: 'pointer' }}
-                >
-                  {copiedFeed === 'sitemap' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
-                  <span>{copiedFeed === 'sitemap' ? 'Copied URL' : 'Copy URL'}</span>
-                </button>
-
-                <a
-                  href="/sitemap.xml"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-primary"
-                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', minHeight: '36px', textDecoration: 'none' }}
-                >
-                  <ExternalLink size={12} />
-                  <span>Test XML</span>
-                </a>
-              </div>
-            </div>
-
-            {/* Robots.txt */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-medium)', borderRadius: '4px', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <FileCode size={16} color="var(--accent-emerald)" />
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>Search Engine Directives</strong>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'var(--accent-emerald-bg, rgba(16, 185, 129, 0.12))', color: 'var(--accent-emerald)', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
-                      Robots.txt
-                    </span>
-                  </div>
-                  <code style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>/robots.txt</code>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const url = `${window.location.origin}/robots.txt`;
-                    navigator.clipboard.writeText(url);
-                    setCopiedFeed('robots');
-                    setTimeout(() => setCopiedFeed(''), 2000);
-                  }}
-                  className="btn btn-outline"
-                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', minHeight: '36px', cursor: 'pointer' }}
-                >
-                  {copiedFeed === 'robots' ? <Check size={12} color="var(--accent-emerald)" /> : <Copy size={12} />}
-                  <span>{copiedFeed === 'robots' ? 'Copied URL' : 'Copy URL'}</span>
-                </button>
-
-                <a
-                  href="/robots.txt"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-primary"
-                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', minHeight: '36px', textDecoration: 'none' }}
-                >
-                  <ExternalLink size={12} />
-                  <span>View robots.txt</span>
-                </a>
-              </div>
-            </div>
-
-            {/* RSS Feed */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 1rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-medium)', borderRadius: '4px', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <FileCode size={16} color="var(--accent-amber)" />
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <strong style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>RSS 2.0 Syndication Feed</strong>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, background: 'var(--accent-amber-bg, rgba(245, 158, 11, 0.12))', color: 'var(--accent-amber)', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
-                      Feedly / Apple News
-                    </span>
-                  </div>
-                  <code style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>/rss.xml &nbsp;|&nbsp; /feed.xml</code>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const url = `${window.location.origin}/rss.xml`;
-                    navigator.clipboard.writeText(url);
-                    setCopiedFeed('rss');
-                    setTimeout(() => setCopiedFeed(''), 2000);
-                  }}
-                  className="btn btn-outline"
-                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', minHeight: '36px', cursor: 'pointer' }}
-                >
-                  {copiedFeed === 'rss' ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
-                  <span>{copiedFeed === 'rss' ? 'Copied URL' : 'Copy URL'}</span>
-                </button>
-
-                <a
-                  href="/rss.xml"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-primary"
-                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', minHeight: '36px', textDecoration: 'none' }}
-                >
-                  <ExternalLink size={12} />
-                  <span>Test RSS Feed</span>
-                </a>
-              </div>
-            </div>
           </div>
         </div>
       )}

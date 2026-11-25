@@ -58,6 +58,31 @@ export default defineConfig({
         changeOrigin: true,
         secure: false
       },
+      '/news-sitemap.xml': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/sitemap-news.xml': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/rss.xml': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/feed.xml': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/feed': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
+        secure: false
+      },
       '/robots.txt': {
         target: 'http://127.0.0.1:5000',
         changeOrigin: true,

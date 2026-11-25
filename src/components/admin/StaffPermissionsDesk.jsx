@@ -5,7 +5,7 @@ import {
   ShieldAlert, Check, X, Lock, Download, Copy, Smartphone, Key,
   Eye, EyeOff
 } from 'lucide-react';
-import { fetch2faStatus, setup2faInitiate, confirm2faSetup, getSessionToken } from '../../services/authClient';
+import { fetch2faStatus, setup2faInitiate, confirm2faSetup, getSessionToken, getSessionRole } from '../../services/authClient';
 
 /**
  * PublicSpark Newsroom — Staff, Journalist & Permissions Desk (Task 17 Subtopic 17.4 & 17.5)
@@ -36,6 +36,13 @@ export default function StaffPermissionsDesk({ onShowToast }) {
   const [newPassword, setNewPassword] = useState('');
   const [resetSuccessMsg, setResetSuccessMsg] = useState('');
   const [resetErrorMsg, setResetErrorMsg] = useState('');
+
+  // Email change modal state
+  const [emailModalStaff, setEmailModalStaff] = useState(null);
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [emailSuccessMsg, setEmailSuccessMsg] = useState('');
+  const [emailErrorMsg, setEmailErrorMsg] = useState('');
+  const currentRole = getSessionRole();
 
   // High-Privilege Administrator Escalation Confirmation state (Boss Requirement)
   const [adminEscalationTarget, setAdminEscalationTarget] = useState(null); // { staff, previousRole }
@@ -272,6 +279,43 @@ export default function StaffPermissionsDesk({ onShowToast }) {
       }
     } catch (_err) {
       setResetErrorMsg('Network error while resetting password.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Handler: Update Staff Email (Executive Super Admin restricted strictly to Developer)
+  const handleUpdateStaffEmail = async (e) => {
+    e.preventDefault();
+    const cleanedEmail = String(newEmailInput || '').trim().toLowerCase();
+    if (!/^[^\s@:]+@[^\s@:]+\.[^\s@:]+$/.test(cleanedEmail)) {
+      setEmailErrorMsg('Please enter a valid email address.');
+      return;
+    }
+    setEmailErrorMsg('');
+    setEmailSuccessMsg('');
+    setActionLoading('email_submitting');
+
+    try {
+      const res = await fetch('/api/staff/update-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ staffId: emailModalStaff.id, newEmail: cleanedEmail })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setEmailSuccessMsg(`Email updated to ${cleanedEmail} successfully.`);
+        await fetchStaff();
+        setTimeout(() => {
+          setEmailModalStaff(null);
+          setNewEmailInput('');
+          setEmailSuccessMsg('');
+        }, 1200);
+      } else {
+        setEmailErrorMsg(data.error || 'Failed to update email.');
+      }
+    } catch (_err) {
+      setEmailErrorMsg('Network error while updating email.');
     } finally {
       setActionLoading(null);
     }
@@ -831,15 +875,15 @@ export default function StaffPermissionsDesk({ onShowToast }) {
         </div>
 
         {/* Desktop Directory Table (critic defect 3 fix: hidden on <= 768px screens) */}
-        <div className="staff-desktop-table-view" style={{ overflowX: 'auto' }}>
-          <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '650px' }}>
+        <div className="staff-desktop-table-view" style={{ overflowX: 'auto', width: '100%' }}>
+          <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', tableLayout: 'auto' }}>
             <thead>
               <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-medium)' }}>
-                <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Staff Member</th>
-                <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Access Role</th>
-                <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Status</th>
-                <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Joined / Created</th>
-                <th style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', textAlign: 'right' }}>Security Actions</th>
+                <th style={{ padding: '0.7rem 0.65rem', fontSize: '0.725rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Staff Member</th>
+                <th style={{ padding: '0.7rem 0.65rem', fontSize: '0.725rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Access Role</th>
+                <th style={{ padding: '0.7rem 0.65rem', fontSize: '0.725rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase' }}>Status</th>
+                <th style={{ padding: '0.7rem 0.65rem', fontSize: '0.725rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Joined</th>
+                <th style={{ padding: '0.7rem 0.65rem', fontSize: '0.725rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', textAlign: 'right' }}>Security Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -855,11 +899,11 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                   return (
                     <tr key={staff.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
                       {/* Name & Contact */}
-                      <td style={{ padding: '0.85rem 1rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                      <td style={{ padding: '0.75rem 0.65rem', maxWidth: '240px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
                           <div style={{
-                            width: '34px',
-                            height: '34px',
+                            width: '32px',
+                            height: '32px',
                             borderRadius: '50%',
                             background: staff.role === 'admin' ? 'var(--accent-crimson)' : (staff.role === 'editor' ? 'var(--accent-indigo)' : 'var(--accent-emerald)'),
                             color: '#FFFFFF',
@@ -867,21 +911,21 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                             alignItems: 'center',
                             justifyContent: 'center',
                             fontWeight: '900',
-                            fontSize: '0.85rem',
+                            fontSize: '0.8rem',
                             flexShrink: 0
                           }}>
                             {staff.name ? staff.name.charAt(0).toUpperCase() : 'S'}
                           </div>
-                          <div>
-                            <div style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                              {staff.name}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem' }}>
+                              <span>{staff.name}</span>
                               {isPrimaryAdmin && (
-                                <span style={{ fontSize: '0.65rem', background: 'var(--accent-crimson)', color: '#FFF', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: '800' }}>
+                                <span style={{ fontSize: '0.625rem', background: 'var(--accent-crimson)', color: '#FFF', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: '800', whiteSpace: 'nowrap' }}>
                                   MASTER ADMIN
                                 </span>
                               )}
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                            <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', marginTop: '0.1rem', wordBreak: 'break-word' }}>
                               {staff.email}
                               {staff.phone ? ` • ${staff.phone}` : ''}
                             </div>
@@ -890,9 +934,9 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                       </td>
 
                       {/* Role Selector Dropdown */}
-                      <td style={{ padding: '0.85rem 1rem' }}>
+                      <td style={{ padding: '0.75rem 0.65rem' }}>
                         {isPrimaryAdmin ? (
-                          <span style={{ fontWeight: '800', color: 'var(--accent-crimson)', fontSize: '0.85rem' }}>
+                          <span style={{ fontWeight: '800', color: 'var(--accent-crimson)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                             Executive Super Admin
                           </span>
                         ) : (
@@ -901,14 +945,15 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                             onChange={(e) => handleRoleSelectChange(staff, e.target.value)}
                             disabled={actionLoading === `role_${staff.id}` || staff.status === 'pending_approval'}
                             style={{
-                              padding: '0.4rem 0.65rem',
+                              padding: '0.35rem 0.5rem',
                               borderRadius: 'var(--radius-sm)',
                               border: '1px solid var(--border-medium)',
                               background: 'var(--bg-secondary)',
                               color: 'var(--text-main)',
                               fontWeight: '700',
-                              fontSize: '0.825rem',
-                              cursor: 'pointer'
+                              fontSize: '0.775rem',
+                              cursor: 'pointer',
+                              maxWidth: '175px'
                             }}
                           >
                             <option value="reporter">Field Reporter (Writer)</option>
@@ -948,13 +993,13 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                       </td>
 
                       {/* Joined Date */}
-                      <td style={{ padding: '0.85rem 1rem', fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
+                      <td style={{ padding: '0.75rem 0.65rem', fontSize: '0.75rem', color: 'var(--text-subtle)', whiteSpace: 'nowrap' }}>
                         {staff.createdAt ? new Date(staff.createdAt).toLocaleDateString() : 'Initial Setup'}
                       </td>
 
                       {/* Security Actions */}
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <td style={{ padding: '0.75rem 0.65rem', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: '0.35rem' }}>
                           {/* Reset Password Button */}
                           <button
                             onClick={() => {
@@ -966,22 +1011,56 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                             type="button"
                             title="Reset Staff Password"
                             style={{
-                              padding: '0.4rem 0.6rem',
+                              padding: '0.35rem 0.55rem',
                               borderRadius: 'var(--radius-sm)',
                               border: '1px solid var(--border-medium)',
                               background: 'var(--bg-secondary)',
                               color: 'var(--text-main)',
                               cursor: 'pointer',
-                              fontSize: '0.75rem',
+                              fontSize: '0.725rem',
                               fontWeight: '700',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.3rem'
+                              gap: '0.3rem',
+                              whiteSpace: 'nowrap',
+                              minHeight: '32px'
                             }}
                           >
-                            <KeyRound size={13} />
+                            <KeyRound size={12} />
                             <span>Reset Pass</span>
                           </button>
+
+                          {/* Change Email (Admin email strictly Developer-only) */}
+                          {(currentRole === 'developer' || staff.role !== 'admin') && (
+                            <button
+                              onClick={() => {
+                                setEmailModalStaff(staff);
+                                setNewEmailInput(staff.email);
+                                setEmailErrorMsg('');
+                                setEmailSuccessMsg('');
+                              }}
+                              type="button"
+                              title="Change Staff Email"
+                              style={{
+                                padding: '0.35rem 0.55rem',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px solid var(--border-medium)',
+                                background: 'var(--bg-secondary)',
+                                color: 'var(--text-main)',
+                                cursor: 'pointer',
+                                fontSize: '0.725rem',
+                                fontWeight: '700',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                whiteSpace: 'nowrap',
+                                minHeight: '32px'
+                              }}
+                            >
+                              <Mail size={12} />
+                              <span>Change Email</span>
+                            </button>
+                          )}
 
                           {/* Toggle Suspend / Active */}
                           {!isPrimaryAdmin && staff.status !== 'pending_approval' && (
@@ -991,15 +1070,17 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                               type="button"
                               title={staff.status === 'active' ? 'Suspend Account' : 'Reactivate Account'}
                               style={{
-                                padding: '0.4rem 0.6rem',
+                                padding: '0.35rem 0.55rem',
                                 borderRadius: 'var(--radius-sm)',
                                 border: '1px solid',
                                 borderColor: staff.status === 'active' ? 'rgba(220, 38, 38, 0.4)' : 'rgba(16, 185, 129, 0.4)',
                                 background: 'transparent',
                                 color: staff.status === 'active' ? 'var(--accent-crimson)' : 'var(--accent-emerald)',
                                 cursor: 'pointer',
-                                fontSize: '0.75rem',
-                                fontWeight: '700'
+                                fontSize: '0.725rem',
+                                fontWeight: '700',
+                                whiteSpace: 'nowrap',
+                                minHeight: '32px'
                               }}
                             >
                               {staff.status === 'active' ? 'Suspend' : 'Activate'}
@@ -1014,12 +1095,17 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                               type="button"
                               title="Delete Staff Record"
                               style={{
-                                padding: '0.4rem 0.5rem',
+                                padding: '0.35rem 0.5rem',
                                 borderRadius: 'var(--radius-sm)',
                                 border: '1px solid rgba(220, 38, 38, 0.3)',
                                 background: 'transparent',
                                 color: 'var(--accent-crimson)',
-                                cursor: 'pointer'
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                minWidth: '32px',
+                                minHeight: '32px'
                               }}
                             >
                               <Trash2 size={14} />
@@ -1181,6 +1267,36 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                       <KeyRound size={13} />
                       <span>Reset Pass</span>
                     </button>
+
+                    {(currentRole === 'developer' || staff.role !== 'admin') && (
+                      <button
+                        onClick={() => {
+                          setEmailModalStaff(staff);
+                          setNewEmailInput(staff.email);
+                          setEmailErrorMsg('');
+                          setEmailSuccessMsg('');
+                        }}
+                        type="button"
+                        title="Change Staff Email"
+                        style={{
+                          padding: '0.4rem 0.65rem',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--border-medium)',
+                          background: 'var(--bg-surface)',
+                          color: 'var(--text-main)',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          minHeight: '36px'
+                        }}
+                      >
+                        <Mail size={13} />
+                        <span>Change Email</span>
+                      </button>
+                    )}
 
                     {!isPrimaryAdmin && staff.status !== 'pending_approval' && (
                       <button
@@ -1360,6 +1476,134 @@ export default function StaffPermissionsDesk({ onShowToast }) {
                   }}
                 >
                   {actionLoading === 'reset_submitting' ? 'Updating...' : 'Save New Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4B. Change Staff Email Modal */}
+      {emailModalStaff && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.65)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEmailModalStaff(null);
+          }}
+        >
+          <div style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-medium)',
+            borderRadius: 'var(--radius-md)',
+            padding: '1.5rem',
+            width: '100%',
+            maxWidth: '440px',
+            boxShadow: 'var(--shadow-lg)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Mail size={20} style={{ color: 'var(--accent-crimson)' }} />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '900', color: 'var(--text-main)' }}>
+                  Change Account Email
+                </h3>
+              </div>
+              <button
+                onClick={() => setEmailModalStaff(null)}
+                type="button"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', minWidth: '32px', minHeight: '32px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+              Update login email for <strong>{emailModalStaff.name}</strong> ({emailModalStaff.role.toUpperCase()}). Current email: <strong>{emailModalStaff.email}</strong>.
+            </p>
+
+            {emailErrorMsg && (
+              <div style={{ background: 'rgba(220, 38, 38, 0.1)', color: 'var(--accent-crimson)', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '700', marginBottom: '1rem' }}>
+                {emailErrorMsg}
+              </div>
+            )}
+
+            {emailSuccessMsg && (
+              <div style={{ background: 'rgba(16, 185, 129, 0.12)', color: 'var(--accent-emerald)', padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '700', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CheckCircle2 size={16} /> {emailSuccessMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateStaffEmail} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: 'var(--text-main)', marginBottom: '0.4rem' }}>
+                  New Email Address (Gmail)
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Mail size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }} />
+                  <input
+                    type="email"
+                    required
+                    placeholder="Enter new Gmail address"
+                    value={newEmailInput}
+                    onChange={(e) => setNewEmailInput(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.75rem 0.6rem 2.2rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-medium)',
+                      background: 'var(--bg-secondary)',
+                      color: 'var(--text-main)',
+                      fontSize: '1rem',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setEmailModalStaff(null)}
+                  style={{
+                    padding: '0.55rem 1rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-medium)',
+                    background: 'transparent',
+                    color: 'var(--text-main)',
+                    cursor: 'pointer',
+                    fontWeight: '700',
+                    fontSize: '0.85rem',
+                    minHeight: '44px'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading === 'email_submitting'}
+                  style={{
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: 'none',
+                    background: 'var(--accent-crimson)',
+                    color: '#FFFFFF',
+                    cursor: 'pointer',
+                    fontWeight: '800',
+                    fontSize: '0.85rem',
+                    minHeight: '44px'
+                  }}
+                >
+                  {actionLoading === 'email_submitting' ? 'Saving...' : 'Save New Email'}
                 </button>
               </div>
             </form>

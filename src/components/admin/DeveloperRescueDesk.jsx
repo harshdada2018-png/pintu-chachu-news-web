@@ -3,7 +3,7 @@ import {
   Terminal, ShieldAlert, RefreshCw, HardDrive, Cpu, Database,
   Lock, Unlock, CheckCircle2, AlertTriangle, Download, Search,
   Activity, Clock, Server, FileText, Check, ShieldCheck,
-  Smartphone, Key, Eye, EyeOff, Copy, X, AlertCircle
+  Smartphone, Key, Eye, EyeOff, Copy, X, AlertCircle, FileCode, ExternalLink
 } from 'lucide-react';
 import {
   fetch2faStatus,
@@ -43,6 +43,7 @@ export default function DeveloperRescueDesk({ onShowToast }) {
   const [copiedSecret, setCopiedSecret] = useState(false);
   const [copiedCodes, setCopiedCodes] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
+  const [copiedFeed, setCopiedFeed] = useState('');
 
   const copiedCodesTimerRef = useRef(null);
   const copiedSecretTimerRef = useRef(null);
@@ -870,6 +871,91 @@ export default function DeveloperRescueDesk({ onShowToast }) {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* DEVELOPER-ONLY: SYNDICATION FEEDS & SEARCH ENGINE DIRECTIVES */}
+      <div style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-light)',
+        borderRadius: 'var(--radius-md)',
+        padding: '1.25rem 1.5rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.85rem'
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+            <FileCode size={16} color="var(--accent-crimson)" />
+            <h3 style={{ fontSize: '0.95rem', fontWeight: '800', margin: 0 }}>
+              Developer SEO &amp; Syndication Endpoints
+            </h3>
+          </div>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+            Technical endpoints for Google Search Console, Google News Publisher Center, Bing Webmaster &amp; RSS aggregators.
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          {[
+            { id: 'sitemap', title: 'XML News Sitemap', badge: 'Google News Ready', path: '/sitemap.xml', openLabel: 'Test XML' },
+            { id: 'news-sitemap', title: 'Dedicated 48h News Sitemap', badge: 'Googlebot-News', path: '/news-sitemap.xml', openLabel: 'Test News XML' },
+            { id: 'robots', title: 'Search Engine Directives', badge: 'Robots.txt', path: '/robots.txt', openLabel: 'View robots.txt' },
+            { id: 'rss', title: 'RSS 2.0 Syndication Feed', badge: 'Feedly / Flipboard', path: '/rss.xml', openLabel: 'Test RSS Feed' }
+          ].map((feed) => (
+            <div
+              key={feed.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '0.75rem 1rem',
+                background: 'var(--bg-contrast)',
+                border: '1px solid var(--border-light)',
+                borderRadius: 'var(--radius-sm)',
+                flexWrap: 'wrap',
+                gap: '0.5rem'
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <strong style={{ fontSize: '0.85rem', color: 'var(--text-main)' }}>{feed.title}</strong>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, border: '1px solid var(--border-medium)', color: 'var(--text-subtle)', padding: '0.1rem 0.45rem', borderRadius: '4px' }}>
+                    {feed.badge}
+                  </span>
+                </div>
+                <code style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>{feed.path}</code>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = `${window.location.origin}${feed.path}`;
+                    navigator.clipboard.writeText(url);
+                    setCopiedFeed(feed.id);
+                    setTimeout(() => setCopiedFeed(''), 2000);
+                  }}
+                  className="btn-broadsheet"
+                  style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', minHeight: '36px' }}
+                >
+                  {copiedFeed === feed.id ? <Check size={12} color="var(--accent-crimson)" /> : <Copy size={12} />}
+                  <span>{copiedFeed === feed.id ? 'Copied' : 'Copy URL'}</span>
+                </button>
+
+                <a
+                  href={feed.path}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-broadsheet"
+                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', minHeight: '36px', textDecoration: 'none', background: 'var(--text-main)', color: 'var(--bg-surface)', fontWeight: 700 }}
+                >
+                  <ExternalLink size={12} />
+                  <span>{feed.openLabel}</span>
+                </a>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -7,7 +7,7 @@
     "size_bytes": 40751,
     "status": "done",
     "created_at": "2026-11-19T11:21:41.571Z",
-    "last_played_at": "2026-11-25T08:02:28.195Z"
+    "last_played_at": "2026-11-25T12:29:16.442Z"
   },
   "general:hi:clip_1_intro": {
     "article_id": "general",
@@ -27,7 +27,7 @@
     "size_bytes": 2575464,
     "status": "done",
     "created_at": "2026-11-20T20:04:17.436Z",
-    "last_played_at": "2026-11-25T08:01:40.480Z"
+    "last_played_at": "2026-11-25T12:29:22.404Z"
   },
   "test-breaking-1795587302122:hi:clip_1_intro": {
     "article_id": "test-breaking-1795587302122",
@@ -48,5 +48,45 @@
     "status": "done",
     "created_at": "2026-11-25T07:09:13.753Z",
     "last_played_at": "2026-11-25T08:04:12.908Z"
+  },
+  "art-1793864819037:id:clip_1_intro": {
+    "article_id": "art-1793864819037",
+    "lang": "id",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1793864819037_id_clip_1_intro.mp3",
+    "size_bytes": 85786,
+    "status": "done",
+    "created_at": "2026-11-25T12:26:32.844Z",
+    "last_played_at": "2026-11-25T12:26:32.844Z"
+  },
+  "art-1793864819037:bn:clip_1_intro": {
+    "article_id": "art-1793864819037",
+    "lang": "bn",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-1793864819037_bn_clip_1_intro.mp3",
+    "size_bytes": 77949,
+    "status": "done",
+    "created_at": "2026-11-25T12:27:18.002Z",
+    "last_played_at": "2026-11-25T12:27:18.002Z"
+  },
+  "art-1793864819037:id:clip_2_body": {
+    "article_id": "art-1793864819037",
+    "lang": "id",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-1793864819037_id_clip_2_body.mp3",
+    "size_bytes": 2769398,
+    "status": "done",
+    "created_at": "2026-11-25T12:29:16.412Z",
+    "last_played_at": "2026-11-25T12:29:16.412Z"
+  },
+  "art-1793864819037:bn:clip_2_body": {
+    "article_id": "art-1793864819037",
+    "lang": "bn",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-1793864819037_bn_clip_2_body.mp3",
+    "size_bytes": 2604513,
+    "status": "done",
+    "created_at": "2026-11-25T12:31:04.759Z",
+    "last_played_at": "2026-11-25T12:31:04.759Z"
   }
 }

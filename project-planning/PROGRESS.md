@@ -279,7 +279,7 @@
     - Verified zero emojis across all components (Mistake 46 compliant).
     - Verified via automated audit test suite, `npx oxlint src/` (0 errors), and `npm run build` (built in 847ms, 0 errors).
 
-- [ ] **Task 38: BBC-Style Institutional Footer Compliance Strip & Custom Newsroom Identity Integration** `In Progress`
+- [x] **Task 38: BBC-Style Institutional Footer Compliance Strip & Custom Newsroom Identity Integration** `Completed`
   - [x] *Subtopic A*: BBC-Grade Horizontal Legal & Compliance Strip (All 8 Policies in Pure Hindi & Microsoft-Grade Layout). `Completed`
     - Authored 8 statutory compliance documents in pure Hindi in `src/components/common/LegalModal.jsx`:
       1. सेवा की शर्तें (Terms of Use - 8 statutory clauses under IT Act 2000 & IT Rules 2021).
@@ -295,8 +295,10 @@
     - Updated `src/App.jsx` footer description with Boss's official WhatsApp channel mission statement.
     - Embedded BBC-style institutional horizontal compliance strip in `src/App.jsx` footer with minimum 44x44px touch targets.
     - Verified via `npx oxlint src/` (0 errors) and `npm run build` (built in 708ms, 0 errors).
-  - [ ] *Subtopic B*: Integration of Boss's Old Site Content & Editorial Disclaimers (Regional disclaimers, specialized desk notes). `Planned`
-  - [ ] *Subtopic C*: Responsive 360px Mobile-to-Desktop Layout & Accessibility Verification. `Planned`
+  - [x] *Subtopic B*: Integration of Boss's Old Site Content & Editorial Disclaimers (Regional disclaimers, specialized desk notes). `Completed`
+    - Added `.footer-editorial-disclaimer` strip in `src/App.jsx` and `src/index.css` covering RTI/fact-based anti-corruption reporting, expert opinion disclaimers for astrology/dharma/tourism, BBC-style External Linking Safe Harbor notice with clickable policy trigger, and official `publicspark.in@gmail.com` + IT Rules 2021 Grievance Redressal link. Verified with `npx oxlint src/` (0 errors) and `npm run build` (958ms).
+  - [x] *Subtopic C*: Responsive 360px Mobile-to-Desktop Layout & Accessibility Verification. `Completed`
+    - Hardened footer responsiveness for 360px viewports (`min-width: 0` grid guards, 44x44px touch targets on social icons & staff login, `.footer-nav-link` 36px+ buttons, `@media (max-width: 480px)` clean wrapping and `overflow-wrap: anywhere`). Verified with `npx oxlint src/` (0 errors) and `npm run build` (836ms).
 
 - [x] **Task 41: Production Security Hardening & Vulnerability Remediation (Closure of Critic Audit Findings 1–7)** `Completed`
   - In accordance with Boss's mandate, resolved all 7 forensic security vulnerabilities identified during the Super-Strict Critic Security Audit:
@@ -309,7 +311,21 @@
     7. Added explicit directory boundary assertion `assetPath.startsWith(DIST_DIR + path.sep)` on `/assets/` streaming (`server.js`, CWE-22).
   - Verified 100% via automated test suite `scratch/test_security_patches.mjs` (5/5 tests passed), syntax checks, `npx oxlint src/` (0 errors), and `npm run build` (built in 1.15s, 0 errors). Backend server daemon restarted and confirmed active on port 5000.
 
+- [x] **Task 42: Cloudflare Pages Sovereign Edge Frontend Live Deployment** `Completed`
+  - Successfully connected GitHub repository `harshdada2018-png/pintu-chachu-news-web` to Cloudflare Pages edge hosting.
+  - Configured Vite build preset (`npm run build`, output `/dist`, `NODE_VERSION: 20`).
+  - Automatically pushed `public/_redirects` (`/* /index.html 200`) ensuring zero 404 errors on deep linking and hard refreshes.
+  - Verified live deployment at `https://pintu-chachu-news-web.pages.dev`: HTTP 200 OK, SSL active, Mumbai (BOM) edge node delivery, verified bundle JS/CSS streaming, and SPA routing confirmed.
+
 - [ ] **Task 40.3: Sovereign Full-Mechanism Audio Player & Gemini Neural TTS Overhaul** `Planned`
+
+- [ ] **Task 43: Sovereign Anonymous Whistleblower & Confidential News Tip Desk ("गुप्त सूचना केंद्र")** `In Progress`
+  - [x] *Subtopic A*: Zero-Trace Backend Storage & Tip Submission API (zero IP/device logging, tracking ID generator, RBAC admin triage API). `Completed`
+    - Implemented `confidential_tips.json` store and 5 REST endpoints (`/api/tips/submit`, `/api/tips/status/:trackingId`, `/api/admin/tips`, `/api/admin/tips/update`, `/api/admin/tips/delete`) in `server/server.js`. Verified 5/5 live HTTP tests + syntax check.
+  - [x] *Subtopic B*: Public Confidential Tip Form & Anonymity Assurance UI (`ConfidentialTipModal.jsx`, tracking receipt & status check). `Completed`
+    - Built `ConfidentialTipModal.jsx` and wired Footer triggers in `App.jsx` with 2-color broadsheet UI, 8,000-char detailed report form, Tracking ID receipt & status lookup, and locked `/api/admin/tips*` strictly to Admin-only (`requireAdminAuth`). Verified with `oxlint` (0 errors) and `npm run build` (1.21s).
+  - *Subtopic C*: Editorial Investigation Desk & 1-Click Draft Conversion (`AdminWorkspace.jsx`, 360px responsive verification). `Planned`
+
 
 
 
