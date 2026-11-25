@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PublicSpark Newsroom - Developer & Security Terminal Handbook</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+    :root {
+      --font-serif: 'Cinzel', Georgia, serif;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', Consolas, Monaco, monospace;
+      --color-black: #050505;
+      --color-paper: #ffffff;
+      --color-ink: #111827;
+      --color-muted: #4b5563;
+      --color-border: #e5e7eb;
+      --color-border-dark: #374151;
+      --color-crimson: #991b1b;
+      --color-crimson-bg: #fef2f2;
+      --color-code-bg: #f3f4f6;
+      --color-accent-blue: #1e3a8a;
+      --color-accent-bg: #eff6ff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      color: var(--color-ink);
+      background-color: var(--color-paper);
+      line-height: 1.6;
+      font-size: 11pt;
+    }
+
+    /* Print & Page Setup */
+    @page {
+      size: A4;
+      margin: 18mm 15mm 18mm 15mm;
+      @bottom-right {
+        content: counter(page);
+        font-family: var(--font-sans);
+        font-size: 9pt;
+        color: var(--color-muted);
+      }
+    }
+
+    @media print {
+      body {
+        background-color: #ffffff;
+        color: #000000;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      .avoid-break {
+        page-break-inside: avoid;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    .avoid-break {
+      page-break-inside: avoid;
+    }
+
+    /* Cover Page */
+    .cover-page {
+      min-height: 98vh;
+      background: var(--color-black);
+      color: #ffffff;
+      padding: 60px 45px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      page-break-after: always;
+      border: 3px solid #1f2937;
+    }
+
+    .cover-header {
+      border-bottom: 2px solid var(--color-crimson);
+      padding-bottom: 25px;
+    }
+
+    .cover-kicker {
+      font-family: var(--font-mono);
+      font-size: 11pt;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: #9ca3af;
+      margin-bottom: 12px;
+    }
+
+    .cover-title {
+      font-family: var(--font-serif);
+      font-size: 28pt;
+      font-weight: 700;
+      line-height: 1.2;
+      color: #ffffff;
+      letter-spacing: 1px;
+    }
+
+    .cover-subtitle {
+      font-family: var(--font-sans);
+      font-size: 13pt;
+      color: #d1d5db;
+      margin-top: 15px;
+      line-height: 1.5;
+    }
+
+    .cover-body {
+      margin: 40px 0;
+      background: #111827;
+      border-left: 4px solid var(--color-crimson);
+      padding: 25px;
+      border-radius: 4px;
+    }
+
+    .cover-body h3 {
+      font-family: var(--font-mono);
+      font-size: 12pt;
+      color: #f87171;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .cover-body p {
+      color: #e5e7eb;
+      font-size: 10.5pt;
+      margin-bottom: 8px;
+    }
+
+    .cover-footer {
+      border-top: 1px solid #374151;
+      padding-top: 25px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      font-family: var(--font-mono);
+      font-size: 9pt;
+      color: #9ca3af;
+    }
+
+    .meta-label {
+      color: #6b7280;
+      text-transform: uppercase;
+      font-size: 8pt;
+      letter-spacing: 1px;
+    }
+
+    .meta-value {
+      color: #ffffff;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    /* Content Layout */
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px 0;
+    }
+
+    .chapter-header {
+      margin-bottom: 25px;
+      border-bottom: 2px solid var(--color-ink);
+      padding-bottom: 12px;
+    }
+
+    .chapter-tag {
+      font-family: var(--font-mono);
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--color-crimson);
+      font-weight: 700;
+    }
+
+    h1 {
+      font-family: var(--font-serif);
+      font-size: 20pt;
+      color: var(--color-ink);
+      margin-top: 4px;
+    }
+
+    h2 {
+      font-family: var(--font-sans);
+      font-size: 14pt;
+      color: var(--color-ink);
+      margin: 25px 0 12px 0;
+      border-bottom: 1px solid var(--color-border);
+      padding-bottom: 6px;
+    }
+
+    h3 {
+      font-family: var(--font-sans);
+      font-size: 11.5pt;
+      color: var(--color-crimson);
+      margin: 18px 0 8px 0;
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--color-ink);
+    }
+
+    ul, ol {
+      margin-left: 22px;
+      margin-bottom: 15px;
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    /* Code & Terminal Styling */
+    pre {
+      background: var(--color-black);
+      color: #f3f4f6;
+      font-family: var(--font-mono);
+      font-size: 9.5pt;
+      padding: 14px 18px;
+      border-radius: 4px;
+      overflow-x: auto;
+      margin: 10px 0 16px 0;
+      border-left: 4px solid var(--color-crimson);
+      line-height: 1.5;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 9.5pt;
+      background: var(--color-code-bg);
+      padding: 2px 5px;
+      border-radius: 3px;
+      border: 1px solid var(--color-border);
+      color: #b91c1c;
+      font-weight: 600;
+    }
+
+    pre code {
+      background: transparent;
+      padding: 0;
+      border: none;
+      color: #f9fafb;
+      font-weight: 400;
+    }
+
+    /* Callout Boxes */
+    .callout {
+      padding: 14px 18px;
+      margin: 16px 0;
+      border-radius: 4px;
+      border-left: 4px solid;
+    }
+
+    .callout-warning {
+      background: var(--color-crimson-bg);
+      border-color: var(--color-crimson);
+      color: #7f1d1d;
+    }
+
+    .callout-info {
+      background: var(--color-accent-bg);
+      border-color: var(--color-accent-blue);
+      color: #1e3a8a;
+    }
+
+    .callout-title {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 9.5pt;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18px 0;
+      font-size: 10pt;
+    }
+
+    th, td {
+      border: 1px solid var(--color-border);
+      padding: 10px 14px;
+      text-align: left;
+    }
+
+    th {
+      background: var(--color-code-bg);
+      font-family: var(--font-mono);
+      font-size: 9pt;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--color-ink);
+    }
+
+    tr:nth-child(even) {
+      background: #fafafa;
+    }
+
+    /* Badge */
+    .badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 3px;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-crimson {
+      background: var(--color-crimson);
+      color: #ffffff;
+    }
+
+    .badge-neutral {
+      background: #374151;
+      color: #ffffff;
+    }
+
+    /* Step Card */
+    .step-card {
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 16px 20px;
+      margin: 16px 0;
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .step-num {
+      background: var(--color-black);
+      color: #ffffff;
+      font-family: var(--font-mono);
+      font-size: 9pt;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 3px;
+      margin-right: 10px;
+    }
+
+    .step-title {
+      font-family: var(--font-sans);
+      font-size: 11pt;
+      font-weight: 700;
+      color: var(--color-ink);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ========================================================= -->
+  <!-- COVER PAGE -->
+  <!-- ========================================================= -->
+  <div class="cover-page">
+    <div class="cover-header">
+      <div class="cover-kicker">PUBLICSPARK NEWSROOM ENGINEERING</div>
+      <h1 class="cover-title">DEVELOPER &amp; DISASTER RECOVERY TERMINAL HANDBOOK</h1>
+      <p class="cover-subtitle">Complete Operations Manual: Terminal CLI Commands, Master Passphrase Security, Cloudflare D1 Architecture &amp; Cyber Incident Recovery</p>
+    </div>
+
+    <div class="cover-body">
+      <h3>SOVEREIGN SECURITY CLEARANCE</h3>
+      <p><strong>System Owner:</strong> Boss (Harsh Mishra)</p>
+      <p><strong>Master Emergency Passphrase:</strong> <code>[STORED OFFLINE BY SYSTEM OWNER]</code></p>
+      <p><strong>Cryptographic Protection:</strong> SHA-256 Hashed with Timing-Safe Buffer Comparison</p>
+      <p><strong>Scope:</strong> Local Dev Environment, Live Cloudflare D1 Serverless, &amp; Production VPS</p>
+    </div>
+
+    <div class="cover-footer">
+      <div>
+        <div class="meta-label">DOCUMENT VERSION</div>
+        <div class="meta-value">v1.0 (Production-Ready)</div>
+      </div>
+      <div>
+        <div class="meta-label">RELEASE DATE</div>
+        <div class="meta-value">16 November 2026</div>
+      </div>
+      <div>
+        <div class="meta-label">CONFIDENTIALITY</div>
+        <div class="meta-value">SYSTEM OWNER ONLY</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- ========================================================= -->
+    <!-- TABLE OF CONTENTS -->
+    <!-- ========================================================= -->
+    <div class="chapter-header">
+      <div class="chapter-tag">INDEX</div>
+      <h1>Table of Contents</h1>
+    </div>
+
+    <ol style="line-height: 2; font-size: 11pt; margin-bottom: 30px;">
+      <li><strong>Chapter 1:</strong> Daily Development &amp; Server Operations (Site Chalu Karne Ke Liye)</li>
+      <li><strong>Chapter 2:</strong> Master Passphrase Security Architecture (Kyun aur Kaise Secure Hai)</li>
+      <li><strong>Chapter 3:</strong> Emergency Disaster Recovery CLI (Local Terminal Commands)</li>
+      <li><strong>Chapter 4:</strong> Production Cloudflare D1 Operations (Live Serverless Par Kaise Chalega)</li>
+      <li><strong>Chapter 5:</strong> Future VPS Scale Migration &amp; SSH Terminal Operations</li>
+      <li><strong>Chapter 6:</strong> 4-Layer Cyber Incident Response Protocol (Agar Site Hack Ho Jaye Tab)</li>
+      <li><strong>Chapter 7:</strong> Developer Terminal Cheat-Sheet (Quick Reference Table)</li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <!-- ========================================================= -->
+    <!-- CHAPTER 1 -->
+    <!-- ========================================================= -->
+    <div class="chapter-header">
+      <div class="chapter-tag">CHAPTER 1</div>
+      <h1>Daily Development &amp; Server Operations</h1>
+    </div>
+
+    <p>PublicSpark Newsroom ek sovereign full-stack application hai jisme do primary processes chalte hain: <strong>Frontend Client (React + Vite)</strong> aur <strong>Backend Proxy Server (Node.js API)</strong>.</p>
+
+    <h2>1.1 Website Ko Local Computer Par Chalu Karna</h2>
+    <p>Apne computer par website chalane ke liye do alag-alag terminal windows ya tabs ki zaroorat hoti hai:</p>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">STEP 1</span>
+        <span class="step-title">Backend API Server Start Karna (Port 5000)</span>
+      </div>
+      <p>Pehle terminal window me project root folder par jakar ye command chalayein:</p>
+      <pre><code>npm run server</code></pre>
+      <p><strong>Screen par kya dikhega:</strong></p>
+      <pre><code>[Server Env] Loaded environment variables from .env
+[Analytics Engine] Seeded 25537 raw view events &amp; 75 daily stats.
+PublicSpark Newsroom Backend Proxy running at http://localhost:5000</code></pre>
+      <p>Backend API live ho chuka hai aur <code>http://localhost:5000</code> par requests accept karne ke liye ready hai.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">STEP 2</span>
+        <span class="step-title">Frontend Vite Server Start Karna (Port 5173)</span>
+      </div>
+      <p>Dusre terminal window me ye command chalayein:</p>
+      <pre><code>npm run dev</code></pre>
+      <p><strong>Screen par kya dikhega:</strong></p>
+      <pre><code>VITE v8.3.0 ready in 597 ms
+
+➜  Local:   http://localhost:5173/
+➜  Network: http://192.168.x.x:5173/ (Mobile phone testing ke liye)</code></pre>
+      <p>Ab apne Chrome browser me <code>http://localhost:5173/</code> open karke website dekh sakte hain.</p>
+    </div>
+
+    <h2>1.2 Code Quality &amp; Build Verification Commands</h2>
+    <p>Jab bhi koi naya code likha jaye ya live karne se pehle test karna ho, to ye do commands verify karte hain ki koi error ya bug to nahi hai:</p>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">CHECK A</span>
+        <span class="step-title">OxLint Fast Code Quality Linter</span>
+      </div>
+      <pre><code>npm run lint</code></pre>
+      <p>Ye command 57+ files ko 170ms me scan karke batata hai ki syntax ya variable me koi error to nahi hai. <code>Found 0 errors</code> aana chahiye.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">CHECK B</span>
+        <span class="step-title">Vite Production Build Compiler</span>
+      </div>
+      <pre><code>npm run build</code></pre>
+      <p>Ye command pure frontend ko minify karke production bundle (<code>dist/</code>) banata hai. Agar build clean pass ho gaya, to code live deploy hone ke liye 100% ready hai.</p>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- ========================================================= -->
+    <!-- CHAPTER 2 -->
+    <!-- ========================================================= -->
+    <div class="chapter-header">
+      <div class="chapter-tag">CHAPTER 2</div>
+      <h1>Master Passphrase Security Architecture</h1>
+    </div>
+
+    <p>PublicSpark Newsroom me standard password aur Google 2FA ke upar ek <strong>Sovereign Master Passphrase</strong> banaya gaya hai. Iska purpose hai: jab sabhi passwords, phones, ya tokens fail ho jayein, tab bhi system owner bina kisi GUI access ke system ko reclaim kar sake.</p>
+
+    <h2>2.1 Passphrase Ka Nirman Aur Hardening</h2>
+    <p>Aapne jo 14-character high-entropy master passphrase choose karke offline safe note kiya hai:</p>
+    <div style="background: var(--color-black); color: #ffffff; padding: 18px 24px; border-radius: 4px; text-align: center; margin: 15px 0;">
+      <span style="font-family: var(--font-mono); font-size: 16pt; letter-spacing: 2px; color: #4ade80;">[YOUR_MASTER_PASSPHRASE]</span>
+    </div>
+
+    <div class="callout callout-info avoid-break">
+      <div class="callout-title">Kyun Ye Passphrase Super-Hard Hai?</div>
+      <ul>
+        <li><strong>Length:</strong> 14 characters long.</li>
+        <li><strong>Character Variety:</strong> Lowercase (<code>m, f, q, v, x</code>), Uppercase (<code>K, W</code>), Digits (<code>9, 7, 4, 2, 8</code>), Special Symbols (<code>#, @</code>).</li>
+        <li><strong>Mathematical Entropy:</strong> 85+ bits entropy. Ek modern supercomputer ko ise brute-force se guess karne me lagbhag <strong>2,400 saal</strong> lagenge.</li>
+      </ul>
+    </div>
+
+    <h2>2.2 Cryptographic Hash Storage (Zero-Plaintext Rule)</h2>
+    <p>Security best practices ke mutabiq, ye plain passphrase codebase me plain-text format me store nahi kiya jata. Iska <strong>SHA-256 One-Way Hash</strong> derive kiya gaya hai:</p>
+    <pre><code>MASTER_PASSPHRASE_HASH=652c396ac75da2038108462202dbf5c83977b55f0d4526356b64001ef343c57d</code></pre>
+
+    <p>Ye hash <code>.env</code> file aur <code>server/services/staffAuthService.js</code> me safe rehta hai. Jab Aap terminal me passphrase enter karte hain:</p>
+    <ol>
+      <li>Node.js Aapke input ka SHA-256 hash banata hai.</li>
+      <li>Dono hashes ko <code>crypto.timingSafeEqual()</code> se compare kiya jata hai.</li>
+      <li>Timing-safe comparison se hackers CPU processing time measure karke passphrase guess nahi kar sakte.</li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <!-- ========================================================= -->
+    <!-- CHAPTER 3 -->
+    <!-- ========================================================= -->
+    <div class="chapter-header">
+      <div class="chapter-tag">CHAPTER 3</div>
+      <h1>Emergency Disaster Recovery CLI (Local Terminal)</h1>
+    </div>
+
+    <p>CLI tool ka path hai <code>server/cli/emergency-lockdown.js</code>, jise Aap direct <code>npm run lockdown</code> command se chala sakte hain.</p>
+
+    <div class="callout callout-warning avoid-break">
+      <div class="callout-title">Important Windows / PowerShell Rule</div>
+      <p>Chunki Aapke passphrase me <code>#</code> aur <code>@</code> symbols hain, Windows PowerShell inhein command delimiter samajh sakta hai agar quotes na lagayein. Isliye terminal me hamesha <strong>double quotes</strong> lagakar chalayein: <code>"<passphrase>"</code>.</p>
+    </div>
+
+    <h2>3.1 Commands Ki Poori List</h2>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">COMMAND 1</span>
+        <span class="step-title">System &amp; Account Status Check Karna</span>
+      </div>
+      <pre><code>npm run lockdown "<passphrase>" status</code></pre>
+      <p><strong>Kya karega:</strong> Poore system ka live audit print karega: Global lockdown active hai ya nahi, Super Admin ka 2FA ON hai ya OFF, aur sabhi 6 staff members ki summary.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">COMMAND 2</span>
+        <span class="step-title">Super Admin Ka 2FA Wipe Karna (Phone Gum Hone Par)</span>
+      </div>
+      <pre><code>npm run lockdown "<passphrase>" reset-2fa</code></pre>
+      <p><strong>Kya karega:</strong> Agar Aapka phone kharab ho gaya, Google Authenticator app delete ho gaya, ya codes reject ho rahe hain, to ye command Super Admin ke 2FA secret aur recovery codes ko purge kar dega. Agli baar Aap direct password se login karke naya phone QR scan kar sakenge.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">COMMAND 3</span>
+        <span class="step-title">Super Admin Password Restore Karna (Admin@2026)</span>
+      </div>
+      <pre><code>npm run lockdown "<passphrase>" reset-password</code></pre>
+      <p><strong>Kya karega:</strong> Super Admin ka password wapas default secure password <code>Admin@2026</code> par reset kar dega aur account ko <code>active</code> status me le aayega.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">COMMAND 4</span>
+        <span class="step-title">Dunia Ke Sabhi Logins Ko 0ms Me Kill Karna</span>
+      </div>
+      <pre><code>npm run lockdown "<passphrase>" revoke-sessions</code></pre>
+      <p><strong>Kya karega:</strong> Server clock par revocation cutoff time stamp laga deta hai. Kisi bhi hacker, staff member, ya device par chal raha active session token instantly dead ho jayega.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">COMMAND 5</span>
+        <span class="step-title">Complete Emergency Lockdown (All Actions in One)</span>
+      </div>
+      <pre><code>npm run lockdown "<passphrase>" emergency-all</code></pre>
+      <p><strong>Kya karega:</strong> Full disaster recovery! Ek sath 3 kaam karega: Sabhi active sessions kill karega + password reset karega + 2FA wipe karega.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">COMMAND 6</span>
+        <span class="step-title">Interactive Number Menu Chalana</span>
+      </div>
+      <pre><code>npm run lockdown "<passphrase>"</code></pre>
+      <p><strong>Kya karega:</strong> Terminal par 1 se 7 tak ka interactive menu aayega. Aapko bas number (e.g., <code>1</code> ya <code>5</code>) type karke Enter dabana hoga.</p>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- ========================================================= -->
+    <!-- CHAPTER 4 -->
+    <!-- ========================================================= -->
+    <div class="chapter-header">
+      <div class="chapter-tag">CHAPTER 4</div>
+      <h1>Production Cloudflare D1 Serverless Operations</h1>
+    </div>
+
+    <p>Aapne decide kiya hai ki pehle website ko <strong>Cloudflare Pages (Frontend)</strong> aur <strong>Cloudflare D1 (Database)</strong> par live karenge. Cloudflare serverless platform hai, isliye isme physical Linux black screen terminal nahi hota. Is par control ke 2 tareeqe hote hain:</p>
+
+    <h2>4.1 Tareeqa A: Apne Laptop Ke Terminal Se (Wrangler CLI)</h2>
+    <p>Aapko Cloudflare par login karne ki zaroorat nahi hoti. Terminal Aapke apne laptop me hi khulega aur Cloudflare ke live cloud database me changes karega:</p>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">STEP 1</span>
+        <span class="step-title">Live D1 Database Par 2FA Reset Query Chalana</span>
+      </div>
+      <pre><code>npx wrangler d1 execute publicspark-db --remote --command="UPDATE newsroom_staff SET two_factor_enabled = 0, two_factor_secret = NULL WHERE email = 'admin@publicspark.in';"</code></pre>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">STEP 2</span>
+        <span class="step-title">Live D1 Database Par Sabhi Active Logins Kill Karna</span>
+      </div>
+      <pre><code>npx wrangler d1 execute publicspark-db --remote --command="UPDATE newsroom_staff SET tokens_invalidated_before = strftime('%s', 'now') * 1000;"</code></pre>
+    </div>
+
+    <h2>4.2 Tareeqa B: Mobile Phone Ya Chrome Browser Se (Web Console)</h2>
+    <p>Agar Aapke paas laptop nahi hai aur Aap safar me hain, to apne mobile phone se Cloudflare console me jakar 1 minute me rescue kar sakte hain:</p>
+
+    <ol>
+      <li>Apne phone ke Chrome browser me kholiye: <strong>https://dash.cloudflare.com</strong></li>
+      <li>Left side menu me <strong>Storage &amp; Databases</strong> par click karke <strong>D1</strong> select kijiye.</li>
+      <li>Apne database <strong>publicspark-db</strong> par tap kijiye.</li>
+      <li>Upar <strong>"Console"</strong> tab par click kijiye (ye ek type box hota hai).</li>
+      <li>Neeche diya gaya SQL paste karke <strong>"Execute"</strong> button daba dijiye:</li>
+    </ol>
+
+    <pre><code>-- CLOUDFLARE D1 EMERGENCY RESTORE SCRIPT
+UPDATE newsroom_staff 
+SET two_factor_enabled = 0, 
+    two_factor_secret = NULL, 
+    two_factor_recovery_codes = '[]',
+    tokens_invalidated_before = strftime('%s', 'now') * 1000,
+    status = 'active'
+WHERE email = 'admin@publicspark.in';</code></pre>
+
+    <p>Execute hote hi live website par 2FA deactivate ho jayega aur sabhi active hacker sessions kill ho jayenge.</p>
+
+    <div class="page-break"></div>
+
+    <!-- ========================================================= -->
+    <!-- CHAPTER 5 -->
+    <!-- ========================================================= -->
+    <div class="chapter-header">
+      <div class="chapter-tag">CHAPTER 5</div>
+      <h1>VPS Scale Migration &amp; SSH Terminal Operations</h1>
+    </div>
+
+    <p>Jab PublicSpark ka readership traffic lakhon me pahunch jayega aur Aap backend ko Cloudflare se dedicated <strong>VPS (Hostinger, Hetzner, AWS)</strong> par transfer karenge, tab Aapko traditional Linux terminal access milta hai.</p>
+
+    <h2>5.1 VPS Par Terminal Access (SSH)</h2>
+    <p>Apne Windows computer ke PowerShell se live VPS terminal me login karne ka command:</p>
+    <pre><code>ssh root@your-vps-ip-address</code></pre>
+
+    <p>Password dalte hi Aap live Linux server ke black screen terminal me pahunch jayenge.</p>
+
+    <h2>5.2 Live VPS Par Emergency Lockdown Chalana</h2>
+    <p>Live server par project folder me jakar wahi same command chalega jo local me chalta hai:</p>
+    <pre><code>cd /var/www/publicspark
+npm run lockdown "<passphrase>" emergency-all</code></pre>
+
+    <p>Ye command chalte hi live VPS par server clock ke sath matching sessions kill ho jayenge aur super admin direct access me restore ho jayega.</p>
+
+    <h2>5.3 Live VPS Server Process Management (PM2)</h2>
+    <p>VPS par backend server ko 24/7 bina ruke chalane ke liye <code>pm2</code> use kiya jata hai:</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Task</th>
+          <th>Terminal Command</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Server ko 24/7 background me start karna</td>
+          <td><code>pm2 start server/server.js --name "publicspark-api"</code></td>
+        </tr>
+        <tr>
+          <td>Server ka live status dekhna</td>
+          <td><code>pm2 status</code></td>
+        </tr>
+        <tr>
+          <td>Live server ke logs / traffic dekhna</td>
+          <td><code>pm2 logs publicspark-api</code></td>
+        </tr>
+        <tr>
+          <td>Server ko restart karna</td>
+          <td><code>pm2 restart publicspark-api</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="page-break"></div>
+
+    <!-- ========================================================= -->
+    <!-- CHAPTER 6 -->
+    <!-- ========================================================= -->
+    <div class="chapter-header">
+      <div class="chapter-tag">CHAPTER 6</div>
+      <h1>4-Layer Cyber Incident Response Protocol</h1>
+    </div>
+
+    <p>Agar kabhi suspicious activity dikhe ya lage ki kisi ne password guess kar liya hai, to ghabrane ki zaroorat nahi hai. System ko recapture karne ka step-by-step protocol ye hai:</p>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">LAYER 1</span>
+        <span class="step-title">Attacker Ko Bahar Phekna (0 Seconds Me)</span>
+      </div>
+      <p>Terminal me ye command chalayein (ya Cloudflare Console se execute karein):</p>
+      <pre><code>npm run lockdown "<passphrase>" emergency-all</code></pre>
+      <p><strong>Nateeja:</strong> Attacker ka session instantly expire ho gaya, wo site se bahar nikal gaya, aur uska 2FA device unbind ho gaya.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">LAYER 2</span>
+        <span class="step-title">Cloudflare Under Attack Mode Active Karna</span>
+      </div>
+      <p>Cloudflare Dashboard me jakar <strong>"Under Attack Mode"</strong> ka toggle ON kar dijiye. Isse koi bhi bot, automated script, ya DDoS flooding tool site ko touch nahi kar payega.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">LAYER 3</span>
+        <span class="step-title">Pura Clean Data 1-Click Me Restore Karna</span>
+      </div>
+      <p>Hamare Task 19 Auto-Backup Desk se download kiye gaye latest clean backup zip se database files (<code>articles.json</code>, <code>settings.json</code>) restore kar lijiye. Ek bhi article ya image lost nahi hogi.</p>
+    </div>
+
+    <div class="step-card avoid-break">
+      <div class="step-header">
+        <span class="step-num">LAYER 4</span>
+        <span class="step-title">Fresh 2FA Pairing &amp; Strong Password</span>
+      </div>
+      <p>Newsroom Staff Desk me login karke apna personal phone dobara fresh QR code se scan kijiye aur naya password set kar lijiye.</p>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- ========================================================= -->
+    <!-- CHAPTER 7 -->
+    <!-- ========================================================= -->
+    <div class="chapter-header">
+      <div class="chapter-tag">CHAPTER 7</div>
+      <h1>Developer Terminal Cheat-Sheet</h1>
+    </div>
+
+    <p>Aapke rozana reference aur yaad rakhne ke liye sabhi commands ka master table:</p>
+
+    <table class="avoid-break">
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Goal / Action</th>
+          <th>Exact Terminal Command</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Development</strong></td>
+          <td>Backend API Server Start (Port 5000)</td>
+          <td><code>npm run server</code></td>
+        </tr>
+        <tr>
+          <td><strong>Development</strong></td>
+          <td>Frontend Vite Server Start (Port 5173)</td>
+          <td><code>npm run dev</code></td>
+        </tr>
+        <tr>
+          <td><strong>Quality Check</strong></td>
+          <td>Fast Linter Test (0 errors verify)</td>
+          <td><code>npm run lint</code></td>
+        </tr>
+        <tr>
+          <td><strong>Quality Check</strong></td>
+          <td>Production Compilation Build Test</td>
+          <td><code>npm run build</code></td>
+        </tr>
+        <tr>
+          <td><strong>Security CLI</strong></td>
+          <td>Security Status &amp; Accounts Audit</td>
+          <td><code>npm run lockdown "<passphrase>" status</code></td>
+        </tr>
+        <tr>
+          <td><strong>Security CLI</strong></td>
+          <td>Emergency 2FA Wipe / Reset</td>
+          <td><code>npm run lockdown "<passphrase>" reset-2fa</code></td>
+        </tr>
+        <tr>
+          <td><strong>Security CLI</strong></td>
+          <td>Emergency Password Restore (Admin@2026)</td>
+          <td><code>npm run lockdown "<passphrase>" reset-password</code></td>
+        </tr>
+        <tr>
+          <td><strong>Security CLI</strong></td>
+          <td>Kill All Logins Globally (0ms)</td>
+          <td><code>npm run lockdown "<passphrase>" revoke-sessions</code></td>
+        </tr>
+        <tr>
+          <td><strong>Security CLI</strong></td>
+          <td>Complete Emergency Lockdown (All-in-one)</td>
+          <td><code>npm run lockdown "<passphrase>" emergency-all</code></td>
+        </tr>
+        <tr>
+          <td><strong>Security CLI</strong></td>
+          <td>Export Cloudflare D1 SQL Script</td>
+          <td><code>npm run lockdown "<passphrase>" sql-export</code></td>
+        </tr>
+        <tr>
+          <td><strong>Security CLI</strong></td>
+          <td>Interactive Menu (Numbered 1-7)</td>
+          <td><code>npm run lockdown "<passphrase>"</code></td>
+        </tr>
+        <tr>
+          <td><strong>Live Cloudflare</strong></td>
+          <td>Live D1 Database 2FA Reset</td>
+          <td><code>npx wrangler d1 execute publicspark-db --remote --command="..."</code></td>
+        </tr>
+        <tr>
+          <td><strong>Live VPS</strong></td>
+          <td>VPS SSH Login</td>
+          <td><code>ssh root@your-vps-ip</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top: 40px; padding: 20px; border: 1px solid var(--color-border); border-radius: 4px; background: #fafafa; text-align: center;" class="avoid-break">
+      <p style="font-family: var(--font-serif); font-size: 13pt; color: var(--color-ink); margin-bottom: 4px;">PUBLICSPARK SOVEREIGN MEDIA ARCHITECTURE</p>
+      <p style="font-family: var(--font-mono); font-size: 9pt; color: var(--color-muted);">Designed and Engineered natively with Zero Paid Dependencies &bull; Verified November 2026</p>
+    </div>
+
+  </div>
+
+</body>
+</html>
+

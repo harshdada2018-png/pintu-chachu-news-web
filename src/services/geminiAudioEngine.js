@@ -89,6 +89,18 @@ export async function playTwoStageAudio({
   stopTwoStageAudio();
   const sessionId = ++activeSessionId;
 
+  // Crucial: Synchronously prime and unlock Audio element during user interaction gesture
+  // This prevents Chrome/Safari "NotAllowedError" autoplay rejection after async network fetch
+  const unlockedAudio = new Audio();
+  unlockedAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+  try {
+    const p = unlockedAudio.play();
+    if (p !== undefined) {
+      p.then(() => unlockedAudio.pause()).catch(() => {});
+    }
+  } catch (e) {}
+  activeAudio = unlockedAudio;
+
   // Guardrail: Assamese voice is explicitly not supported
   if (lang === 'as') {
     if (onError) onError(new Error('Assamese voice not supported.'));
@@ -125,8 +137,7 @@ export async function playTwoStageAudio({
       throw new Error(data1.error || 'Failed to obtain Clip 1 audio URL');
     }
 
-    // Reuse or create a single continuous active Audio element
-    activeAudio = new Audio();
+    // Reuse the primed and unlocked active Audio element
     activeAudio.src = data1.audio_url;
     activeAudio.playbackRate = activeRate;
 

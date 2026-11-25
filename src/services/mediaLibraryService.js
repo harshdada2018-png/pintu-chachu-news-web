@@ -4,6 +4,7 @@
  */
 
 import { compressImageToWebP } from './mediaService';
+import { getAuthHeaders } from './authClient';
 
 /**
  * Fetch indexed media assets with usage metrics, search, and filtering
@@ -58,7 +59,10 @@ export async function uploadMediaAsset({ file, imageBase64, articleId = 'general
 
   const res = await fetch('/api/upload/image', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify({
       imageBase64: base64Payload,
       articleId,
@@ -88,7 +92,10 @@ export async function uploadMediaAsset({ file, imageBase64, articleId = 'general
 export async function deleteMediaAsset(fileName, force = false, userRole = 'editor') {
   const res = await fetch('/api/media/delete', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify({ fileName, force, userRole })
   });
 
@@ -121,7 +128,10 @@ export async function deleteMediaAsset(fileName, force = false, userRole = 'edit
 export async function updateMediaMetadata(fileName, { caption, credit, altText, width, height }, userRole = 'editor') {
   const res = await fetch('/api/media/update', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify({ fileName, caption, credit, altText, width, height, userRole })
   });
 

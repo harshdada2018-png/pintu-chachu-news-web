@@ -35,10 +35,15 @@ This is the active production deployment stack for launching PublicSpark News.
 - **Capacity**: 5 GB safely accommodates over 2,00,000 full news stories, complete revision histories, 18-language translation caches, and ad impression logs.
 - **Durability**: Automated replication and snapshots with zero risk of file loss on server restart.
 
-### 2.4 Media & Photo Storage
-- **Client-Side Compression**: Mandatory automatic WebP compression in `src/services/mediaService.js` (< 100 KB target size) before network transmission.
-- **Storage Tier**: ImgBB API and Cloudinary Free Tier (Zero Credit Card Required, 25 GB monthly quota).
-- **Audio Cache**: 32kbps mono MP3 encoding (< 400 KB per news article) combined with automated 14-day rolling purge (`cleanupExpiredAudioFiles`) capping audio disk space permanently under 60-80 MB.
+### 2.4 Media & Photo Storage (ImgBB API & Plug-and-Play Hybrid Mode)
+- **Primary Cloud Storage Tier**: **ImgBB API** (100% Free Forever, Unlimited Storage, Zero International Credit Card Required).
+- **Client-Side Compression**: Mandatory automatic WebP compression in `src/services/mediaService.js` (< 100 KB target size, 1200px max width) before network transmission, ensuring instant uploads even on rural mobile data.
+- **Server Disk Consumption = 0 KB**: With ImgBB API active in `.env` (`IMGBB_API_KEY`), news photos and ad banners upload directly to ImgBB CDN (`https://i.ibb.co/...`). The host server/VPS disk usage for images is **0 KB**, preserving scarce disk storage.
+- **Plug-and-Play Hybrid Controller**:
+  - *Local Development / Offline*: Defaults to saving WebP files to local `server/data/uploads/` if no external key is configured.
+  - *Production Live*: Providing `IMGBB_API_KEY` seamlessly redirects all future photo uploads to ImgBB cloud without touching React frontend code.
+- **Disaster Recovery Backup Synergy**: Because articles store permanent ImgBB CDN links, complete database backup archives (`publicspark-backup-*.zip`) stay ultra-compact (**under 150 KB - 200 KB**), downloading and restoring in 1 second.
+- **Audio Storytelling Cache**: 32kbps mono MP3 encoding (< 400 KB per news article) combined with automated 14-day rolling purge (`cleanupExpiredAudioFiles`) capping audio disk space permanently under 60-80 MB.
 
 ---
 

@@ -107,7 +107,7 @@ export default function SavedStoriesDrawer({
         <div className="saved-drawer-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
             <div className="saved-drawer-icon-wrap">
-              <Bookmark size={18} color="#f59e0b" fill="#f59e0b" />
+              <Bookmark size={18} color="var(--accent-crimson)" fill="var(--accent-crimson)" />
             </div>
             <div>
               <h2 id="saved-drawer-title" className="saved-drawer-title">
@@ -195,7 +195,7 @@ export default function SavedStoriesDrawer({
           {savedArticles.length === 0 ? (
             <div className="saved-drawer-empty-state">
               <div className="saved-drawer-empty-icon">
-                <BookOpen size={36} color="#f59e0b" />
+                <BookOpen size={36} color="var(--accent-crimson)" />
               </div>
               <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: 'var(--text-main)', marginBottom: '0.35rem' }}>
                 {t('noSavedBookmarks', currentLanguage) || 'No Saved Stories Yet'}
@@ -293,3 +293,4 @@ export default function SavedStoriesDrawer({
     </div>
   );
 }
+

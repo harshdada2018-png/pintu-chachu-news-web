@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Sparkles
 } from 'lucide-react';
+import { getAuthHeaders } from '../../services/authClient';
 
 export default function PollManager() {
   const [poll, setPoll] = useState({
@@ -111,7 +112,7 @@ export default function PollManager() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-key': 'publicspark-admin-secret-key-2026'
+          ...getAuthHeaders()
         },
         body: JSON.stringify({
           enabled: poll.enabled,

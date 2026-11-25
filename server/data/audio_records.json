@@ -1,47 +1,52 @@
 {
-  "art-3:mr:clip_1_intro": {
-    "article_id": "art-3",
-    "lang": "mr",
-    "clip_type": "clip_1_intro",
-    "audio_url": "/uploads/audio_art-3_mr_clip_1_intro.mp3",
-    "size_bytes": 31765,
-    "status": "done",
-    "created_at": "2026-10-29T04:19:11.150Z"
-  },
-  "art-3:mr:clip_2_body": {
-    "article_id": "art-3",
-    "lang": "mr",
-    "clip_type": "clip_2_body",
-    "audio_url": "/uploads/audio_art-3_mr_clip_2_body.mp3",
-    "size_bytes": 37094,
-    "status": "done",
-    "created_at": "2026-10-29T04:19:21.182Z"
-  },
-  "art-3:ja:clip_1_intro": {
-    "article_id": "art-3",
-    "lang": "ja",
-    "clip_type": "clip_1_intro",
-    "audio_url": "/uploads/audio_art-3_ja_clip_1_intro.mp3",
-    "size_bytes": 29675,
-    "status": "done",
-    "created_at": "2026-10-29T04:20:02.527Z"
-  },
-  "art-1792336931463:or:clip_1_intro": {
-    "article_id": "art-1792336931463",
-    "lang": "or",
-    "clip_type": "clip_1_intro",
-    "audio_url": "/uploads/audio_art-1792336931463_or_clip_1_intro.mp3",
-    "size_bytes": 91115,
-    "status": "done",
-    "created_at": "2026-11-05T07:45:32.143Z"
-  },
-  "art-1793864819037:mr:clip_1_intro": {
+  "art-1793864819037:hi:clip_1_intro": {
     "article_id": "art-1793864819037",
-    "lang": "mr",
+    "lang": "hi",
     "clip_type": "clip_1_intro",
-    "audio_url": "/uploads/audio_art-1793864819037_mr_clip_1_intro.mp3",
-    "size_bytes": 79935,
+    "audio_url": "/uploads/audio_art-1793864819037_hi_clip_1_intro.mp3",
+    "size_bytes": 40751,
     "status": "done",
-    "created_at": "2026-11-05T07:50:29.734Z"
+    "created_at": "2026-11-19T11:21:41.571Z",
+    "last_played_at": "2026-11-25T08:02:28.195Z"
+  },
+  "general:hi:clip_1_intro": {
+    "article_id": "general",
+    "lang": "hi",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_general_hi_clip_1_intro.mp3",
+    "size_bytes": 3971,
+    "status": "done",
+    "created_at": "2026-11-20T12:43:37.533Z",
+    "last_played_at": "2026-11-22T05:53:26.331Z"
+  },
+  "art-1793864819037:hi:clip_2_body": {
+    "article_id": "art-1793864819037",
+    "lang": "hi",
+    "clip_type": "clip_2_body",
+    "audio_url": "/uploads/audio_art-1793864819037_hi_clip_2_body.mp3",
+    "size_bytes": 2575464,
+    "status": "done",
+    "created_at": "2026-11-20T20:04:17.436Z",
+    "last_played_at": "2026-11-25T08:01:40.480Z"
+  },
+  "test-breaking-1795587302122:hi:clip_1_intro": {
+    "article_id": "test-breaking-1795587302122",
+    "lang": "hi",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_test-breaking-1795587302122_hi_clip_1_intro.mp3",
+    "size_bytes": 15778,
+    "status": "done",
+    "created_at": "2026-11-25T06:52:34.215Z",
+    "last_played_at": "2026-11-25T06:52:34.215Z"
+  },
+  "art-mock-1795544885942-1:hi:clip_1_intro": {
+    "article_id": "art-mock-1795544885942-1",
+    "lang": "hi",
+    "clip_type": "clip_1_intro",
+    "audio_url": "/uploads/audio_art-mock-1795544885942-1_hi_clip_1_intro.mp3",
+    "size_bytes": 74188,
+    "status": "done",
+    "created_at": "2026-11-25T07:09:13.753Z",
+    "last_played_at": "2026-11-25T08:04:12.908Z"
   }
 }

@@ -19,7 +19,7 @@ const WhatsAppIcon = ({ size = 16, color = 'currentColor' }) => (
   </svg>
 );
 
-export default function ArticleReader({ article, articles = [], onBack, onSelectArticle, currentLanguage = 'en', onShowToast }) {
+export default function ArticleReader({ article, articles = [], onBack, onSelectArticle, currentLanguage = 'en', onShowToast, onOpenGrievance }) {
   const [displayArticle, setDisplayArticle] = useState(article);
   const [isTranslating, setIsTranslating] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -328,7 +328,7 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
   );
   const safeDisplayArticle = isCorruptedContent ? article : (displayArticle || article);
   const activeArticle = showOriginal ? article : safeDisplayArticle;
-  const activeLang = showOriginal ? 'hi' : currentLanguage;
+  const activeLang = showOriginal ? (article.originalLanguage || 'hi').toLowerCase() : currentLanguage;
 
   // Task 27 Subtopic B: Dynamic Script-Aware Reading Duration Badge
   const readingDuration = calculateReadingTime(activeArticle?.content || '', activeLang);
@@ -473,15 +473,15 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
               alignItems: 'center',
               gap: '0.35rem',
               cursor: 'pointer',
-              color: '#15803D',
-              borderColor: '#86EFAC',
-              background: '#F0FDF4',
+              color: 'var(--text-main)',
+              borderColor: 'var(--border-medium)',
+              background: 'var(--bg-surface)',
               textDecoration: 'none',
               fontWeight: '700'
             }}
             title="WhatsApp पर स्मार्ट बुलेटिन शेयर करें"
           >
-            <WhatsAppIcon size={14} color="#15803D" />
+            <WhatsAppIcon size={14} color="var(--text-main)" />
             <span className="hide-on-mobile">WhatsApp</span>
           </a>
 
@@ -501,8 +501,8 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
               padding: '0.35rem 0.65rem', 
               fontSize: '0.8rem', 
               borderRadius: 'var(--radius-md)',
-              border: isBookmarked ? '1px solid #f59e0b' : '1px solid var(--border-medium)',
-              background: isBookmarked ? '#f59e0b' : 'var(--bg-surface)',
+              border: isBookmarked ? '1px solid var(--accent-crimson)' : '1px solid var(--border-medium)',
+              background: isBookmarked ? 'var(--accent-crimson)' : 'var(--bg-surface)',
               color: isBookmarked ? '#ffffff' : 'var(--text-main)',
               display: 'inline-flex',
               alignItems: 'center',
@@ -549,7 +549,30 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
       {/* Top / Header Leaderboard Ad Unit (Evaluated by Backend for this Article) */}
       <PartnerUnit position="header" category={activeArticle.category} articleId={activeArticle.id} />
 
-      <div style={{ opacity: isTranslating ? 0.6 : 1, transition: 'opacity 0.25s ease' }}>
+      {isTranslating ? (
+        /* Task 33 Subtopic D: Sovereign Broadsheet Skeleton Shimmer Loading State */
+        <div className="article-reader-skeleton-container" aria-busy="true" aria-live="polite">
+          <div className="broadsheet-skeleton skeleton-headline" />
+          <div className="broadsheet-skeleton skeleton-headline-sub" />
+          <div className="broadsheet-skeleton skeleton-byline-bar" />
+          <div className="broadsheet-skeleton skeleton-image-banner" />
+          <div className="skeleton-summary-box">
+            <div className="broadsheet-skeleton" style={{ height: '1.1rem', width: '28%', marginBottom: '1rem' }} />
+            <div className="broadsheet-skeleton skeleton-line" style={{ width: '96%' }} />
+            <div className="broadsheet-skeleton skeleton-line" style={{ width: '88%' }} />
+            <div className="broadsheet-skeleton skeleton-line" style={{ width: '72%' }} />
+          </div>
+          <div style={{ marginTop: '1.5rem' }}>
+            <div className="broadsheet-skeleton skeleton-line" style={{ width: '100%' }} />
+            <div className="broadsheet-skeleton skeleton-line" style={{ width: '95%' }} />
+            <div className="broadsheet-skeleton skeleton-line" style={{ width: '92%' }} />
+            <div className="broadsheet-skeleton skeleton-line" style={{ width: '97%', marginTop: '1.25rem' }} />
+            <div className="broadsheet-skeleton skeleton-line" style={{ width: '90%' }} />
+            <div className="broadsheet-skeleton skeleton-line" style={{ width: '84%' }} />
+          </div>
+        </div>
+      ) : (
+        <div style={{ opacity: 1, transition: 'opacity 0.25s ease' }}>
           {/* Category Badge & Breaking Flag */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
             <span className="story-category-tag">{translateCategoryName(activeArticle.category, currentLanguage)}</span>
@@ -606,7 +629,7 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
               }}
               title="Click to inspect editorial verification dossier"
             >
-              <ShieldCheck size={13} color={factCheck.rating === 'Under Review' ? '#D97706' : '#059669'} />
+              <ShieldCheck size={13} color="var(--accent-crimson)" />
               <span>FACT-CHECK: {factCheck.rating || 'Verified'}</span>
               <span style={{ fontSize: '0.68rem', fontWeight: '600', opacity: 0.85, textTransform: 'none' }}>
                 ({factCheck.desk || 'Fact Desk'})
@@ -878,6 +901,7 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
             />
           </div>
         </div>
+      )}
 
       {/* Live Blog Stream (If Format is Live) */}
       {activeArticle.format === 'live' && (
@@ -967,9 +991,9 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
                 fontSize: '0.78rem',
                 fontWeight: '800',
                 borderRadius: '4px',
-                border: !filterKeyEventsOnly ? '1px solid #0E2A47' : '1px solid var(--border-medium)',
-                background: !filterKeyEventsOnly ? '#0E2A47' : '#FFFFFF',
-                color: !filterKeyEventsOnly ? '#FFFFFF' : 'var(--text-main)',
+                border: !filterKeyEventsOnly ? '1px solid var(--text-main)' : '1px solid var(--border-medium)',
+                background: !filterKeyEventsOnly ? 'var(--text-main)' : 'var(--bg-surface)',
+                color: !filterKeyEventsOnly ? 'var(--bg-primary)' : 'var(--text-main)',
                 cursor: 'pointer'
               }}
             >
@@ -984,8 +1008,8 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
                 fontSize: '0.78rem',
                 fontWeight: '800',
                 borderRadius: '4px',
-                border: filterKeyEventsOnly ? '1px solid #B91C1C' : '1px solid var(--border-medium)',
-                background: filterKeyEventsOnly ? '#B91C1C' : '#FFFFFF',
+                border: filterKeyEventsOnly ? '1px solid var(--accent-crimson)' : '1px solid var(--border-medium)',
+                background: filterKeyEventsOnly ? 'var(--accent-crimson)' : 'var(--bg-surface)',
                 color: filterKeyEventsOnly ? '#FFFFFF' : 'var(--text-main)',
                 cursor: 'pointer',
                 display: 'inline-flex',
@@ -1120,7 +1144,7 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
         style={{
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-medium)',
-          borderLeft: '4px solid #0E2A47',
+          borderLeft: '4px solid var(--accent-crimson)',
           borderRadius: '4px',
           padding: '1.25rem',
           marginTop: '2rem',
@@ -1130,7 +1154,7 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.65rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <FileText size={18} color="#0E2A47" />
+            <FileText size={18} color="var(--accent-crimson)" />
             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '0.01em' }}>
               स्रोत एवं संदर्भ (Official Sources & Gazette Citations)
             </h3>
@@ -1138,16 +1162,16 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
           <span style={{
             fontSize: '0.72rem',
             fontWeight: '800',
-            color: '#065F46',
-            background: '#ECFDF5',
-            border: '1px solid #A7F3D0',
+            color: 'var(--accent-crimson)',
+            background: 'var(--accent-crimson-bg)',
+            border: '1px solid var(--accent-crimson)',
             padding: '0.2rem 0.55rem',
             borderRadius: '4px',
             display: 'inline-flex',
             alignItems: 'center',
             gap: '0.3rem'
           }}>
-            <ShieldCheck size={12} color="#059669" />
+            <ShieldCheck size={12} color="var(--accent-crimson)" />
             {resolvedSources.length} {resolvedSources.length === 1 ? 'Source Verified' : 'Sources Verified'}
           </span>
         </div>
@@ -1218,9 +1242,9 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '0.35rem',
-                    color: '#0E2A47',
-                    borderColor: '#94A3B8',
-                    background: '#F8FAFC',
+                    color: 'var(--text-main)',
+                    borderColor: 'var(--border-medium)',
+                    background: 'var(--bg-surface)',
                     textDecoration: 'none',
                     minHeight: '36px',
                     flexShrink: 0
@@ -1433,15 +1457,8 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
       )}
 
       {/* Action Footer & Social Sharing */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        padding: '1rem 0',
-        borderTop: '1px solid var(--border-medium)',
-        marginTop: '2rem'
-      }}>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+      <div className="reader-bottom-action-bar">
+        <div className="reader-bottom-action-buttons">
           <button
             onClick={handleLikeToggle}
             className="btn"
@@ -1513,21 +1530,45 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
               padding: '0.45rem 1rem',
               fontSize: '0.85rem',
               borderRadius: 'var(--radius-sm)',
-              border: isBookmarked ? '1px solid #f59e0b' : '1px solid var(--border-medium)',
-              background: isBookmarked ? '#f59e0b' : 'var(--bg-surface)',
+              border: isBookmarked ? '1px solid var(--accent-crimson)' : '1px solid var(--border-medium)',
+              background: isBookmarked ? 'var(--accent-crimson)' : 'var(--bg-surface)',
               color: isBookmarked ? '#ffffff' : 'var(--text-main)',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.45rem',
               fontWeight: '700',
               cursor: 'pointer',
-              boxShadow: isBookmarked ? '0 4px 12px rgba(245, 158, 11, 0.3)' : 'none',
+              boxShadow: isBookmarked ? '0 4px 12px rgba(184, 29, 19, 0.3)' : 'none',
               transition: 'all 0.2s ease'
             }}
           >
             <Bookmark size={16} fill={isBookmarked ? '#ffffff' : 'none'} color={isBookmarked ? '#ffffff' : 'currentColor'} />
             <span>{isBookmarked ? t('saved', currentLanguage) : t('bookmark', currentLanguage)}</span>
           </button>
+          {onOpenGrievance && (
+            <button
+              type="button"
+              onClick={() => onOpenGrievance(activeArticle)}
+              className="btn btn-outline"
+              style={{
+                padding: '0.45rem 0.85rem',
+                fontSize: '0.82rem',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-subtle)',
+                borderColor: 'var(--border-medium)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+                minHeight: '38px'
+              }}
+              title="File a grievance or report inaccuracy under IT Rules 2021"
+            >
+              <AlertCircle size={14} color="var(--accent-crimson)" />
+              <span>Report / Grievance</span>
+            </button>
+          )}
         </div>
         <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
           PublicSpark Verified News Engine
@@ -1753,8 +1794,8 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <ShieldCheck size={22} color="#059669" />
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '900', color: '#0E2A47' }}>
+                <ShieldCheck size={22} color="var(--accent-crimson)" />
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '900', color: 'var(--text-main)' }}>
                   संपादकीय तथ्य सत्यापन रिपोर्ट
                 </h3>
               </div>
@@ -1819,7 +1860,7 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
                   <span style={{ fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-subtle)', display: 'block', marginBottom: '0.2rem' }}>
                     VERIFYING DESK
                   </span>
-                  <span style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0E2A47' }}>
+                  <span style={{ fontSize: '0.88rem', fontWeight: '800', color: 'var(--text-main)' }}>
                     {factCheck.desk || 'PublicSpark Fact Desk'}
                   </span>
                 </div>
@@ -1827,24 +1868,24 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
                   <span style={{ fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-subtle)', display: 'block', marginBottom: '0.2rem' }}>
                     PRIMARY SOURCES CITED
                   </span>
-                  <span style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0E2A47' }}>
+                  <span style={{ fontSize: '0.88rem', fontWeight: '800', color: 'var(--text-main)' }}>
                     {resolvedSources.length} Official References
                   </span>
                 </div>
               </div>
 
               {/* Verified Claim / Findings */}
-              <div style={{ background: '#F8FAFC', padding: '0.85rem 1rem', borderRadius: '4px', border: '1px solid #E2E8F0' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+              <div style={{ background: 'var(--bg-secondary)', padding: '0.85rem 1rem', borderRadius: '4px', border: '1px solid var(--border-medium)' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: '800', textTransform: 'uppercase', color: 'var(--text-subtle)', display: 'block', marginBottom: '0.35rem' }}>
                   VERIFIED CLAIM & FACTUAL FINDINGS
                 </span>
-                <p style={{ margin: 0, fontSize: '0.88rem', color: '#1E293B', lineHeight: '1.5' }}>
+                <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-main)', lineHeight: '1.5' }}>
                   {factCheck.claim || 'Primary claims, figures, and institutional statements independently cross-checked against authorized government portals and wire dispatches prior to publication.'}
                 </p>
               </div>
 
               {/* Methodology & Ethics Standard */}
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', lineHeight: '1.5', borderLeft: '3px solid #059669', paddingLeft: '0.75rem' }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', lineHeight: '1.5', borderLeft: '3px solid var(--accent-crimson)', paddingLeft: '0.75rem' }}>
                 <div style={{ fontWeight: '800', color: 'var(--text-main)', marginBottom: '0.2rem' }}>
                   Editorial Standards & Methodology:
                 </div>

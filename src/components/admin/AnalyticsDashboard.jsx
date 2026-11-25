@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Eye, Users, Clock, Globe, TrendingUp, RefreshCw, BarChart2, PieChart, ShieldCheck, Activity, Heart } from 'lucide-react';
 import { fetchAnalyticsOverview, fetchTrendingArticles, fetchCountryBreakdown } from '../../services/analyticsService';
-import { MOCK_ARTICLES } from '../../services/mockData';
 
 const COUNTRY_NAMES = {
   IN: { name: 'India', code: 'IN', color: '#3B82F6' },
@@ -465,7 +464,7 @@ export default function AnalyticsDashboard({ articles }) {
             </thead>
             <tbody>
               {trending.map((item, idx) => {
-                const articlePool = (articles && articles.length > 0) ? articles : MOCK_ARTICLES;
+                const articlePool = articles || [];
                 const article = articlePool.find(a => String(a.id) === String(item.articleId)) || {
                   title: `Editorial Article #${item.articleId}`,
                   category: 'General'

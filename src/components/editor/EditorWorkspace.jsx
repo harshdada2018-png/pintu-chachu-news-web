@@ -66,7 +66,7 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
               Review reporter submissions, refine headlines, mark breaking news, and publish stories.
             </p>
           </div>
-          <div style={{ background: '#ECFDF5', color: 'var(--accent-emerald)', padding: '0.4rem 0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '700' }}>
+          <div style={{ background: 'var(--accent-emerald-bg, rgba(16, 185, 129, 0.12))', color: 'var(--accent-emerald)', border: '1px solid var(--accent-emerald)', padding: '0.4rem 0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '700' }}>
             Queue: {pendingArticles.length} Stories Awaiting Review
           </div>
         </div>
@@ -121,7 +121,7 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
                   {art.title}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                  By {art.author?.name || 'Reporter'} • {art.published_at}
+                  By {art.author?.name || 'Reporter'} {art.author?.email ? `(${art.author.email})` : ''} • {art.published_at}
                 </div>
               </div>
             ))

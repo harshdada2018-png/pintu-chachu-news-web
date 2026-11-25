@@ -3,6 +3,7 @@
  * Manages Google AdSense & Direct Sponsor Placements with LocalStorage & Server Sync
  * Uses neutral names to avoid accidental ad-blocker false positives
  */
+import { getAuthHeaders } from './authClient';
 
 export const DEFAULT_ADS_CONFIG = {
   adSensePublisherId: '', // e.g. ca-pub-XXXXXXXXXXXXXXXX
@@ -498,14 +499,14 @@ export async function syncAdSettingsServer(config) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-admin-key': 'publicspark-admin-secret-key-2026'
+        ...getAuthHeaders()
       },
       body: JSON.stringify(saved)
     }).catch(() => fetch('/api/settings/ads', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-admin-key': 'publicspark-admin-secret-key-2026'
+        ...getAuthHeaders()
       },
       body: JSON.stringify(saved)
     }));
@@ -553,7 +554,7 @@ export async function deleteAdHistoryItem(id) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-admin-key': 'publicspark-admin-secret-key-2026'
+        ...getAuthHeaders()
       },
       body: JSON.stringify({ id })
     });
@@ -576,7 +577,7 @@ export async function updateAdHistoryItem(campaignData) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-admin-key': 'publicspark-admin-secret-key-2026'
+        ...getAuthHeaders()
       },
       body: JSON.stringify(campaignData)
     });

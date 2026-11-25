@@ -8,7 +8,9 @@
 - **Zero Emojis (Mistake 46)**: Strictly ZERO EMOJIS in code, logs, markdown, and responses.
 
 ## Execution Rules
-- Follow **Rule 9: One Task at a Time** — Complete, Verify & Get Approval before moving to the next task.
+- Follow **Rule 9: One Subtopic at a Time (Granular Subtopic Execution & Reporting)**:
+  - Boss ki explicit directive ke mutabiq, ab se pure topic ko ek sath karne ke bajaye, har feature ko granular **Subtopics (Subtopic A, B, C...)** me divide karke **ONE SUBTOPIC at a time** execute kiya jayega.
+  - Har subtopic complete hone par uski independent automated verification hogi, Boss ko concise progress report aur testing guide di jayegi, aur Boss ke approval ke baad hi agle subtopic par kadam rakha jayega.
 - Follow **Rule 10: Master Checklist Testing Verification** — In `project-planning/CHECKLIST.md`, every completed task must record its concrete verified testing outcome and build proof.
 - Follow **Rule 1: Learning & Mistake Prevention** — Record root causes and solutions in `learning/mistakes.md`.
 - Follow **Rule 7: Project Planning** — Keep `project-planning/PROGRESS.md` and `DECISIONS.md` up to date.
@@ -32,3 +34,9 @@
     2. Exact Location (File path, line number, or CSS selector)
     3. Root Cause & Why it looks bad / fails
     4. Exact Concrete Fix with exact pixel, token, or code values.
+
+- **Specialized Planning & Deep Research Commands Suite**:
+  - **`/grill-me`**: Feature ya project shuru karne se pehle agent strict Principal Systems Architect ban kar Boss se 3–5 high-leverage targeted questions (options, trade-offs, edge-cases) poochega aur decisions lock karega.
+  - **`/brainstorm`**: Kisi complex problem ke liye 2–3 divergent architectural approaches (YAGNI, Industrial, Edge) compare karega with a side-by-side trade-off matrix.
+  - **`/deep-research`** ya **`/research`**: Official statutory legislation (e.g. IT Rules 2021, Press Council standards), RFC specs, aur developer documentation ka deep ground-truth research karega.
+  - **`/architect`** ya **`/plan`**: Complete component diagrams, REST API contracts, database schemas, aur sequential testable subtasks ka end-to-end blueprint banayega.

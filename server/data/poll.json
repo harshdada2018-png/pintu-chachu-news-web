@@ -1,25 +1,25 @@
 {
-  "enabled": false,
-  "id": "poll-default-v1",
-  "question": "Do you believe AI news readers enhance digital journalism speed and trust?",
+  "enabled": true,
+  "id": "poll-national-launch-1795207889493",
+  "question": "क्या आप क्षेत्रीय जिलों में सौर और हरित ऊर्जा के तीव्र विस्तार का समर्थन करते हैं?",
   "options": [
     {
       "id": "opt-1",
-      "label": "हाँ, बिल्कुल (Yes, absolutely)",
-      "votes": 1422
+      "label": "हाँ, पूरी तरह समर्थन है",
+      "votes": 0
     },
     {
       "id": "opt-2",
-      "label": "नहीं, मानवीय संपादक ज़रूरी हैं (No, human editors are vital)",
-      "votes": 410
+      "label": "नहीं, वर्तमान प्रणाली बेहतर है",
+      "votes": 0
     },
     {
       "id": "opt-3",
-      "label": "तटस्थ / अनिश्चित (Neutral / Unsure)",
-      "votes": 121
+      "label": "बुनियादी ढांचे में सुधार जरूरी है",
+      "votes": 0
     }
   ],
-  "totalVotes": 1953,
-  "createdAt": "2026-10-25T10:00:00.000Z",
-  "updatedAt": "2026-10-25T10:46:55.489Z"
+  "totalVotes": 0,
+  "createdAt": "2026-11-20T20:51:29.493Z",
+  "updatedAt": "2026-11-20T20:51:29.493Z"
 }

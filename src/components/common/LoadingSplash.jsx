@@ -114,7 +114,7 @@ export default function LoadingSplash({ onFinished }) {
         transform: isExiting ? 'translateY(20px)' : 'translateY(0)',
         transition: 'opacity 0.35s ease 0.05s, transform 0.35s ease 0.05s'
       }}>
-        <ShieldCheck size={16} color="var(--accent-emerald, #059669)" /> 
+        <ShieldCheck size={16} color="var(--accent-crimson)" /> 
         {progress < 50 ? 'Connecting to Newsroom Stream...' : progress < 90 ? 'Verifying Ground-Truth Metadata...' : 'Opening PublicSpark...'}
       </div>
     </div>

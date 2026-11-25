@@ -2,6 +2,7 @@
  * PublicSpark Newsroom — Article Revision & Rollback Service (Task 21)
  * Manages version snapshots, audit trail retrieval, and 1-click rollback execution
  */
+import { getAuthHeaders } from './authClient';
 
 /**
  * Format ISO datetime string to clean Indian standard format (e.g. 03 Nov 2026, 04:15 PM)
@@ -30,7 +31,9 @@ export function formatRevisionTime(dtStr) {
 export async function fetchArticleRevisions(articleId) {
   if (!articleId) return [];
   try {
-    const res = await fetch(`/api/articles/${encodeURIComponent(articleId)}/revisions`);
+    const res = await fetch(`/api/articles/${encodeURIComponent(articleId)}/revisions`, {
+      headers: getAuthHeaders()
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     return Array.isArray(data.revisions) ? data.revisions : [];
@@ -50,7 +53,7 @@ export async function rollbackArticleRevision(articleId, revisionId, userRole = 
 
   const res = await fetch(`/api/articles/${encodeURIComponent(articleId)}/rollback`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       revisionId,
       userRole,

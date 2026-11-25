@@ -22,7 +22,7 @@ export const DEFAULT_THEME_PALETTE = {
   textMuted: '#4A4A4A',
   textSubtle: '#737373',
   accentCrimson: '#B81D13',
-  accentBlue: '#0D5B8C',
+  accentBlue: '#B81D13',
   borderLight: '#E8E6DF',
   borderMedium: '#D5D2C7'
 };

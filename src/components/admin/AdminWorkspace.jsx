@@ -4,11 +4,14 @@ import {
   BarChart2, HardDrive, Share2, Newspaper, Eye, EyeOff, Edit3,
   Radio, Search, Flame, Sparkles, X, RefreshCw, RotateCcw, Check, ExternalLink, ShieldAlert,
   Type, Sliders, Globe, Languages, MapPin, Palette, Monitor, Smartphone, BarChart3,
-  Clock, ShieldCheck, History, Image as ImageIcon, FileText
+  Clock, ShieldCheck, History, Image as ImageIcon, FileText, Scale,
+  Terminal
 } from 'lucide-react';
 import ArticleRevisionModal from './ArticleRevisionModal';
 import MediaLibraryDesk from './MediaLibraryDesk';
 import LiveUpdatesModal from './LiveUpdatesModal';
+import GrievanceDesk from './GrievanceDesk';
+import DeveloperRescueDesk from './DeveloperRescueDesk';
 
 /**
  * Format ISO / datetime-local string to clean Indian standard readable format (e.g. 4 Nov 2026, 07:00 AM)
@@ -57,7 +60,7 @@ const XTwitterIcon = ({ size = 16, color = 'currentColor' }) => (
   </svg>
 );
 
-import { MOCK_CATEGORIES, MOCK_ARTICLES } from '../../services/mockData';
+import { DEFAULT_NEWSROOM_CATEGORIES } from '../../services/taxonomyService';
 import { getCachedCategories, saveCategoriesToCache, getCachedNews, saveNewsToCache } from '../../services/cacheService';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
 import AnalyticsDashboard from './AnalyticsDashboard';
@@ -66,6 +69,8 @@ import VisualFontPicker, { DEFAULT_REGIONAL_FONTS, LANGUAGE_PREVIEW_DATA } from 
 import ColorPaletteCustomizer from './ColorPaletteCustomizer';
 import MonetizationDesk from './MonetizationDesk';
 import PollManager from './PollManager';
+import StaffPermissionsDesk from './StaffPermissionsDesk';
+import { getAuthHeaders } from '../../services/authClient';
 
 // Story Editor Modal Component (with Task 20 Future Auto-Publish Scheduler & Task 21 Revisions)
 function StoryEditorModal({ article, categories, onClose, onSave, onOpenRevisions, currentRole = 'admin' }) {
@@ -84,7 +89,7 @@ function StoryEditorModal({ article, categories, onClose, onSave, onOpenRevision
     is_breaking: article?.is_breaking || false,
     format: article?.format || (article?.video_url ? 'video' : 'standard'),
     live_status: article?.live_status || 'active',
-    featured_image: article?.featured_image || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=1200&q=80',
+    featured_image: article?.featured_image || '',
     video_url: article?.video_url || '',
     image_caption: article?.image_caption || '',
     media_credits: article?.media_credits || 'PublicSpark News',
@@ -236,13 +241,13 @@ function StoryEditorModal({ article, categories, onClose, onSave, onOpenRevision
       author: {
         name: formData.author_name,
         role: formData.author_role,
-        avatar: article?.author?.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80'
+        avatar: article?.author?.avatar || ''
       },
       published_at: finalStatus === 'scheduled'
         ? `Scheduled: ${formatDisplayDateTime(finalScheduledTime)}`
         : (article?.published_at || 'Just now'),
-      views_count: article?.views_count || 120,
-      likes_count: article?.likes_count || 18,
+      views_count: article?.views_count || 0,
+      likes_count: article?.likes_count || 0,
       fact_check: {
         verified: formData.fact_check_verified,
         rating: formData.fact_check_rating || 'Verified',
@@ -1100,15 +1105,16 @@ export default function AdminWorkspace({
   themePalette,
   onUpdateTheme,
   onShowToast,
-  onSelectArticle
+  onSelectArticle,
+  initialDesk
 }) {
   const isReporter = currentRole === 'reporter';
-  const [activeTab, setActiveTab] = useState('curation'); // default to News Control Desk
+  const [activeTab, setActiveTab] = useState(() => initialDesk || 'curation'); // default to News Control Desk
   const [categories, setCategories] = useState(() => {
-    return propCategories || getCachedCategories() || MOCK_CATEGORIES;
+    return propCategories || getCachedCategories() || DEFAULT_NEWSROOM_CATEGORIES;
   });
   const [articles, setArticles] = useState(() => {
-    return propArticles || getCachedNews()?.articles || MOCK_ARTICLES;
+    return propArticles || getCachedNews()?.articles || [];
   });
 
   const [localTypography, setLocalTypography] = useState(() => {
@@ -1187,13 +1193,19 @@ export default function AdminWorkspace({
     };
   });
 
-  // User List
-  const [usersList, setUsersList] = useState([
-    { id: 'u-1', name: 'Dr. Priya Ramachandran', email: 'priya@publicspark.org', role: 'editor', created: '2026-01-15' },
-    { id: 'u-2', name: 'Arjun Mehta', email: 'arjun@publicspark.org', role: 'reporter', created: '2026-02-10' },
-    { id: 'u-3', name: 'Sneha Verma', email: 'sneha@publicspark.org', role: 'reporter', created: '2026-03-01' },
-    { id: 'u-4', name: 'Rohan Sharma', email: 'rohan@gmail.com', role: 'registered', created: '2026-04-12' },
-  ]);
+  // Newsroom Staff Count
+  const [staffCount, setStaffCount] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/staff')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.staff)) {
+          setStaffCount(data.staff.length);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch Live News Stream (Google RSS & Topic Feeds)
   const fetchLiveNewsStream = useCallback((streamKey = wireStreamKey) => {
@@ -1286,7 +1298,7 @@ export default function AdminWorkspace({
         };
         fetch('/api/articles/update', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify(updatedArt)
         }).catch(e => console.warn('Backend update error:', e));
         return updatedArt;
@@ -1319,7 +1331,7 @@ export default function AdminWorkspace({
 
     fetch('/api/articles/update', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({
         ...savedStory,
         userRole: currentRole
@@ -1357,7 +1369,7 @@ export default function AdminWorkspace({
 
       fetch('/api/articles/delete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ id: articleId })
       }).catch(e => console.warn('Backend delete error:', e));
 
@@ -1390,9 +1402,7 @@ export default function AdminWorkspace({
     setTimeout(() => setFeedbackMsg(''), 3000);
   };
 
-  const handleRoleSelect = (userId, newRole) => {
-    setUsersList(usersList.map(u => u.id === userId ? { ...u, role: newRole } : u));
-  };
+
 
   const handleAddCategory = (e) => {
     if (e) e.preventDefault();
@@ -1424,7 +1434,7 @@ export default function AdminWorkspace({
     // Persist directly to backend server
     fetch('/api/categories', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(updated)
     }).catch(e => console.warn('Backend categories sync error:', e));
 
@@ -1471,7 +1481,7 @@ export default function AdminWorkspace({
     // Persist directly to backend server
     fetch('/api/categories', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(updated)
     }).catch(e => console.warn('Backend categories sync error:', e));
 
@@ -1506,7 +1516,7 @@ export default function AdminWorkspace({
     // Persist directly to backend server
     fetch('/api/categories', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(updated)
     }).catch(e => console.warn('Backend categories sync error:', e));
 
@@ -1537,8 +1547,12 @@ export default function AdminWorkspace({
     { id: 'theme', label: 'Color Harmonies & Themes', shortLabel: 'Colors & Theme', icon: Palette, group: 'Design & Brand Identity' },
     { id: 'social', label: 'Social Channels Links', shortLabel: 'Social Links', icon: Share2, group: 'Design & Brand Identity' },
     { id: 'ads', label: 'Ad Slot Placements', shortLabel: 'Ad Slots', icon: DollarSign, group: 'Operations & Monetization' },
-    { id: 'storage', label: 'Storage & Cache', shortLabel: 'Storage', icon: HardDrive, group: 'Operations & Monetization' },
-    { id: 'users', label: `Team & Permissions (${usersList.length})`, shortLabel: `Team (${usersList.length})`, icon: Users, group: 'Operations & Monetization' }
+    { id: 'storage', label: 'Storage & Backups Desk', shortLabel: 'Backups', icon: HardDrive, group: 'Operations & Monetization' },
+    { id: 'grievance', label: 'Statutory Grievances', shortLabel: 'Grievances', icon: Scale, group: 'Operations & Monetization' },
+    { id: 'users', label: `Team & Permissions ${staffCount > 0 ? `(${staffCount})` : ''}`, shortLabel: `Team ${staffCount > 0 ? `(${staffCount})` : ''}`, icon: Users, group: 'Operations & Monetization' },
+    ...(currentRole === 'developer' ? [
+      { id: 'developer', label: 'Developer Rescue & Diagnostics', shortLabel: 'Rescue Desk', icon: Terminal, group: 'Operations & Monetization' }
+    ] : [])
   ];
 
   return (
@@ -1608,62 +1622,66 @@ export default function AdminWorkspace({
         </div>
       </div>
 
-      <div className="workspace-grid">
-        {/* Mobile Navigation Header (<= 768px Only - Single Touch-Scrollable Row & Quick Dropdown) */}
-        <div className="admin-mobile-nav show-on-mobile">
-          {/* 1. Quick Dropdown Desk Switcher */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.65rem' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-              Select Desk:
-            </span>
-            <select
-              value={activeTab}
-              onChange={(e) => setActiveTab(e.target.value)}
-              className="admin-mobile-desk-select"
-              aria-label="Select Newsroom Admin Desk"
-            >
-              <optgroup label="Editorial & Content">
-                <option value="curation">Live News Control ({articles.length})</option>
-                <option value="media">Media Library</option>
-                <option value="poll">Daily Reader Poll</option>
-                <option value="categories">Categories ({categories.length})</option>
-                <option value="analytics">Analytics & Traffic</option>
-              </optgroup>
-              <optgroup label="Design & Brand Identity">
-                <option value="typography">Typography & Fonts</option>
-                <option value="theme">Color Harmonies & Themes</option>
-                <option value="social">Social Channels Links</option>
-              </optgroup>
-              <optgroup label="Operations & Monetization">
-                <option value="ads">Ad Slot Placements</option>
-                <option value="storage">Storage & Cache</option>
-                <option value="users">Team & Permissions ({usersList.length})</option>
-              </optgroup>
-            </select>
-          </div>
-
-          {/* 2. Touch-Scrollable Horizontal Pill Bar */}
-          <div className="admin-mobile-pill-wrapper">
-            <div className="admin-mobile-pill-bar">
-              {ADMIN_DESKS.map(desk => {
-                const Icon = desk.icon;
-                const isActive = activeTab === desk.id;
-                return (
-                  <button
-                    key={desk.id}
-                    onClick={() => setActiveTab(desk.id)}
-                    className={`admin-mobile-pill-btn ${isActive ? 'active' : ''}`}
-                    type="button"
-                  >
-                    <Icon size={14} />
-                    <span>{desk.shortLabel}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+      {/* Mobile Navigation Header (<= 768px Only - Single Touch-Scrollable Row & Quick Dropdown) */}
+      <div className="admin-mobile-nav show-on-mobile">
+        {/* 1. Quick Dropdown Desk Switcher */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.65rem' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+            Select Desk:
+          </span>
+          <select
+            value={activeTab}
+            onChange={(e) => setActiveTab(e.target.value)}
+            className="admin-mobile-desk-select"
+            aria-label="Select Newsroom Admin Desk"
+          >
+            <optgroup label="Editorial & Content">
+              <option value="curation">Live News Control ({articles.length})</option>
+              <option value="media">Media Library</option>
+              <option value="poll">Daily Reader Poll</option>
+              <option value="categories">Categories ({categories.length})</option>
+              <option value="analytics">Analytics & Traffic</option>
+            </optgroup>
+            <optgroup label="Design & Brand Identity">
+              <option value="typography">Typography & Fonts</option>
+              <option value="theme">Color Harmonies & Themes</option>
+              <option value="social">Social Channels Links</option>
+            </optgroup>
+            <optgroup label="Operations & Monetization">
+              <option value="ads">Ad Slot Placements</option>
+              <option value="storage">Storage & Cache</option>
+              <option value="grievance">Statutory Grievances (IT Rules)</option>
+              <option value="users">Team & Permissions {staffCount > 0 ? `(${staffCount})` : ''}</option>
+              {currentRole === 'developer' && (
+                <option value="developer">Developer Rescue & Diagnostics</option>
+              )}
+            </optgroup>
+          </select>
         </div>
 
+        {/* 2. Touch-Scrollable Horizontal Pill Bar */}
+        <div className="admin-mobile-pill-wrapper">
+          <div className="admin-mobile-pill-bar">
+            {ADMIN_DESKS.map(desk => {
+              const Icon = desk.icon;
+              const isActive = activeTab === desk.id;
+              return (
+                <button
+                  key={desk.id}
+                  onClick={() => setActiveTab(desk.id)}
+                  className={`admin-mobile-pill-btn ${isActive ? 'active' : ''}`}
+                  type="button"
+                >
+                  <Icon size={14} />
+                  <span>{desk.shortLabel}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="workspace-grid">
         {/* Desktop Sidebar Nav (> 768px Only) */}
         <div className="workspace-sidebar hide-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <div>
@@ -1758,18 +1776,34 @@ export default function AdminWorkspace({
                 <HardDrive size={16} /> Storage & Cache
               </button>
               <button
+                onClick={() => setActiveTab('grievance')}
+                className={`sidebar-nav-link ${activeTab === 'grievance' ? 'active' : ''}`}
+                style={{ width: '100%' }}
+              >
+                <Scale size={16} /> Statutory Grievances
+              </button>
+              <button
                 onClick={() => setActiveTab('users')}
                 className={`sidebar-nav-link ${activeTab === 'users' ? 'active' : ''}`}
                 style={{ width: '100%' }}
               >
-                <Users size={16} /> Team & Permissions ({usersList.length})
+                <Users size={16} /> Team & Permissions {staffCount > 0 ? `(${staffCount})` : ''}
               </button>
+              {currentRole === 'developer' && (
+                <button
+                  onClick={() => setActiveTab('developer')}
+                  className={`sidebar-nav-link ${activeTab === 'developer' ? 'active' : ''}`}
+                  style={{ width: '100%' }}
+                >
+                  <Terminal size={16} /> Developer Rescue Desk
+                </button>
+              )}
             </div>
           </div>
         </div>
 
         {/* Tab Content */}
-        <div>
+        <div className="workspace-main" style={{ minWidth: 0 }}>
           {/* NEWS CONTROL & CURATION DESK */}
           {activeTab === 'curation' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
@@ -2130,7 +2164,7 @@ export default function AdminWorkspace({
                                   {art.title} <span style={{ fontSize: '0.75rem', color: 'var(--accent-indigo)', opacity: 0.8 }}>(Click to Edit)</span>
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.2rem', wordBreak: 'break-word' }}>
-                                  By {art.author?.name || 'Admin'} • Published {art.published_at} • {art.views_count ? art.views_count.toLocaleString() : '120'} views
+                                  By {art.author?.name || 'Admin'} {art.author?.email ? `(${art.author.email})` : ''} • Published {art.published_at} • {art.views_count ? art.views_count.toLocaleString() : '120'} views
                                 </div>
                               </div>
                             </div>
@@ -2327,46 +2361,11 @@ export default function AdminWorkspace({
           {activeTab === 'analytics' && <AnalyticsDashboard articles={articles} />}
           {activeTab === 'poll' && <PollManager />}
           {activeTab === 'storage' && <StorageSettings />}
+          {activeTab === 'grievance' && <GrievanceDesk onShowToast={onShowToast} />}
 
-          {activeTab === 'users' && (
-            <div className="data-table-container">
-              <div style={{ padding: '1rem', fontWeight: '800', borderBottom: '1px solid var(--border-light)' }}>
-                Team Members & Access Levels
-              </div>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Access Level</th>
-                    <th>Joined</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usersList.map((usr) => (
-                    <tr key={usr.id}>
-                      <td style={{ fontWeight: '700' }}>{usr.name}</td>
-                      <td>{usr.email}</td>
-                      <td>
-                        <select
-                          value={usr.role}
-                          onChange={(e) => handleRoleSelect(usr.id, e.target.value)}
-                          style={{ padding: '0.35rem 0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-medium)', fontWeight: '700' }}
-                        >
-                          <option value="visitor">Reader (Public)</option>
-                          <option value="registered">Registered Reader</option>
-                          <option value="reporter">Reporter (Writer)</option>
-                          <option value="editor">Editor (Publisher)</option>
-                          <option value="admin">Newsroom Administrator</option>
-                        </select>
-                      </td>
-                      <td style={{ color: 'var(--text-subtle)', fontSize: '0.8rem' }}>{usr.created}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {activeTab === 'users' && <StaffPermissionsDesk onShowToast={onShowToast} />}
+
+          {activeTab === 'developer' && <DeveloperRescueDesk onShowToast={onShowToast} />}
 
           {activeTab === 'categories' && (
             <div style={{ background: 'var(--bg-surface)', padding: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
@@ -2734,12 +2733,12 @@ export default function AdminWorkspace({
               setTimeout(() => setFeedbackMsg(''), 4000);
             };
 
-            const handleResetDefaultTypography = () => {
+            const handleResetDefaultTypography = (autoSave = false) => {
               const defaults = {
                 headingFont: 'Playfair Display',
                 bodyFont: 'Plus Jakarta Sans',
                 headingScale: 100,
-                headingWeight: 700,
+                headingWeight: 800,
                 bodySize: 16,
                 bodyWeight: 400,
                 mobileHeadingScale: 85,
@@ -2747,9 +2746,15 @@ export default function AdminWorkspace({
                 regionalFonts: DEFAULT_REGIONAL_FONTS
               };
               setLocalTypography(defaults);
-              setHasUnsavedTypographyChanges(true);
-              setFeedbackMsg('Preview reset to factory defaults. Click "Save & Apply Typography" at the top to publish.');
-              setTimeout(() => setFeedbackMsg(''), 4000);
+              if (autoSave && onUpdateTypography) {
+                onUpdateTypography(defaults);
+                setHasUnsavedTypographyChanges(false);
+                setFeedbackMsg('Default typography (Playfair Display Extra Bold 800) saved and published live across the entire website!');
+              } else {
+                setHasUnsavedTypographyChanges(true);
+                setFeedbackMsg('Staged default typography (Playfair Display Extra Bold 800). Click "Save & Apply Typography" to publish across the site.');
+              }
+              setTimeout(() => setFeedbackMsg(''), 4500);
             };
 
             return (
@@ -2800,11 +2805,12 @@ export default function AdminWorkspace({
                     </button>
                     <button
                       type="button"
-                      onClick={handleResetDefaultTypography}
+                      onClick={() => handleResetDefaultTypography(true)}
                       className="btn btn-outline"
-                      style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      style={{ padding: '0.5rem 0.9rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}
+                      title="Reset and publish default Playfair Display Extra Bold (800) live across the entire website"
                     >
-                      <RotateCcw size={14} /> Reset Defaults
+                      <RotateCcw size={14} /> Set as Default (Playfair Bold)
                     </button>
                   </div>
                 </div>

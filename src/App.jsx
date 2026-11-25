@@ -8,11 +8,18 @@ import EditorWorkspace from './components/editor/EditorWorkspace';
 import AdminWorkspace from './components/admin/AdminWorkspace';
 import SearchPage from './components/public/SearchPage';
 import LegalModal from './components/common/LegalModal';
+import GrievanceModal from './components/public/GrievanceModal';
+import SavedStoriesDrawer from './components/public/SavedStoriesDrawer';
+import SearchDrawer from './components/public/SearchDrawer';
+import CategoryShelvesSection from './components/public/CategoryShelvesSection';
+import StaffLoginModal from './components/auth/StaffLoginModal';
 import PartnerUnit from './components/common/PartnerUnit';
+import { getSessionToken, getSessionRole, getSessionStaffName, getSessionStaffEmail, getAuthHeaders, clearStaffSession, initInactivityWatchdog } from './services/authClient';
+import { initCredentialCacheSanitizer } from './services/credentialCacheSanitizer';
 import { fetchAdSettings } from './services/monetizationService';
-import { MOCK_ARTICLES, MOCK_CATEGORIES } from './services/mockData';
+import { DEFAULT_NEWSROOM_CATEGORIES } from './services/taxonomyService';
 import { getCachedNews, saveNewsToCache, getCachedCategories, saveCategoriesToCache } from './services/cacheService';
-import { translateArticle, translateHeadlinesOnly, SUPPORTED_LANGUAGES } from './services/translationService';
+import { translateArticle, translateHeadlinesOnly, SUPPORTED_LANGUAGES, purgeCorruptedTranslationCache } from './services/translationService';
 import { speakTextWithNaturalVoice, stopAudioSpeech } from './services/speechEngine';
 import { DEFAULT_REGIONAL_FONTS } from './components/admin/VisualFontPicker';
 import { DEFAULT_THEME_PALETTE } from './components/admin/ColorPaletteCustomizer';
@@ -20,7 +27,8 @@ import { t, translateCategoryName } from './services/uiTranslations';
 import { getWhatsAppShareUrl } from './services/shareService';
 import { getOfflineArticles, removeArticleOffline, syncLegacyBookmarks, getOfflineStorageMetrics } from './services/bookmarkStorageService';
 import { calculateReadingTime } from './utils/readingTime';
-import { Clock, Eye, Sparkles, TrendingUp, Flame, ShieldCheck, Volume2, Pause, Play, Heart, Bookmark, Send, Share2, BarChart3, Vote, X, VolumeX, ThumbsUp, ThumbsDown, HelpCircle, Newspaper, Check, Radio } from 'lucide-react';
+import { formatPublishedTime } from './utils/dateFormatter';
+import { Clock, Eye, Sparkles, TrendingUp, Flame, ShieldCheck, Volume2, Pause, Play, Heart, Bookmark, Send, Share2, BarChart3, Vote, X, VolumeX, ThumbsUp, ThumbsDown, HelpCircle, Newspaper, Check, Radio, Lock } from 'lucide-react';
 
 const WhatsAppIcon = ({ size = 18, color = '#ffffff' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -69,6 +77,8 @@ function parseRouteFromUrl() {
     if (pathname === '/reporter') return { view: 'reporter' };
     if (pathname === '/editor') return { view: 'editor' };
     if (pathname === '/admin') return { view: 'admin' };
+    if (pathname === '/developer' || pathname === '/rescue') return { view: 'developer' };
+    if (pathname === '/staff' || pathname === '/login') return { view: 'login' };
   } catch (e) {}
   return { view: 'home' };
 }
@@ -85,14 +95,101 @@ export default function App() {
     }, 1500);
     return () => clearTimeout(safetyTimer);
   }, []);
-  const [currentRole, setCurrentRole] = useState('visitor'); // visitor | reporter | editor | admin
-  const [activeView, setActiveView] = useState(() => parseRouteFromUrl().view); // home | article | reporter | editor | admin | search
+
+  // Newsroom Staff Auth & 30-Minute Inactivity Watchdog State
+  const [currentRole, setCurrentRole] = useState(() => {
+    const token = getSessionToken();
+    if (token) {
+      const savedRole = getSessionRole();
+      return savedRole === 'reader' ? 'visitor' : savedRole;
+    }
+    return 'visitor';
+  });
+  const [staffName, setStaffName] = useState(() => getSessionStaffName());
+  const [isStaffLoginOpen, setIsStaffLoginOpen] = useState(() => {
+    const route = parseRouteFromUrl();
+    const token = getSessionToken();
+    if (route.view === 'login' && token) return false;
+    if (route.view === 'login') return true;
+    if (['reporter', 'editor', 'admin', 'developer'].includes(route.view) && !token) return true;
+    return false;
+  });
+  const [activeView, setActiveView] = useState(() => {
+    const route = parseRouteFromUrl();
+    const token = getSessionToken();
+    const savedRole = getSessionRole();
+    if (['reporter', 'editor', 'admin', 'developer'].includes(route.view) && !token) {
+      return 'home';
+    }
+    if (route.view === 'login') {
+      if (token && savedRole !== 'visitor') {
+        return savedRole;
+      }
+      return 'home';
+    }
+    return route.view;
+  }); // home | article | reporter | editor | admin | search
+
+  // Register 30-minute inactivity watchdog & Browser Credential Cache Sanitizer
+  useEffect(() => {
+    initCredentialCacheSanitizer();
+
+    const cleanupWatchdog = initInactivityWatchdog((reason) => {
+      if (reason === 'inactivity') {
+        setCurrentRole('visitor');
+        setStaffName('');
+        setActiveView('home');
+        window.history.pushState({}, '', '/');
+        document.title = 'PUBLIC SPARK - Breaking News & Live Updates';
+        setToastMessage('Security Notice: You have been logged out due to 30 minutes of inactivity.');
+        setIsToastOpen(true);
+      }
+    });
+    return cleanupWatchdog;
+  }, []);
+
+  const handleStaffLoginSuccess = (role, name) => {
+    setCurrentRole(role);
+    setStaffName(name);
+    const targetView = role;
+    setActiveView(targetView);
+    window.history.pushState({ view: targetView }, '', `/${targetView}`);
+    document.title = `${targetView.toUpperCase()} Workspace - PUBLIC SPARK`;
+    setToastMessage(`Welcome, ${name}! Logged in as ${role.toUpperCase()}.`);
+    setIsToastOpen(true);
+  };
+
+  const handleStaffLogout = () => {
+    clearStaffSession();
+    setCurrentRole('visitor');
+    setStaffName('');
+    setActiveView('home');
+    window.history.pushState({}, '', '/');
+    document.title = 'PUBLIC SPARK - Breaking News & Live Updates';
+    setToastMessage('Signed out of Newsroom Staff Workspace.');
+    setIsToastOpen(true);
+  };
+
+  const handleOpenStaffLogin = () => {
+    const token = getSessionToken();
+    const savedRole = getSessionRole();
+    if (token && savedRole !== 'visitor') {
+      setActiveView(savedRole);
+      window.history.pushState({ view: savedRole }, '', `/${savedRole}`);
+      return;
+    }
+    if (window.location.pathname !== '/login') {
+      window.history.pushState({}, '', '/login');
+    }
+    document.title = 'Newsroom Staff Login - PUBLIC SPARK';
+    setIsStaffLoginOpen(true);
+  };
   const [activeCategory, setActiveCategory] = useState('all');
   const [selectedArticle, setSelectedArticle] = useState(() => {
     const route = parseRouteFromUrl();
     if (route.view === 'article' && route.idOrSlug) {
       const cached = getCachedNews();
-      const articles = cached?.articles || MOCK_ARTICLES;
+      const articles = cached?.articles || [];
       return articles.find(a => a.id === route.idOrSlug || a.slug === route.idOrSlug) || null;
     }
     return null;
@@ -101,6 +198,21 @@ export default function App() {
   // Mandatory 5 Legal Pages Modal for Google AdSense Compliance
   const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState('privacy');
+
+  // Statutory Grievance Redressal Modal (IT Rules 2021 India - Task 29)
+  const [isGrievanceModalOpen, setIsGrievanceModalOpen] = useState(false);
+  const [grievanceArticle, setGrievanceArticle] = useState(null);
+
+  const handleOpenGrievance = (article = null) => {
+    setGrievanceArticle(article || null);
+    setIsGrievanceModalOpen(true);
+  };
+
+  // Dedicated Saved Stories Reading Drawer State (Task 28 Subtopic B)
+  const [isSavedDrawerOpen, setIsSavedDrawerOpen] = useState(false);
+
+  // Left-Side Animated Search Drawer State (Task 39 Subtopic A)
+  const [isSearchDrawerOpen, setIsSearchDrawerOpen] = useState(false);
 
   // Multi-Language State (Default: Hindi 'hi')
   const [currentLanguage, setCurrentLanguage] = useState('hi');
@@ -146,6 +258,54 @@ export default function App() {
       .catch(err => console.warn('[Poll] Fallback to default:', err));
   }, []);
 
+  const [localizedPoll, setLocalizedPoll] = useState(null);
+
+  // Localize poll question & options whenever language changes
+  useEffect(() => {
+    if (!pollData || !pollData.enabled || !pollData.question) return;
+    if (currentLanguage === 'hi') {
+      setLocalizedPoll(pollData);
+      return;
+    }
+
+    let isSubscribed = true;
+    async function translatePoll() {
+      try {
+        const items = [
+          { id: 'poll_q', title: pollData.question, summary: '' },
+          ...pollData.options.map(o => ({ id: o.id, title: o.label, summary: '' }))
+        ];
+        const res = await fetch('/api/translate/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items,
+            targetLang: currentLanguage,
+            source_lang: 'hi'
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.items) && isSubscribed) {
+            const map = new Map(data.items.map(it => [String(it.id), it.title]));
+            setLocalizedPoll({
+              ...pollData,
+              question: map.get('poll_q') || pollData.question,
+              options: pollData.options.map(o => ({
+                ...o,
+                label: map.get(String(o.id)) || o.label
+              }))
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('[Poll Translation Error]', e);
+      }
+    }
+    translatePoll();
+    return () => { isSubscribed = false; };
+  }, [currentLanguage, pollData]);
+
   const handlePollVote = async (optionId) => {
     if (userVotedChoice || !pollData || !pollData.enabled) return;
 
@@ -189,7 +349,7 @@ export default function App() {
     headingFont: 'Playfair Display',
     bodyFont: 'Plus Jakarta Sans',
     headingScale: 100,
-    headingWeight: 700,
+    headingWeight: 800,
     bodySize: 16,
     bodyWeight: 400,
     mobileHeadingScale: 85,
@@ -209,7 +369,15 @@ export default function App() {
   const [typography, setTypography] = useState(() => {
     try {
       const cached = localStorage.getItem('ps_typography_settings');
-      return cached ? JSON.parse(cached) : DEFAULT_TYPOGRAPHY;
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        // Automatically upgrade stale legacy caches ("Inter" or weight < 750) to the new sovereign Playfair Display default
+        if (parsed.headingFont === 'Inter' || (parsed.headingWeight && parsed.headingWeight < 750)) {
+          return DEFAULT_TYPOGRAPHY;
+        }
+        return parsed;
+      }
+      return DEFAULT_TYPOGRAPHY;
     } catch (e) {
       return DEFAULT_TYPOGRAPHY;
     }
@@ -226,7 +394,7 @@ export default function App() {
       'Noto Serif Bengali', 'Noto Serif Tamil', 'Noto Serif Telugu', 'Noto Serif Gujarati',
       'Noto Serif Kannada', 'Noto Serif Malayalam', 'Noto Serif Gurmukhi', 'Noto Nastaliq Urdu'
     ].includes(hFont);
-    root.style.setProperty('--font-serif', `'${hFont}', ${isSerif ? 'Georgia, serif' : 'sans-serif'}`);
+    root.style.setProperty('--font-serif', `'${hFont}', 'Playfair Display', 'Rozha One', ${isSerif ? 'Georgia, serif' : 'sans-serif'}`);
 
     const bFont = (regional && regional.bodyFont) ? regional.bodyFont : (typography.bodyFont || 'Plus Jakarta Sans');
     const isBodySerif = [
@@ -240,7 +408,7 @@ export default function App() {
     root.style.setProperty('--font-scale-heading', `${(typography.headingScale || 100) / 100}`);
     root.style.setProperty('--font-size-base-mobile', `${typography.mobileBodySize || 15}px`);
     root.style.setProperty('--font-scale-heading-mobile', `${(typography.mobileHeadingScale || 85) / 100}`);
-    root.style.setProperty('--font-weight-heading', `${typography.headingWeight || 700}`);
+    root.style.setProperty('--font-weight-heading', `${typography.headingWeight || 800}`);
     root.style.setProperty('--font-weight-body', `${typography.bodyWeight || 400}`);
   }, [typography, currentLanguage]);
 
@@ -320,7 +488,7 @@ export default function App() {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'x-admin-key': 'publicspark-admin-secret-key-2026'
+        ...getAuthHeaders()
       },
       body: JSON.stringify(updatedTheme)
     })
@@ -342,7 +510,7 @@ export default function App() {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'x-admin-key': 'publicspark-admin-secret-key-2026'
+        ...getAuthHeaders()
       },
       body: JSON.stringify(updatedTypography)
     })
@@ -362,7 +530,10 @@ export default function App() {
 
     fetch('/api/settings/social', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
       body: JSON.stringify(updatedLinks)
     })
     .then(res => res.json())
@@ -381,7 +552,7 @@ export default function App() {
 
     fetch('/api/categories', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(updatedCategories)
     })
     .then(res => res.json())
@@ -436,27 +607,31 @@ export default function App() {
       })
       .catch(err => console.warn('[Backend Sync] Categories offline fallback:', err.message));
 
-    fetch('/api/articles?scope=all')
+    fetch('/api/articles?scope=all', {
+      headers: getAuthHeaders()
+    })
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
+          const TEST_IDS = new Set(['art-1', 'art-2', 'art-3', 'art-4']);
+          const cleanServerData = data.filter(a => !TEST_IDS.has(String(a.id)));
           setBaseArticles(prev => {
-            const serverIds = new Set(data.map(a => String(a.id)));
-            // Retain any articles created by reporter locally that server hasn't persisted yet
-            const localOnly = prev.filter(p => !serverIds.has(String(p.id)) && p.id && String(p.id).startsWith('art-'));
+            const serverIds = new Set(cleanServerData.map(a => String(a.id)));
+            // Retain any articles created by reporter locally that server hasn't persisted yet (excluding test articles)
+            const localOnly = prev.filter(p => !TEST_IDS.has(String(p.id)) && !serverIds.has(String(p.id)) && p.id && String(p.id).startsWith('art-') && p.status === 'pending');
             
             // Sync any local-only articles to backend in background
             if (localOnly.length > 0) {
               localOnly.forEach(art => {
                 fetch('/api/articles/update', {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                   body: JSON.stringify(art)
                 }).catch(() => {});
               });
             }
 
-            const merged = [...localOnly, ...data];
+            const merged = [...cleanServerData, ...localOnly];
             saveNewsToCache(merged);
             syncLegacyBookmarks(merged);
             return merged;
@@ -464,6 +639,9 @@ export default function App() {
         }
       })
       .catch(err => console.warn('[Backend Sync] Articles offline fallback:', err.message));
+
+    // Task 33 Subtopic C: Purge any legacy poisoned translation caches
+    purgeCorruptedTranslationCache();
 
     // Also hydrate legacy bookmarks from local cache if offline
     syncLegacyBookmarks(baseArticles);
@@ -512,7 +690,7 @@ export default function App() {
 
   // Global Taxonomy Categories State
   const [categories, setCategories] = useState(() => {
-    return getCachedCategories() || MOCK_CATEGORIES;
+    return getCachedCategories() || DEFAULT_NEWSROOM_CATEGORIES;
   });
 
   useEffect(() => {
@@ -522,7 +700,8 @@ export default function App() {
   // Raw & Translated Articles State Management
   const [baseArticles, setBaseArticles] = useState(() => {
     const cached = getCachedNews();
-    return cached?.articles || MOCK_ARTICLES;
+    const list = cached?.articles || [];
+    return list.filter(a => a && !['art-1', 'art-2', 'art-3', 'art-4'].includes(String(a.id)));
   });
   const [publishedArticles, setPublishedArticles] = useState(baseArticles);
   const [pendingArticles, setPendingArticles] = useState(() => {
@@ -569,7 +748,9 @@ export default function App() {
     let isSubscribed = true;
 
     async function applyHeadlineTranslation() {
-      if (currentLanguage === 'hi') {
+      // Task 32: If all base articles already match currentLanguage, skip translation
+      const needsTranslation = baseArticles.some(a => (a.originalLanguage || 'hi').toLowerCase() !== currentLanguage.toLowerCase());
+      if (!needsTranslation) {
         setPublishedArticles(baseArticles);
         return;
       }
@@ -604,15 +785,23 @@ export default function App() {
   };
 
   const handleSelectArticle = async (art) => {
-    setSelectedArticle(art);
+    // Task 32/33: Pure master article resolution to prevent translated card headline from polluting reader
+    const masterArticle = baseArticles.find(a => String(a.id) === String(art.id)) || art;
+    setSelectedArticle(masterArticle);
     setActiveView('article');
-    const cleanSlug = art.slug || art.id;
-    window.history.pushState({ articleId: art.id, slug: cleanSlug }, '', `/article/${cleanSlug}`);
-    document.title = `${art.title} - PUBLIC SPARK`;
+    const cleanSlug = masterArticle.slug || masterArticle.id;
+    window.history.pushState({ articleId: masterArticle.id, slug: cleanSlug }, '', `/article/${cleanSlug}`);
+    document.title = `${masterArticle.title} - PUBLIC SPARK`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleNavigate = (view) => {
+    // Route guard for staff views: Prompt login modal if unauthenticated
+    if (['reporter', 'editor', 'admin'].includes(view) && !getSessionToken()) {
+      setIsStaffLoginOpen(true);
+      return;
+    }
+
     setActiveView(view);
     if (view === 'home') {
       setSelectedArticle(null);
@@ -626,6 +815,10 @@ export default function App() {
   };
 
   const handleRoleChange = (role) => {
+    if (['reporter', 'editor', 'admin'].includes(role) && !getSessionToken()) {
+      setIsStaffLoginOpen(true);
+      return;
+    }
     setCurrentRole(role);
     if (role === 'visitor') {
       handleNavigate('home');
@@ -638,6 +831,19 @@ export default function App() {
   useEffect(() => {
     const handlePopState = () => {
       const route = parseRouteFromUrl();
+      if (route.view === 'login') {
+        const token = getSessionToken();
+        const savedRole = getSessionRole();
+        if (token && savedRole !== 'visitor') {
+          setActiveView(savedRole);
+          document.title = `${savedRole.toUpperCase()} Workspace - PUBLIC SPARK`;
+          return;
+        }
+        setIsStaffLoginOpen(true);
+        setActiveView('home');
+        document.title = 'Newsroom Staff Login - PUBLIC SPARK';
+        return;
+      }
       if (route.view === 'article' && route.idOrSlug) {
         const found = baseArticles.find(a => a.id === route.idOrSlug || a.slug === route.idOrSlug);
         if (found) {
@@ -710,7 +916,7 @@ export default function App() {
       // Persist permanently to backend database (server/data/articles.json)
       fetch('/api/articles/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(newArticle)
       })
       .then(res => res.json())
@@ -756,7 +962,7 @@ export default function App() {
       // Persist permanently to backend database
       fetch('/api/articles/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(approvedStory)
       }).catch(err => console.warn('[Backend Story Persist Warning]:', err.message));
 
@@ -829,7 +1035,20 @@ export default function App() {
           }
           return false;
         }
-        return activeCategory === 'all' ? true : art.category_slug === activeCategory;
+        if (activeCategory === 'all') return true;
+        const normActive = activeCategory.toLowerCase();
+        const normSlug = (art.category_slug || '').toLowerCase();
+        const normCat = (art.category || '').toLowerCase();
+        const categoryObj = (categories || []).find(c => c.slug?.toLowerCase() === normActive || c.name?.toLowerCase() === normActive);
+        const normCatObjName = (categoryObj?.name || '').toLowerCase();
+        const normCatObjSlug = (categoryObj?.slug || '').toLowerCase();
+
+        return (
+          normSlug === normActive ||
+          normCat === normActive ||
+          (normCatObjName && normCat === normCatObjName) ||
+          (normCatObjSlug && normSlug === normCatObjSlug)
+        );
       });
 
   const heroArticle = displayedArticles[0];
@@ -860,7 +1079,12 @@ export default function App() {
         onLanguageChange={setCurrentLanguage}
         isTranslating={isTranslating}
         categories={categories}
-        articles={baseArticles}
+        articles={publishedArticles}
+        onOpenSavedDrawer={() => setIsSavedDrawerOpen(true)}
+        onOpenSearchDrawer={() => setIsSearchDrawerOpen(true)}
+        onOpenStaffLogin={handleOpenStaffLogin}
+        onStaffLogout={handleStaffLogout}
+        staffName={staffName}
       />
 
       {/* Main Content Area */}
@@ -868,17 +1092,18 @@ export default function App() {
         {/* PUBLIC HOME PAGE */}
         {activeView === 'home' && (
           <div className="container" style={{ padding: '1.5rem 1.25rem' }}>
+            <h1 className="sr-only">पब्लिक स्पार्क - स्वतंत्र डिजिटल न्यूज़रूम | PUBLIC SPARK</h1>
             
             {/* DEDICATED BOOKMARKS VIEW */}
             {activeCategory === 'bookmarks' ? (
               <div style={{ padding: '1rem 0 3rem 0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem', borderBottom: '2px solid #f59e0b', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.75rem', borderBottom: '2px solid var(--accent-crimson)', paddingBottom: '0.75rem', flexWrap: 'wrap', gap: '0.75rem' }}>
                   <h2 style={{ fontSize: '1.5rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-main)', margin: 0 }}>
-                    <Bookmark size={24} color="#f59e0b" fill="#f59e0b" /> {t('savedBookmarks', currentLanguage)} ({displayedArticles.length})
+                    <Bookmark size={24} color="var(--accent-crimson)" fill="var(--accent-crimson)" /> {t('savedBookmarks', currentLanguage)} ({displayedArticles.length})
                   </h2>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                     <span style={{ fontSize: '0.72rem', fontWeight: '700', color: 'var(--text-subtle)', background: 'var(--bg-secondary)', padding: '0.2rem 0.55rem', borderRadius: '4px', border: '1px solid var(--border-medium)', fontFamily: 'var(--font-mono)' }}>
-                      {getOfflineStorageMetrics().formattedSize} • Offline Storage
+                      {getOfflineStorageMetrics().formattedSize} • {t('offlineStorage', currentLanguage) || 'ऑफ़लाइन संग्रहण'}
                     </span>
                   </div>
                 </div>
@@ -908,7 +1133,7 @@ export default function App() {
                             <button 
                               onClick={(e) => handleRemoveBookmark(e, art)}
                               className="btn"
-                              style={{ padding: '0.2rem 0.65rem', fontSize: '0.7rem', borderRadius: '20px', background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                              style={{ padding: '0.2rem 0.65rem', fontSize: '0.7rem', borderRadius: '20px', background: 'var(--accent-crimson)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                               title={t('remove', currentLanguage)}
                             >
                               <X size={11} /> {t('remove', currentLanguage)}
@@ -920,15 +1145,15 @@ export default function App() {
                           {art.excerpt}
                         </p>
                         <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-subtle)', flexWrap: 'wrap' }}>
-                          <span>{t('byAuthor', currentLanguage)} {art.author?.name || 'Editorial Desk'}</span>
-                          <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
+                          <span>{t('byAuthor', currentLanguage)} {art.author?.name || t('editorialDesk', currentLanguage) || 'संपादकीय डेस्क'}</span>
+                          <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)?.minutes || 1} {t('minsRead', currentLanguage)}</span>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--text-subtle)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', border: '1px dashed #f59e0b', margin: '1rem 0' }}>
-                    <Bookmark size={48} color="#f59e0b" style={{ marginBottom: '0.75rem' }} />
+                  <div style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--text-subtle)', background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--accent-crimson)', margin: '1rem 0' }}>
+                    <Bookmark size={48} color="var(--accent-crimson)" style={{ marginBottom: '0.75rem' }} />
                     <h3 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
                       {t('noSavedBookmarks', currentLanguage)}
                     </h3>
@@ -1010,15 +1235,15 @@ export default function App() {
                               display: 'flex',
                               alignItems: 'center',
                               gap: '0.35rem',
-                              color: '#15803D',
-                              borderColor: '#86EFAC',
-                              background: '#F0FDF4',
+                              color: 'var(--text-main)',
+                              borderColor: 'var(--border-medium)',
+                              background: 'var(--bg-surface)',
                               textDecoration: 'none',
                               fontWeight: '700'
                             }}
                             title="Share on WhatsApp (व्हाट्सएप बुलेटिन शेयर करें)"
                           >
-                            <WhatsAppIcon size={13} color="#15803D" />
+                            <WhatsAppIcon size={13} color="var(--text-main)" />
                             <span className="hide-on-mobile">WhatsApp</span>
                           </a>
                         </div>
@@ -1032,116 +1257,142 @@ export default function App() {
                       )}
                       <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8rem' }}>
                         <span style={{ fontWeight: '700', color: 'var(--text-main)' }}>{t('byAuthor', currentLanguage)} {heroArticle.author?.name || 'Staff Reporter'}</span>
-                        <span>• {heroArticle.published_at}</span>
-                        <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {heroArticle.reading_time_mins || calculateReadingTime(heroArticle.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
+                        <span>• {formatPublishedTime(heroArticle.published_at, currentLanguage)}</span>
+                        <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {heroArticle.reading_time_mins || calculateReadingTime(heroArticle.content || '', currentLanguage)?.minutes || 1} {t('minsRead', currentLanguage)}</span>
                       </div>
                     </div>
 
                     {/* Secondary Column */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                      {secondaryArticles.map((art) => (
-                        <div key={art.id} className="story-card-secondary" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
-                          <div className="secondary-card-img-wrap">
-                            <div className="img-container">
-                              {art.featured_image ? (
-                                <img src={art.featured_image} alt={art.title} loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                              ) : (
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: 'var(--text-subtle)' }}>
-                                  <Newspaper size={24} />
-                                </div>
-                              )}
-                              {art.video_url && (
-                                <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(197, 34, 31, 0.9)', color: '#fff', padding: '0.15rem 0.45rem', borderRadius: '3px', fontSize: '0.65rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                  <Play size={10} fill="#fff" />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="secondary-card-content">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                                <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
-                                {art.format === 'live' && (
-                                  <span 
-                                    className="badge badge-live"
-                                    style={{
-                                      background: (art.live_status || 'active') === 'active' ? '#DC2626' : '#4B5563',
-                                      color: '#FFFFFF',
-                                      fontWeight: '800',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.2rem',
-                                      padding: '0.1rem 0.35rem',
-                                      fontSize: '0.65rem'
-                                    }}
-                                  >
-                                    <Radio size={9} /> {(art.live_status || 'active') === 'active' ? 'LIVE' : 'CONCLUDED'}
-                                  </span>
+                      {secondaryArticles.length > 0 ? (
+                        secondaryArticles.map((art) => (
+                          <div key={art.id} className="story-card-secondary" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
+                            <div className="secondary-card-img-wrap">
+                              <div className="img-container">
+                                {art.featured_image ? (
+                                  <img src={art.featured_image} alt={art.title} loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                ) : (
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: 'var(--text-subtle)' }}>
+                                    <Newspaper size={24} />
+                                  </div>
+                                )}
+                                {art.video_url && (
+                                  <div style={{ position: 'absolute', bottom: '8px', right: '8px', background: 'rgba(197, 34, 31, 0.9)', color: '#fff', padding: '0.15rem 0.45rem', borderRadius: '3px', fontSize: '0.65rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                    <Play size={10} fill="#fff" />
+                                  </div>
                                 )}
                               </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                <button 
-                                  onClick={(e) => handleQuickAudioRead(e, art)}
-                                  className="btn btn-outline"
-                                  style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                                >
-                                  {playingArticleId === art.id ? <Pause size={11} /> : <Volume2 size={11} />}
-                                  <span className="hide-on-mobile">{playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}</span>
-                                </button>
-                                <a
-                                  href={getWhatsAppShareUrl(art, currentLanguage)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="btn btn-outline"
-                                  style={{
-                                    padding: '0.15rem 0.4rem',
-                                    fontSize: '0.7rem',
-                                    borderRadius: 'var(--radius-sm)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '0.25rem',
-                                    color: '#15803D',
-                                    borderColor: '#86EFAC',
-                                    background: '#F0FDF4',
-                                    textDecoration: 'none'
-                                  }}
-                                  title="Share on WhatsApp"
-                                >
-                                  <WhatsAppIcon size={11} color="#15803D" />
-                                </a>
+                            </div>
+                            <div className="secondary-card-content">
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                                <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                                  <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
+                                  {art.format === 'live' && (
+                                    <span 
+                                      className="badge badge-live"
+                                      style={{
+                                        background: (art.live_status || 'active') === 'active' ? '#DC2626' : '#4B5563',
+                                        color: '#FFFFFF',
+                                        fontWeight: '800',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.2rem',
+                                        padding: '0.1rem 0.35rem',
+                                        fontSize: '0.65rem'
+                                      }}
+                                    >
+                                      <Radio size={9} /> {(art.live_status || 'active') === 'active' ? 'LIVE' : 'CONCLUDED'}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  <button 
+                                    onClick={(e) => handleQuickAudioRead(e, art)}
+                                    className="btn btn-outline"
+                                    style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                  >
+                                    {playingArticleId === art.id ? <Pause size={11} /> : <Volume2 size={11} />}
+                                    <span className="hide-on-mobile">{playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}</span>
+                                  </button>
+                                  <a
+                                    href={getWhatsAppShareUrl(art, currentLanguage)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="btn btn-outline"
+                                    style={{
+                                      padding: '0.15rem 0.4rem',
+                                      fontSize: '0.7rem',
+                                      borderRadius: 'var(--radius-sm)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      color: 'var(--text-main)',
+                                      borderColor: 'var(--border-medium)',
+                                      background: 'var(--bg-surface)',
+                                      textDecoration: 'none'
+                                    }}
+                                    title="Share on WhatsApp"
+                                  >
+                                    <WhatsAppIcon size={11} color="var(--text-main)" />
+                                  </a>
+                                </div>
+                              </div>
+                              <h3 className="story-card-title">{art.title}</h3>
+                              <div className="story-meta" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.35rem', fontSize: '0.75rem' }}>
+                                <span>{formatPublishedTime(art.published_at, currentLanguage)}</span>
+                                <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)?.minutes || 1} {t('minsRead', currentLanguage)}</span>
                               </div>
                             </div>
-                            <h3 className="story-card-title">{art.title}</h3>
-                            <div className="story-meta" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.35rem', fontSize: '0.75rem' }}>
-                              <span>{art.published_at}</span>
-                              <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
-                            </div>
                           </div>
+                        ))
+                      ) : (
+                        <div style={{
+                          background: 'var(--bg-surface)',
+                          border: '1px dashed var(--border-medium)',
+                          borderRadius: 'var(--radius-bento)',
+                          padding: '1.75rem 1.25rem',
+                          textAlign: 'center',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          minHeight: '260px'
+                        }}>
+                          <Newspaper size={34} color="var(--accent-crimson)" style={{ marginBottom: '0.75rem', opacity: 0.85 }} />
+                          <h4 style={{ fontSize: '0.925rem', fontWeight: '800', color: 'var(--text-main)', marginBottom: '0.4rem' }}>
+                            {t('editorialDesk', currentLanguage) || 'संपादकीय ब्यूरो'}
+                          </h4>
+                          <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', lineHeight: '1.5', maxWidth: '240px' }}>
+                            {t('reportingInProgressDesc', currentLanguage) || 'हमारे संवाददाता इस विषय पर तथ्य व ज़मीनी रिपोर्ट जुटा रहे हैं। तब तक आज की मुख्य खबरें नीचे पढ़ें।'}
+                          </p>
                         </div>
-                      ))}
+                      )}
                     </div>
 
                     {/* Opinion & Trending Column */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                      <div className="opinion-box">
-                        <div className="opinion-header">
-                          <Sparkles size={14} /> {t('editorsSpotlight', currentLanguage)}
+                      {publishedArticles[3] && (
+                        <div className="opinion-box">
+                          <div className="opinion-header">
+                            <Sparkles size={14} /> {t('editorsSpotlight', currentLanguage)}
+                          </div>
+                          <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.15rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.35', cursor: 'pointer', marginBottom: '0.6rem' }} onClick={() => handleSelectArticle(publishedArticles[3])}>
+                            {publishedArticles[3].title}
+                          </h3>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '600' }}>
+                            {t('byAuthor', currentLanguage)} {publishedArticles[3]?.author?.name || t('editorialDesk', currentLanguage) || 'संपादकीय डेस्क'}
+                          </div>
                         </div>
-                        <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.15rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.35', cursor: 'pointer', marginBottom: '0.6rem' }} onClick={() => handleSelectArticle(publishedArticles[3] || heroArticle)}>
-                          {(publishedArticles[3] || heroArticle)?.title}
-                        </h3>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '600' }}>
-                          {t('byAuthor', currentLanguage)} {(publishedArticles[3] || heroArticle)?.author?.name || 'Kabir Roy, Editor-in-Chief'}
-                        </div>
-                      </div>
+                      )}
 
-                      <div className="trending-widget">
-                        <h4 style={{ fontSize: '0.8rem', fontWeight: '900', textTransform: 'uppercase', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-crimson)', letterSpacing: '0.08em' }}>
-                          <TrendingUp size={15} /> {t('topTrendingStories', currentLanguage)}
-                        </h4>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          {publishedArticles.slice(1, 4).map((art, idx) => (
+                      {publishedArticles.length > 1 && (
+                        <div className="trending-widget">
+                          <h4 style={{ fontSize: '0.8rem', fontWeight: '900', textTransform: 'uppercase', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-crimson)', letterSpacing: '0.08em' }}>
+                            <TrendingUp size={15} /> {t('topTrendingStories', currentLanguage)}
+                          </h4>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            {publishedArticles.slice(1, 4).map((art, idx) => (
                             <div key={art.id} className="trending-item" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
                               <span className="trending-rank">0{idx + 1}</span>
                               <div>
@@ -1149,95 +1400,100 @@ export default function App() {
                                 <div style={{ fontSize: '0.725rem', color: 'var(--text-subtle)', marginTop: '0.2rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                                   <span>{translateCategoryName(art.category, currentLanguage)}</span>
                                   <span>•</span>
-                                  <span>{art.published_at}</span>
+                                  <span>{formatPublishedTime(art.published_at, currentLanguage)}</span>
                                 </div>
                               </div>
                             </div>
                           ))}
                         </div>
                       </div>
-
-                      {/* Interactive Daily Public Voice Poll Widget (Controlled via Admin Desk) */}
-                      {pollData && pollData.enabled && (
-                        <div style={{ 
-                          background: 'var(--bg-surface)', 
-                          border: '1px solid var(--border-medium)', 
-                          borderRadius: 'var(--radius-bento)', 
-                          padding: '1.25rem',
-                          boxShadow: 'var(--shadow-sm)'
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-indigo)', fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', marginBottom: '0.6rem', letterSpacing: '0.05em' }}>
-                            <BarChart3 size={15} /> {t('dailyReaderPoll', currentLanguage)}
-                          </div>
-                          <h4 style={{ fontSize: '0.95rem', fontWeight: '800', lineHeight: '1.35', marginBottom: '1rem', color: 'var(--text-main)', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
-                            "{pollData.question}"
-                          </h4>
-
-                          {!userVotedChoice ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                              {pollData.options.map((opt, i) => {
-                                const dotColor = i === 0 ? 'var(--accent-indigo)' : i === 1 ? 'var(--accent-crimson)' : 'var(--text-subtle)';
-                                return (
-                                  <button
-                                    key={opt.id}
-                                    onClick={() => handlePollVote(opt.id)}
-                                    className="btn btn-outline"
-                                    style={{
-                                      width: '100%',
-                                      justifyContent: 'flex-start',
-                                      padding: '0.5rem 0.85rem',
-                                      fontSize: '0.85rem',
-                                      fontWeight: '700',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '0.5rem',
-                                      textAlign: 'left'
-                                    }}
-                                  >
-                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0 }}></div>
-                                    <span style={{ flex: 1, wordBreak: 'break-word', overflowWrap: 'break-word' }}>{opt.label}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                              {(() => {
-                                const totalVotes = pollData.options.reduce((sum, o) => sum + (o.votes || 0), 0);
-                                return (
-                                  <>
-                                    {pollData.options.map((opt, i) => {
-                                      const pct = totalVotes > 0 ? Math.round(((opt.votes || 0) / totalVotes) * 100) : 0;
-                                      const barColor = i === 0 ? 'var(--accent-indigo)' : i === 1 ? 'var(--accent-crimson)' : 'var(--accent-amber)';
-                                      const isChosen = userVotedChoice === opt.id;
-
-                                      return (
-                                        <div key={opt.id}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '0.2rem', gap: '0.5rem' }}>
-                                            <span style={{ color: isChosen ? 'var(--accent-indigo)' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', wordBreak: 'break-word' }}>
-                                              {opt.label} ({opt.votes || 0})
-                                              {isChosen && <span style={{ fontSize: '0.68rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-indigo)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>आपकी पसंद</span>}
-                                            </span>
-                                            <span style={{ color: 'var(--text-subtle)', flexShrink: 0 }}>{pct}%</span>
-                                          </div>
-                                          <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
-                                            <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width 0.5s ease' }}></div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', fontSize: '0.75rem', color: 'var(--accent-emerald)', fontWeight: '700', marginTop: '0.4rem', textAlign: 'center' }}>
-                                      <Check size={14} />
-                                      <span>{t('voteRecorded', currentLanguage)} ({totalVotes.toLocaleString()} {t('readersVoted', currentLanguage)})</span>
-                                    </div>
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          )}
-                        </div>
                       )}
+
+                      {/* Interactive Daily Public Voice Poll Widget (Controlled via Admin Desk & Localized) */}
+                      {(() => {
+                        const activePoll = localizedPoll || pollData;
+                        if (!activePoll || !activePoll.enabled) return null;
+                        return (
+                          <div style={{ 
+                            background: 'var(--bg-surface)', 
+                            border: '1px solid var(--border-medium)', 
+                            borderRadius: 'var(--radius-bento)', 
+                            padding: '1.25rem',
+                            boxShadow: 'var(--shadow-sm)'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--accent-indigo)', fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', marginBottom: '0.6rem', letterSpacing: '0.05em' }}>
+                              <BarChart3 size={15} /> {t('dailyReaderPoll', currentLanguage)}
+                            </div>
+                            <h4 style={{ fontSize: '0.95rem', fontWeight: '800', lineHeight: '1.35', marginBottom: '1rem', color: 'var(--text-main)', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
+                              "{activePoll.question}"
+                            </h4>
+
+                            {!userVotedChoice ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                {activePoll.options.map((opt, i) => {
+                                  const dotColor = i === 0 ? 'var(--accent-indigo)' : i === 1 ? 'var(--accent-crimson)' : 'var(--text-subtle)';
+                                  return (
+                                    <button
+                                      key={opt.id}
+                                      onClick={() => handlePollVote(opt.id)}
+                                      className="btn btn-outline"
+                                      style={{
+                                        width: '100%',
+                                        justifyContent: 'flex-start',
+                                        padding: '0.5rem 0.85rem',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '700',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        textAlign: 'left'
+                                      }}
+                                    >
+                                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dotColor, flexShrink: 0 }}></div>
+                                      <span style={{ flex: 1, wordBreak: 'break-word', overflowWrap: 'break-word' }}>{opt.label}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {(() => {
+                                  const totalVotes = activePoll.options.reduce((sum, o) => sum + (o.votes || 0), 0);
+                                  return (
+                                    <>
+                                      {activePoll.options.map((opt, i) => {
+                                        const pct = totalVotes > 0 ? Math.round(((opt.votes || 0) / totalVotes) * 100) : 0;
+                                        const barColor = i === 0 ? 'var(--accent-indigo)' : i === 1 ? 'var(--accent-crimson)' : 'var(--accent-amber)';
+                                        const isChosen = userVotedChoice === opt.id;
+
+                                        return (
+                                          <div key={opt.id}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '0.2rem', gap: '0.5rem' }}>
+                                              <span style={{ color: isChosen ? 'var(--accent-indigo)' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', wordBreak: 'break-word' }}>
+                                                {opt.label} ({opt.votes || 0})
+                                                {isChosen && <span style={{ fontSize: '0.68rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-indigo)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>{t('yourChoice', currentLanguage)}</span>}
+                                              </span>
+                                              <span style={{ color: 'var(--text-subtle)', flexShrink: 0 }}>{pct}%</span>
+                                            </div>
+                                            <div style={{ height: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px', overflow: 'hidden' }}>
+                                              <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width 0.5s ease' }}></div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+
+                                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', fontSize: '0.75rem', color: 'var(--accent-emerald)', fontWeight: '700', marginTop: '0.4rem', textAlign: 'center' }}>
+                                        <Check size={14} />
+                                        <span>{t('voteRecorded', currentLanguage)} ({totalVotes.toLocaleString()} {t('readersVoted', currentLanguage)})</span>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Sidebar Sticky Unit Placement */}
                       <PartnerUnit position="sidebar" category={activeCategory} />
@@ -1284,7 +1540,13 @@ export default function App() {
                           <div key={art.id} className="story-card-secondary" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
                             <div className="secondary-card-img-wrap">
                               <div className="img-container">
-                                <img src={art.featured_image} alt={art.title} loading="lazy" />
+                                {art.featured_image ? (
+                                  <img src={art.featured_image} alt={art.title} loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                ) : (
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', color: 'var(--text-subtle)', background: 'var(--bg-secondary)' }}>
+                                    <Newspaper size={28} />
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="secondary-card-content">
@@ -1329,9 +1591,9 @@ export default function App() {
                               <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <span>{art.author?.name || 'Staff Reporter'}</span>
                                 <span>•</span>
-                                <span>{art.published_at}</span>
+                                <span>{formatPublishedTime(art.published_at, currentLanguage)}</span>
                                 <span>•</span>
-                                <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
+                                <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)?.minutes || 1} {t('minsRead', currentLanguage)}</span>
                               </div>
                             </div>
                           </div>
@@ -1353,10 +1615,10 @@ export default function App() {
                       <div className="video-reel-header">
                         <h3 className="video-reel-title">
                           <Play size={18} fill="var(--accent-crimson)" color="var(--accent-crimson)" />
-                          <span>{currentLanguage === 'hi' ? 'वीडियो रिपोर्ट व विशेष कवरेज' : 'Video Coverage & Ground Reports'}</span>
+                          <span>{t('videoCoverage', currentLanguage)}</span>
                         </h3>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-subtle)', fontWeight: '700' }}>
-                          {videoArticles.length} {currentLanguage === 'hi' ? 'वीडियो उपलब्ध' : 'Videos Available'}
+                          {videoArticles.length} {t('videosAvailable', currentLanguage)}
                         </span>
                       </div>
                       <div className="video-grid">
@@ -1380,7 +1642,7 @@ export default function App() {
                                 {art.title}
                               </h4>
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.35rem' }}>
-                                {art.author?.name || 'PublicSpark Desk'} • {art.published_at}
+                                {art.author?.name || 'PublicSpark Desk'} • {formatPublishedTime(art.published_at, currentLanguage)}
                               </div>
                             </div>
                           </div>
@@ -1390,8 +1652,21 @@ export default function App() {
                   );
                 })()}
 
-                {/* Remaining Grid Stories */}
-                {remainingArticles.length > 0 && (
+                {/* Newsroom Library — Dynamic Category Shelves Engine (Task 39 Subtopic B) */}
+                {activeCategory === 'all' && (
+                  <CategoryShelvesSection
+                    categories={categories}
+                    articles={publishedArticles}
+                    currentLanguage={currentLanguage}
+                    onSelectArticle={handleSelectArticle}
+                    onSelectCategory={setActiveCategory}
+                    onQuickAudioRead={handleQuickAudioRead}
+                    playingArticleId={playingArticleId}
+                  />
+                )}
+
+                {/* Remaining Grid Stories (Category Filter View when activeCategory !== 'all') */}
+                {activeCategory !== 'all' && remainingArticles.length > 0 && (
                   <div style={{ padding: '2.5rem 0' }}>
                     <h3 className="headline" style={{ fontSize: '1.75rem', fontWeight: '900', marginBottom: '1.75rem', borderBottom: '2px solid var(--border-dark)', paddingBottom: '0.6rem' }}>
                       {t('verifiedEditorialStream', currentLanguage)}
@@ -1452,9 +1727,9 @@ export default function App() {
                             <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
                               <span>{art.author?.name || 'Staff Reporter'}</span>
                               <span>•</span>
-                              <span>{art.published_at}</span>
+                              <span>{formatPublishedTime(art.published_at, currentLanguage)}</span>
                               <span>•</span>
-                              <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)} {t('minsRead', currentLanguage)}</span>
+                              <span><Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)?.minutes || 1} {t('minsRead', currentLanguage)}</span>
                             </div>
                           </div>
                         </div>
@@ -1476,6 +1751,7 @@ export default function App() {
             onSelectArticle={handleSelectArticle}
             currentLanguage={currentLanguage}
             onShowToast={(msg) => { setToastMessage(msg); setIsToastOpen(true); }}
+            onOpenGrievance={handleOpenGrievance}
           />
         )}
 
@@ -1499,6 +1775,8 @@ export default function App() {
             pendingArticles={pendingArticles}
             rejectedArticles={rejectedArticles}
             publishedArticles={baseArticles}
+            staffName={getSessionStaffName()}
+            staffEmail={getSessionStaffEmail()}
           />
         )}
 
@@ -1510,9 +1788,10 @@ export default function App() {
           />
         )}
 
-        {activeView === 'admin' && (
+        {(activeView === 'admin' || activeView === 'developer') && (
           <AdminWorkspace 
             currentRole={currentRole}
+            initialDesk={currentRole === 'developer' || activeView === 'developer' ? 'developer' : 'curation'}
             articles={baseArticles}
             onUpdateArticles={(updated) => { setBaseArticles(updated); saveNewsToCache(updated); }}
             categories={categories}
@@ -1545,8 +1824,8 @@ export default function App() {
           <div className="footer-grid">
             <div>
               <img src="/logo.png" alt="PUBLIC SPARK Logo" style={{ height: '60px', width: 'auto', objectFit: 'contain', marginBottom: '0.75rem' }} />
-              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: '420px', lineHeight: '1.6', marginBottom: '1.25rem' }}>
-                An independent, zero-cost digital news platform built on open technologies, human editorial integrity, and transparent reporting.
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: '420px', lineHeight: '1.7', marginBottom: '1.25rem' }}>
+                पब्लिक स्पार्क आपको भ्रष्टाचार से संबंधित तथ्यात्मक खबरें, ज्योतिष, धर्म, पर्यटन आदि के बारे में संबंधित क्षेत्र के विशेषज्ञों के विचार और जानकारी उपलब्ध कराने का सशक्त माध्यम है।
               </p>
 
               {/* Official Social Media Channel Icons */}
@@ -1653,61 +1932,187 @@ export default function App() {
                 </a>
               </div>
             </div>
+
             <div>
               <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: '0.85rem', letterSpacing: '0.08em' }}>
-                Editorial Desks
-              </h4>
-              <ul style={{ listStyle: 'none', fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <li>India Desk</li>
-                <li>Technology Desk</li>
-                <li>Climate & Environment</li>
-                <li>Opinion & Analysis</li>
-              </ul>
-            </div>
-            <div>
-              <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: '0.85rem', letterSpacing: '0.08em' }}>
-                About & Standards
+                मानक व नीतियां (Standards)
               </h4>
               <ul style={{ listStyle: 'none', fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <li>
-                  <button onClick={() => { setLegalModalTab('about'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
-                    About PublicSpark
+                  <button onClick={() => { setLegalModalTab('ethics'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    संपादकीय आचार संहिता (Ethics)
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => { setLegalModalTab('ethics'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
-                    Editorial Code & Fact-Check
+                  <button onClick={() => { setLegalModalTab('accessibility'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    सुलभता व पाठक सहायता (Accessibility)
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => { setLegalModalTab('contact'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
-                    Contact & Grievance Redressal
+                  <button onClick={() => { setLegalModalTab('advertise'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    विज्ञापन दें (Direct Sponsor)
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => { setLegalModalTab('contact'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    शिकायत निवारण अधिकारी (IT Rules)
                   </button>
                 </li>
               </ul>
             </div>
             <div>
               <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: '0.85rem', letterSpacing: '0.08em' }}>
-                Legal & Compliance
+                विधिक व अनुपालन (Compliance)
               </h4>
               <ul style={{ listStyle: 'none', fontSize: '0.875rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <li>
-                  <button onClick={() => { setLegalModalTab('privacy'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
-                    Privacy Policy (AdSense & Cookies)
+                  <button onClick={() => { setLegalModalTab('terms'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    सेवा की शर्तें (Terms of Use)
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => { setLegalModalTab('terms'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-indigo)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
-                    Terms of Service
+                  <button onClick={() => { setLegalModalTab('privacy'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    गोपनीयता नीति (Privacy Policy)
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => { setLegalModalTab('cookies'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    डेटा व कुकी नियंत्रण (Do Not Sell Info)
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => { setLegalModalTab('disclaimer'); setIsLegalModalOpen(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'inherit', font: 'inherit', cursor: 'pointer', textAlign: 'left' }} onMouseEnter={(e) => e.target.style.color = 'var(--accent-crimson)'} onMouseLeave={(e) => e.target.style.color = 'inherit'}>
+                    सुरक्षित आश्रय (Safe Harbor)
                   </button>
                 </li>
               </ul>
             </div>
           </div>
-          <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
-            © 2026 PublicSpark Newsroom Platform. All rights reserved. Built with precision for human journalism.
+
+          {/* BBC-Style Institutional Horizontal Compliance Strip */}
+          <nav className="footer-compliance-strip" aria-label="Institutional Legal & Compliance Policies">
+            <button 
+              type="button"
+              className="footer-compliance-link"
+              onClick={() => { setLegalModalTab('terms'); setIsLegalModalOpen(true); }}
+            >
+              सेवा की शर्तें
+            </button>
+            <span className="footer-compliance-divider" aria-hidden="true">•</span>
+
+            <button 
+              type="button"
+              className="footer-compliance-link"
+              onClick={() => { setLegalModalTab('privacy'); setIsLegalModalOpen(true); }}
+            >
+              गोपनीयता नीति
+            </button>
+            <span className="footer-compliance-divider" aria-hidden="true">•</span>
+
+            <button 
+              type="button"
+              className="footer-compliance-link"
+              onClick={() => { setLegalModalTab('cookies'); setIsLegalModalOpen(true); }}
+            >
+              डेटा नियंत्रण (Do Not Sell Info)
+            </button>
+            <span className="footer-compliance-divider" aria-hidden="true">•</span>
+
+            <button 
+              type="button"
+              className="footer-compliance-link"
+              onClick={() => { setLegalModalTab('accessibility'); setIsLegalModalOpen(true); }}
+            >
+              सुलभता व सहायता
+            </button>
+            <span className="footer-compliance-divider" aria-hidden="true">•</span>
+
+            <button 
+              type="button"
+              className="footer-compliance-link"
+              onClick={() => { setLegalModalTab('advertise'); setIsLegalModalOpen(true); }}
+            >
+              विज्ञापन दें
+            </button>
+            <span className="footer-compliance-divider" aria-hidden="true">•</span>
+
+            <button 
+              type="button"
+              className="footer-compliance-link"
+              onClick={() => { setLegalModalTab('ethics'); setIsLegalModalOpen(true); }}
+            >
+              संपादकीय आचार संहिता
+            </button>
+            <span className="footer-compliance-divider" aria-hidden="true">•</span>
+
+            <button 
+              type="button"
+              className="footer-compliance-link"
+              onClick={() => { setLegalModalTab('contact'); setIsLegalModalOpen(true); }}
+            >
+              शिकायत निवारण (IT Rules 2021)
+            </button>
+            <span className="footer-compliance-divider" aria-hidden="true">•</span>
+
+            <button 
+              type="button"
+              className="footer-compliance-link"
+              onClick={() => { setLegalModalTab('disclaimer'); setIsLegalModalOpen(true); }}
+            >
+              सुरक्षित आश्रय अस्वीकरण
+            </button>
+          </nav>
+
+          <div style={{ 
+            borderTop: '1px solid var(--border-light)', 
+            paddingTop: '1.25rem', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            flexWrap: 'wrap', 
+            gap: '1rem', 
+            fontSize: '0.8rem', 
+            color: 'var(--text-subtle)' 
+          }}>
+            <div>
+              © 2026 PublicSpark Newsroom Platform. सर्वाधिकार सुरक्षित • Built with precision for human journalism.
+            </div>
+            <div>
+              <button
+                onClick={handleOpenStaffLogin}
+                style={{
+                  background: 'none',
+                  border: '1px solid var(--border-medium)',
+                  borderRadius: 'var(--radius-sm, 4px)',
+                  minHeight: '38px',
+                  padding: '0.45rem 0.95rem',
+                  color: 'var(--text-subtle)',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--accent-crimson)';
+                  e.currentTarget.style.borderColor = 'var(--accent-crimson)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--text-subtle)';
+                  e.currentTarget.style.borderColor = 'var(--border-medium)';
+                }}
+                title="Newsroom Staff Login"
+              >
+                <Lock size={12} color="var(--accent-crimson)" />
+                <span>Staff & Editorial Portal</span>
+              </button>
+            </div>
           </div>
         </div>
+      </footer>
+
       {/* Floating Broadsheet Audio Mini-Player Bar */}
       {playingArticleId && (
         <div className="floating-broadsheet-audio">
@@ -1757,7 +2162,28 @@ export default function App() {
         </div>
       )}
 
-      </footer>
+      {/* Dedicated Saved Stories Reading Drawer (Task 28 Subtopic B) */}
+      <SavedStoriesDrawer
+        isOpen={isSavedDrawerOpen}
+        onClose={() => setIsSavedDrawerOpen(false)}
+        onSelectArticle={handleSelectArticle}
+        onViewAllBookmarks={() => {
+          setActiveCategory('bookmarks');
+          setActiveView('home');
+        }}
+        currentLanguage={currentLanguage}
+      />
+
+      {/* Left-Side Animated Search Drawer (Task 39 Subtopic A) */}
+      <SearchDrawer
+        isOpen={isSearchDrawerOpen}
+        onClose={() => setIsSearchDrawerOpen(false)}
+        articles={publishedArticles}
+        categories={categories}
+        currentLanguage={currentLanguage}
+        onSelectArticle={handleSelectArticle}
+        onSelectCategory={setActiveCategory}
+      />
 
       {/* Mandatory 5 Legal Pages Modal for Google AdSense Compliance */}
       <LegalModal 
@@ -1765,6 +2191,31 @@ export default function App() {
         onClose={() => setIsLegalModalOpen(false)} 
         initialTab={legalModalTab} 
         currentLanguage={currentLanguage} 
+        onOpenGrievance={() => handleOpenGrievance(null)}
+      />
+
+      {/* Newsroom Staff RBAC Modal (Task 17 Subtopic 17.2) */}
+      <StaffLoginModal
+        isOpen={isStaffLoginOpen}
+        onClose={() => {
+          setIsStaffLoginOpen(false);
+          if (window.location.pathname === '/login' || window.location.pathname === '/staff') {
+            window.history.replaceState({}, '', '/');
+            document.title = 'PUBLIC SPARK - Breaking News & Live Updates';
+          }
+        }}
+        onLoginSuccess={handleStaffLoginSuccess}
+      />
+
+      {/* Statutory Grievance Redressal Modal (IT Rules 2021 India - Task 29 Subtopic A) */}
+      <GrievanceModal
+        isOpen={isGrievanceModalOpen}
+        onClose={() => {
+          setIsGrievanceModalOpen(false);
+          setGrievanceArticle(null);
+        }}
+        initialArticle={grievanceArticle}
+        currentLanguage={currentLanguage}
       />
 
       {/* Mobile Sticky Anchor Ad Slot (Automatically active only on mobile when enabled) */}

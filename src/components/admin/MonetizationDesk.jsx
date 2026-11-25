@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { getAdSettings, syncAdSettingsServer, fetchAdSettings, fetchAdHistory, deleteAdHistoryItem, updateAdHistoryItem, parseSponsorTargetUrl, getSlotDimensionGuard } from '../../services/monetizationService';
 import { compressImageToWebP } from '../../services/mediaService';
-import { MOCK_CATEGORIES } from '../../services/mockData';
+import { DEFAULT_NEWSROOM_CATEGORIES } from '../../services/taxonomyService';
 
 /**
  * Format ISO / datetime-local string to clean Indian standard readable format (e.g. 29 Oct 2026, 02:30 PM)
@@ -41,7 +41,7 @@ export default function MonetizationDesk({ onShowToast, articles = [], categorie
   const [referenceTime] = useState(() => Date.now());
   const [adConfig, setAdConfig] = useState(() => getAdSettings());
   const [articleList, setArticleList] = useState(articles || []);
-  const [categoryList, setCategoryList] = useState(() => (categories && categories.length > 0 ? categories : MOCK_CATEGORIES));
+  const [categoryList, setCategoryList] = useState(() => (categories && categories.length > 0 ? categories : DEFAULT_NEWSROOM_CATEGORIES));
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isUploading, setIsUploading] = useState({});
@@ -185,7 +185,7 @@ export default function MonetizationDesk({ onShowToast, articles = [], categorie
           compressedKB: compressed.compressedKB,
           savedPercent: Math.max(0, Math.round(((compressed.originalKB - compressed.compressedKB) / compressed.originalKB) * 100))
         };
-      } catch (cErr) {
+      } catch (_cErr) {
         // Fallback: direct FileReader if canvas compression encounters odd SVG/unsupported format
         dataUrl = await new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -2215,9 +2215,9 @@ export default function MonetizationDesk({ onShowToast, articles = [], categorie
                       fontSize: '0.75rem',
                       fontWeight: cloneDurationDays === p.days ? '800' : '600',
                       borderRadius: '4px',
-                      border: cloneDurationDays === p.days ? '1px solid var(--accent-blue)' : '1px solid var(--border-medium)',
-                      background: cloneDurationDays === p.days ? '#EFF6FF' : 'var(--bg-surface)',
-                      color: cloneDurationDays === p.days ? '#1D4ED8' : 'var(--text-main)',
+                      border: cloneDurationDays === p.days ? '1px solid var(--accent-indigo)' : '1px solid var(--border-medium)',
+                      background: cloneDurationDays === p.days ? 'var(--accent-indigo-bg, rgba(99, 102, 241, 0.12))' : 'var(--bg-surface)',
+                      color: cloneDurationDays === p.days ? 'var(--accent-indigo)' : 'var(--text-main)',
                       cursor: 'pointer'
                     }}
                   >

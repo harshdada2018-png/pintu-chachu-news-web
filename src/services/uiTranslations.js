@@ -60,6 +60,9 @@ export const UI_TRANSLATIONS = {
     playing: 'चल रहा है',
     remove: 'हटाएं',
     byAuthor: 'द्वारा',
+    editorialDesk: 'संपादकीय डेस्क',
+    editorialBureauWire: 'संपादकीय ब्यूरो',
+    offlineStorage: 'ऑफ़लाइन संग्रहण',
     verifiedEditorialStream: 'सत्यापित संपादकीय प्रवाह',
     editorsSpotlight: 'संपादक की पसंद',
     topTrendingStories: 'शीर्ष ट्रेंडिंग समाचार',
@@ -80,6 +83,17 @@ export const UI_TRANSLATIONS = {
     speed: 'गति',
     searchArchives: 'पब्लिकस्पार्क अभिलेखागार खोजें',
     showingResults: 'परिणाम दिख रहे हैं',
+    newsroomLibraryTitle: 'समाचार लाइब्रेरी: विषयवार शेल्व्स',
+    newsroomLibrarySubtitle: 'सभी प्रमुख श्रेणियों के प्रमाणित समाचार, निष्पक्ष ग्राउंड रिपोर्ट्स व विशेष विश्लेषण',
+    activeShelves: 'सक्रिय श्रेणियां',
+    storiesCount: 'रिपोर्ट्स',
+    singleStoryCount: 'रिपोर्ट',
+    allInShelf: 'के सभी समाचार',
+    scrollLeft: 'पीछे स्क्रॉल करें',
+    scrollRight: 'आगे स्क्रॉल करें',
+    videoCoverage: 'वीडियो रिपोर्ट व विशेष कवरेज',
+    videosAvailable: 'वीडियो उपलब्ध',
+    yourChoice: 'आपकी पसंद',
     // Categories
     'All': 'सभी',
     'National': 'राष्ट्रीय',
@@ -148,6 +162,9 @@ export const UI_TRANSLATIONS = {
     playing: 'Playing',
     remove: 'Remove',
     byAuthor: 'By',
+    editorialDesk: 'Editorial Desk',
+    editorialBureauWire: 'Editorial Bureau Wire',
+    offlineStorage: 'Offline Storage',
     verifiedEditorialStream: 'Verified Editorial Stream',
     editorsSpotlight: "Editor's Spotlight",
     topTrendingStories: 'Top Trending Stories',
@@ -168,6 +185,17 @@ export const UI_TRANSLATIONS = {
     speed: 'Speed',
     searchArchives: 'Search PublicSpark Archives',
     showingResults: 'Showing results',
+    newsroomLibraryTitle: 'Newsroom Library: Category Shelves',
+    newsroomLibrarySubtitle: 'Verified coverage, ground investigations and analytical journalism grouped by section',
+    activeShelves: 'Active Shelves',
+    storiesCount: 'stories',
+    singleStoryCount: 'story',
+    allInShelf: 'All in',
+    scrollLeft: 'Scroll left',
+    scrollRight: 'Scroll right',
+    videoCoverage: 'Video Coverage & Ground Reports',
+    videosAvailable: 'Videos Available',
+    yourChoice: 'Your Choice',
     // Categories
     'All': 'All',
     'National': 'National',
@@ -1283,6 +1311,11 @@ export function t(key, lang = 'hi', fallback = '') {
     return UI_TRANSLATIONS[langCode][key];
   }
   
+  // Alias support for editorialDesk -> editorDesk if key not explicitly present in language
+  if (key === 'editorialDesk' && UI_TRANSLATIONS[langCode]?.editorDesk) {
+    return UI_TRANSLATIONS[langCode].editorDesk;
+  }
+
   // Try language prefix (e.g. 'zh' for 'zh-TW')
   const basePrefix = langCode.split('-')[0];
   if (UI_TRANSLATIONS[basePrefix] && UI_TRANSLATIONS[basePrefix][key]) {

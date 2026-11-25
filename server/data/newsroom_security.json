@@ -1,0 +1,9 @@
+{
+  "sessionsInvalidatedBefore": 0,
+  "lockdownActive": false,
+  "lastLockdownAt": null,
+  "lastLockdownReason": null,
+  "revokedTokens": {
+    "f38e44cbc581c436b6a310d5f0b2ead4cbff76f9a418084dc68c2018f63e5129": 1795277793388
+  }
+}

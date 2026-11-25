@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PublicSpark - Full Caching Architecture Mermaid Diagram</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        fontFamily: 'Plus Jakarta Sans, sans-serif',
+        fontSize: '14px',
+        primaryColor: '#F0FDF4',
+        primaryBorderColor: '#16A34A',
+        primaryTextColor: '#14532D',
+        lineColor: '#475569',
+        secondaryColor: '#EFF6FF',
+        secondaryBorderColor: '#2563EB',
+        secondaryTextColor: '#1E3A8A',
+        tertiaryColor: '#FAF5FF',
+        tertiaryBorderColor: '#7C3AED',
+        tertiaryTextColor: '#581C87',
+        actorBorder: '#2563EB',
+        actorBkg: '#EFF6FF',
+        actorTextColor: '#1E3A8A',
+        signalColor: '#334155',
+        signalTextColor: '#0F172A'
+      }
+    });
+  </script>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 12mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #FFFFFF;
+      color: #0F172A;
+      padding: 1.5rem;
+      line-height: 1.5;
+    }
+
+    .header-banner {
+      background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+      color: #FFFFFF;
+      padding: 1.5rem 1.75rem;
+      border-radius: 12px;
+      margin-bottom: 1.5rem;
+      border-left: 6px solid #16A34A;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .header-title h1 {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+
+    .header-title p {
+      font-size: 0.9rem;
+      color: #94A3B8;
+    }
+
+    .badge-bar {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.35rem 0.75rem;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-green { background: #DCFCE7; color: #166534; }
+    .badge-blue { background: #DBEAFE; color: #1E40AF; }
+    .badge-purple { background: #F3E8FF; color: #6B21A8; }
+
+    /* Legend Bar */
+    .legend-bar {
+      display: flex;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      padding: 0.85rem 1.25rem;
+      border-radius: 10px;
+      margin-bottom: 1.5rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .legend-color {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      border: 1.5px solid transparent;
+    }
+
+    .lc-green { background: #DCFCE7; border-color: #16A34A; }
+    .lc-blue { background: #DBEAFE; border-color: #2563EB; }
+    .lc-purple { background: #F3E8FF; border-color: #7C3AED; }
+    .lc-amber { background: #FEF3C7; border-color: #D97706; }
+    .lc-red { background: #FEE2E2; border-color: #DC2626; }
+
+    /* Diagram Card */
+    .diagram-card {
+      background: #FFFFFF;
+      border: 1.5px solid #E2E8F0;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      page-break-inside: avoid;
+    }
+
+    .diagram-heading {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #0F172A;
+      margin-bottom: 0.35rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #E2E8F0;
+      padding-bottom: 0.75rem;
+    }
+
+    .diagram-heading .tag {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #64748B;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .mermaid {
+      text-align: center;
+      margin-top: 1rem;
+      overflow-x: auto;
+    }
+
+    .mermaid svg {
+      max-width: 100% !important;
+      height: auto !important;
+    }
+
+    /* Key Summary Box */
+    .summary-box {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin-top: 1.5rem;
+      font-size: 0.85rem;
+      color: #334155;
+    }
+
+    .summary-box strong {
+      color: #0F172A;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+
+    .summary-item {
+      background: #FFFFFF;
+      border: 1px solid #CBD5E1;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        background: #FFFFFF;
+      }
+      .diagram-card {
+        border: 1px solid #CBD5E1;
+        margin-bottom: 1.5rem;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Masthead -->
+  <div class="header-banner">
+    <div class="header-title">
+      <h1>PUBLICSPARK NEWSROOM</h1>
+      <p>4-Tier Caching, Deduplication & Quota Protection Architecture</p>
+    </div>
+    <div class="badge-bar">
+      <span class="badge badge-green">0ms Client Cache</span>
+      <span class="badge badge-blue">7ms Database Hit</span>
+      <span class="badge badge-purple">1 Call Per Story</span>
+    </div>
+  </div>
+
+  <!-- Color Legend -->
+  <div class="legend-bar">
+    <div class="legend-item"><div class="legend-color lc-green"></div><span>Tier 1: Client LocalStorage (0ms)</span></div>
+    <div class="legend-item"><div class="legend-color lc-blue"></div><span>Tier 2: translations.json DB (7ms)</span></div>
+    <div class="legend-item"><div class="legend-color lc-purple"></div><span>Tier 3: In-Flight Lock (0ms Dup)</span></div>
+    <div class="legend-item"><div class="legend-color lc-amber"></div><span>Tier 4: SHA-256 Hash Guard</span></div>
+    <div class="legend-item"><div class="legend-color lc-red"></div><span>Watchdog: 500MB LRU Shield</span></div>
+  </div>
+
+  <!-- Diagram 1: Full System Flowchart -->
+  <div class="diagram-card">
+    <div class="diagram-heading">
+      <span>1. Complete End-to-End System Flowchart</span>
+      <span class="tag">flowchart TD</span>
+    </div>
+    <div class="mermaid">
+flowchart TD
+    subgraph TIER1["TIER 1: CLIENT BROWSER CACHE (0ms - 0 Network Calls)"]
+        A["Reader Selects Language (e.g. English, Bengali, zh-TW)"] --> B{"Target == Hindi?"}
+        B -- "YES" --> C["Return Original Hindi (0ms - 0 Network)"]
+        B -- "NO" --> D{"Check LocalStorage\nps_art_obj_articleId_lang"}
+        D -- "CACHE HIT" --> E["Serve from LocalStorage (0ms - 0 Network)"]
+        D -- "CACHE MISS" --> F["POST /api/translate Request"]
+    end
+
+    subgraph GATEWAY["BACKEND SECURITY & RATE SHIELD (server.js)"]
+        F --> G{"IP Rate Limiter\n(Max 30 req/hr per IP)"}
+        G -- "Exceeded" --> H["HTTP 429: Clean Fallback to Original Hindi"]
+        G -- "Allowed" --> I{"Daily Gemini Quota Check\n(Cap: 1450 of 1500 daily requests)"}
+        I -- "Exceeded" --> J["HTTP 429: Clean Fallback to Original Hindi"]
+        I -- "Allowed" --> K["Compute SHA-256 contentHash\nhash(Title + Body)"]
+    end
+
+    subgraph TIER2["TIER 2: SERVER DATABASE CACHE (7ms - 40ms)"]
+        K --> L{"Check translations.json\nKey: articleId:targetLanguage"}
+        L -- "EXISTS & HASH MATCHES" --> M["Touch last_accessed_at (LRU)"]
+        M --> N["Serve from Disk Cache in 7ms - 40ms\n(isCached: true - 0 Gemini API Calls)"]
+        L -- "MISS OR HASH MISMATCH" --> O{"In-Flight Lock Active?\ninFlightTranslations.has(key)"}
+    end
+
+    subgraph TIER3["TIER 3: IN-FLIGHT DEDUPLICATION LOCK (Surge Protection)"]
+        O -- "YES (Concurrent Traffic)" --> P["Wait for Active In-Flight Promise\n(0 Duplicate API Calls)"]
+        P --> Q["Reuse First Caller Result"]
+        O -- "NO (First Caller)" --> R["Lock inFlightTranslations Map"]
+    end
+
+    subgraph TIER4["TIER 4: AI PIPELINE & INTEGRITY GATE (Gemini)"]
+        R --> S["Dispatch Multi-Model Gemini API Call\n(gemini-3.5-flash / gemini-3.7-flash)"]
+        S --> T{"validateTranslationIntegrity()\nCheck: Error strings & 35% Paragraphs"}
+        T -- "FAILED (Corrupted)" --> U["Discard Output\nDo NOT Save to Database\nFallback cleanly to Hindi"]
+        T -- "PASSED (100% Valid)" --> V["Save to translations.json with contentHash"]
+        V --> W["Release inFlightTranslations Lock"]
+        W --> X["Return HTTP 200 (isCached: false)"]
+    end
+
+    Q --> Y["Client Receives JSON Response"]
+    N --> Y
+    X --> Y
+    Y --> Z["Save to Browser LocalStorage"]
+    Z --> AA["Render News Story in Target Script"]
+    </div>
+  </div>
+
+  <!-- Diagram 2: Sequence Diagram -->
+  <div class="diagram-card">
+    <div class="diagram-heading">
+      <span>2. Traffic Sequence: Cold Start vs Concurrent Surge vs Hot Cache</span>
+      <span class="tag">sequenceDiagram</span>
+    </div>
+    <div class="mermaid">
+sequenceDiagram
+    autonumber
+    actor Reader1 as Reader 1 (First Visitor)
+    actor Reader2 as Reader 2 (Concurrent Surge)
+    actor Reader3 as Reader 3 (Subsequent Visitor)
+    participant Browser as Client Browser
+    participant Server as Node.js Backend
+    participant DB as translations.json
+    participant Gemini as Gemini Multi-Model API
+
+    Note over Reader1, Gemini: SCENARIO 1: COLD START (First Request - 1 AI Call)
+    Reader1->>Browser: Selects Traditional Chinese (zh-TW)
+    Browser->>Browser: Check LocalStorage (MISS)
+    Browser->>Server: POST /api/translate (art-1, zh-TW)
+    Server->>DB: Check Cache (MISS)
+    Server->>Server: Set inFlightLock('art-1:zh-TW')
+
+    Note over Reader2, Gemini: SCENARIO 2: CONCURRENT SURGE (Zero Duplicate API Calls)
+    Reader2->>Browser: Opens art-1 in zh-TW at same second
+    Browser->>Server: POST /api/translate (art-1, zh-TW)
+    Server->>Server: Lock Detected -> Await Reader 1's Promise
+
+    Server->>Gemini: 1 Single AI API Request Dispatched
+    Gemini-->>Server: Complete Translated Payload
+    Server->>Server: validateTranslationIntegrity() -> PASS
+    Server->>DB: Save to translations.json with SHA-256 Hash
+    Server->>Server: Release inFlightLock
+
+    Server-->>Reader1: HTTP 200 (isCached: false, ~10s)
+    Server-->>Reader2: HTTP 200 (reused Promise, ~10s, 0 Extra API Calls)
+    Reader1->>Browser: Cache in LocalStorage
+    Reader2->>Browser: Cache in LocalStorage
+
+    Note over Reader3, Gemini: SCENARIO 3: HOT CACHE (Subsequent Readers - Zero AI Calls)
+    Reader3->>Browser: Opens art-1 in zh-TW
+    Browser->>Server: POST /api/translate (art-1, zh-TW)
+    Server->>DB: Check Cache (HIT - Hash Match)
+    Server->>DB: Update last_accessed_at timestamp
+    Server-->>Reader3: HTTP 200 (isCached: true, 7ms - 40ms, Zero Gemini Calls)
+    Reader3->>Browser: Cache in LocalStorage
+
+    Note over Reader1, Gemini: SCENARIO 4: LOCAL CLIENT RE-VISIT (Zero Network Packets)
+    Reader1->>Browser: Switches back to art-1 from Homepage
+    Browser->>Browser: Check LocalStorage (HIT!)
+    Browser-->>Reader1: Rendered Instantly (0ms Latency, Zero Network Requests)
+    </div>
+  </div>
+
+  <!-- Summary Box -->
+  <div class="summary-box">
+    <strong>Executive Cost & Quota Economics:</strong>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <strong>Without Caching (Naive)</strong><br>
+        10,000 readers in English = 10,000 Gemini API calls. Rate limits fail in 15 minutes; high SaaS fees.
+      </div>
+      <div class="summary-item">
+        <strong>With PublicSpark 4-Tier Caching</strong><br>
+        10,000 readers in English = <strong>Exactly 1 API Call</strong>. Remaining 9,999 visits served from 0ms LocalStorage or 7ms Disk Cache.
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
+

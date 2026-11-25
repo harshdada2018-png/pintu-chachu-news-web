@@ -28,6 +28,7 @@ export {
 
 let cachedVoices = [];
 let currentUtteranceChain = null;
+let activeFallbackTimer = null;
 
 if (typeof window !== 'undefined') {
   window._activeUtterances = window._activeUtterances || [];
@@ -187,10 +188,15 @@ function splitTextIntoSentences(text) {
 /**
  * Fallback Browser Speech Synthesis (Web Speech API) if backend server is unreachable
  */
-async function speakWithWebSpeechFallback(cleanedText, normalizedLang, onStartCallback, onPlayCallback, onEndCallback) {
+async function speakWithWebSpeechFallback(cleanedText, normalizedLang, onStartCallback, onPlayCallback, onEndCallback, onTimeUpdate) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
     if (onEndCallback) onEndCallback();
     return;
+  }
+
+  if (activeFallbackTimer) {
+    clearInterval(activeFallbackTimer);
+    activeFallbackTimer = null;
   }
 
   const chunks = splitTextIntoSentences(cleanedText.slice(0, 4000));
@@ -201,6 +207,12 @@ async function speakWithWebSpeechFallback(cleanedText, normalizedLang, onStartCa
 
   const chainId = Symbol('fallbackChain');
   currentUtteranceChain = chainId;
+
+  // Estimate total duration for smooth seconds counter: ~7 chars/sec for Indic, ~14 for Latin
+  const isIndic = /[\u0900-\u0D7F]/.test(cleanedText);
+  const charsPerSec = isIndic ? 7 : 14;
+  const estimatedTotalDuration = Math.max(3, Math.round(cleanedText.length / charsPerSec));
+  const startTime = Date.now();
 
   try {
     const voices = await ensureVoicesLoaded(300);
@@ -214,6 +226,11 @@ async function speakWithWebSpeechFallback(cleanedText, normalizedLang, onStartCa
 
       if (chunkIndex >= chunks.length) {
         currentUtteranceChain = null;
+        if (activeFallbackTimer) {
+          clearInterval(activeFallbackTimer);
+          activeFallbackTimer = null;
+        }
+        if (onTimeUpdate) onTimeUpdate(estimatedTotalDuration, estimatedTotalDuration);
         if (onEndCallback) onEndCallback();
         return;
       }
@@ -237,6 +254,23 @@ async function speakWithWebSpeechFallback(cleanedText, normalizedLang, onStartCa
       if (chunkIndex === 0) {
         if (onStartCallback) onStartCallback();
         if (onPlayCallback) onPlayCallback();
+
+        // Start active progress timer to advance seconds smoothly
+        activeFallbackTimer = setInterval(() => {
+          if (currentUtteranceChain !== chainId) {
+            clearInterval(activeFallbackTimer);
+            activeFallbackTimer = null;
+            return;
+          }
+          const elapsed = (Date.now() - startTime) / 1000;
+          if (elapsed >= estimatedTotalDuration) {
+            clearInterval(activeFallbackTimer);
+            activeFallbackTimer = null;
+            if (onTimeUpdate) onTimeUpdate(estimatedTotalDuration, estimatedTotalDuration);
+          } else if (onTimeUpdate) {
+            onTimeUpdate(elapsed, estimatedTotalDuration);
+          }
+        }, 200);
       }
 
       utterance.onend = () => {
@@ -268,6 +302,10 @@ async function speakWithWebSpeechFallback(cleanedText, normalizedLang, onStartCa
 
     speakNextChunk();
   } catch (e) {
+    if (activeFallbackTimer) {
+      clearInterval(activeFallbackTimer);
+      activeFallbackTimer = null;
+    }
     if (onEndCallback) onEndCallback();
   }
 }
@@ -311,8 +349,42 @@ export async function speakTextWithNaturalVoice(
 
   const normalizedLang = (langCode || 'hi').toLowerCase();
 
-  // Browser-only Web Speech API playback (100% free, client-side, zero unofficial scrapers)
-  speakWithWebSpeechFallback(cleaned, normalizedLang, onStartCallback, onPlayCallback, onEndCallback);
+  // 1. Primary: High-fidelity Neural Audio stream via Backend MP3 (100% cross-platform, zero client voice dependencies)
+  try {
+    let cloudStarted = false;
+    playCloudAudioWithCache({
+      articleId: articleId || 'general',
+      text: cleaned,
+      langCode: normalizedLang,
+      startPosition: optsStartPosition,
+      onStart: () => {
+        cloudStarted = true;
+        if (onStartCallback) onStartCallback();
+      },
+      onPlay: () => {
+        cloudStarted = true;
+        if (onPlayCallback) onPlayCallback();
+      },
+      onTimeUpdate: (cur, dur) => {
+        if (optsTimeUpdate) optsTimeUpdate(cur, dur);
+      },
+      onEnd: () => {
+        if (onEndCallback) onEndCallback();
+      },
+      onError: (err) => {
+        console.warn('[SpeechEngine] Cloud audio failed, attempting Web Speech fallback:', err);
+        speakWithWebSpeechFallback(cleaned, normalizedLang, onStartCallback, onPlayCallback, onEndCallback, optsTimeUpdate);
+      }
+    }).catch(err => {
+      if (!cloudStarted) {
+        console.warn('[SpeechEngine] Could not initialize cloud audio, falling back to Web Speech:', err);
+        speakWithWebSpeechFallback(cleaned, normalizedLang, onStartCallback, onPlayCallback, onEndCallback, optsTimeUpdate);
+      }
+    });
+  } catch (err) {
+    console.warn('[SpeechEngine] Could not initialize cloud audio, falling back to Web Speech:', err);
+    speakWithWebSpeechFallback(cleaned, normalizedLang, onStartCallback, onPlayCallback, onEndCallback, optsTimeUpdate);
+  }
 }
 
 /**
@@ -348,6 +420,10 @@ export function resumeAudioSpeech() {
  */
 export function stopAudioSpeech() {
   currentUtteranceChain = null;
+  if (activeFallbackTimer) {
+    clearInterval(activeFallbackTimer);
+    activeFallbackTimer = null;
+  }
   stopCloudAudio();
   if (typeof window !== 'undefined') {
     window._activeUtterances = [];

@@ -224,6 +224,11 @@ export default function PartnerUnit({ position = 'in_article', className = '', c
     return null;
   }
 
+  // 4. If neither real sponsor banner nor live AdSense is available, do not render empty placeholder box
+  if (!isRealAdSense && !(activeDecision.action === 'sponsor' && activeDecision.bannerUrl)) {
+    return null;
+  }
+
   // Poster Aspect Ratio & Dimension Guard (Task 16.6)
   // Enforces strict vertical bounds and clean letterboxing to prevent layout deformation
   const slotGuard = getSlotDimensionGuard(position, isMobile);
@@ -388,69 +393,7 @@ export default function PartnerUnit({ position = 'in_article', className = '', c
             data-full-width-responsive="true"
           />
         </div>
-      ) : (
-        /* RENDER CASE C: Broadsheet Preview Mode (Localhost / Pending Configuration) */
-        <div
-          style={{
-            width: '100%',
-            minHeight: (position === 'header' || position === 'footer') 
-              ? (isMobile ? '50px' : '84px') 
-              : position === 'sidebar' 
-                ? '240px' 
-                : position === 'home_feed'
-                  ? (isMobile ? '100px' : '84px')
-                  : '110px',
-            background: 'var(--bg-secondary)',
-            border: '1px solid var(--border-light)',
-            borderRadius: 'var(--radius-sm)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '0.75rem 1rem',
-            textAlign: 'center',
-            boxShadow: 'var(--shadow-sm)'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
-            <span 
-              style={{
-                fontSize: '0.74rem',
-                fontWeight: '800',
-                color: 'var(--text-main)',
-                fontFamily: 'var(--font-sans)',
-                letterSpacing: '0.02em'
-              }}
-            >
-              {activeDecision.sponsorName || (position === 'header' ? 'Header Broadsheet Leaderboard' : position.replace('_', ' ').toUpperCase())}
-            </span>
-            <span 
-              style={{
-                fontSize: '0.65rem',
-                padding: '0.1rem 0.4rem',
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-medium)',
-                borderRadius: '4px',
-                color: 'var(--text-subtle)',
-                fontFamily: 'var(--font-mono)'
-              }}
-            >
-              {isMobile ? (activeDecision.mobileDimensions || '320×50') : (activeDecision.desktopDimensions || '728×90')}
-            </span>
-          </div>
-          <span 
-            style={{ 
-              fontSize: '0.7rem', 
-              color: 'var(--text-subtle)',
-              fontFamily: 'var(--font-sans)'
-            }}
-          >
-            {activeDecision.action === 'placeholder' && activeDecision.reason === 'sponsor_banner_pending'
-              ? 'Direct Sponsor Slot Active • Waiting for Banner Poster Upload in Admin Desk'
-              : 'Google AdSense Unit Active • Ready for Live Deployment'}
-          </span>
-        </div>
-      )}
+      ) : null}
     </aside>
   );
 }

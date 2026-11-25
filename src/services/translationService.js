@@ -87,7 +87,7 @@ async function translateSingleChunk(cleanText, targetLang, sourceLang = 'hi') {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: cleanText, targetLang: targetCode, source_lang: sourceLang })
-    }, 8000);
+    }, 15000);
 
     if (res.ok) {
       const data = await res.json();
@@ -185,6 +185,7 @@ export async function translateText(text, targetLang, sourceLang = 'hi') {
 
 /**
  * Helper to retrieve a cached translated article object from LocalStorage.
+ * Task 33 Subtopic C: Strict Cache Integrity Validator purging false-positive Hindi fallbacks
  */
 export function getCachedArticleObject(articleId, targetLang) {
   if (!articleId || !targetLang) return null;
@@ -194,17 +195,29 @@ export function getCachedArticleObject(articleId, targetLang) {
     if (raw) {
       const parsed = JSON.parse(raw);
       // Validate that content is real and not a legacy scraper error string
-      if (
-        !parsed ||
+      const hasError = !parsed ||
         typeof parsed.content !== 'string' ||
         parsed.content.includes('QUERY LENGTH') ||
         parsed.content.includes('MAX ALLOWED QUERY') ||
         parsed.content.includes('MYMEMORY') ||
-        (parsed.title && parsed.title.includes('QUERY LENGTH'))
-      ) {
+        parsed.content.includes('[object Object]') ||
+        (parsed.title && parsed.title.includes('QUERY LENGTH'));
+
+      if (hasError) {
         localStorage.removeItem(key);
         return null;
       }
+
+      // False-positive script validator:
+      // If target is English ('en'), content must not be majority Devanagari script (stale Hindi fallback)
+      if (targetLang === 'en' && parsed.content.length > 50) {
+        const devanagariCount = (parsed.content.match(/[\u0900-\u097F]/g) || []).length;
+        if (devanagariCount > (parsed.content.length * 0.4)) {
+          localStorage.removeItem(key);
+          return null;
+        }
+      }
+
       return parsed;
     }
   } catch (e) {}
@@ -212,11 +225,30 @@ export function getCachedArticleObject(articleId, targetLang) {
 }
 
 /**
+ * Task 33 Subtopic C: Purge any legacy poisoned or corrupted translation caches from LocalStorage
+ */
+export function purgeCorruptedTranslationCache() {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('ps_art_obj_') || k.startsWith('ps_trans_'))) {
+        const val = localStorage.getItem(k);
+        if (!val || val.includes('QUERY LENGTH') || val.includes('MYMEMORY') || val.includes('[object Object]')) {
+          keysToRemove.push(k);
+        }
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+}
+
+/**
  * Helper to cache a translated article object to LocalStorage.
  */
 export function cacheArticleObject(articleId, targetLang, translatedArticle) {
   if (!articleId || !targetLang || !translatedArticle) return;
-  if (translatedArticle.content && translatedArticle.content.includes('QUERY LENGTH')) return;
+  if (translatedArticle.content && (translatedArticle.content.includes('QUERY LENGTH') || translatedArticle.content.includes('[object Object]'))) return;
   try {
     localStorage.setItem(`ps_art_obj_${articleId}_${targetLang}`, JSON.stringify(translatedArticle));
   } catch (e) {}
@@ -224,6 +256,7 @@ export function cacheArticleObject(articleId, targetLang, translatedArticle) {
 
 /**
  * Translates an article object (title, sub_title, summary, category, and optionally content).
+ * Task 33 Subtopic B: Translates summary and highlights in unified payload
  */
 export async function translateArticle(article, targetLang, options = { includeContent: true }) {
   const sourceLang = (article?.originalLanguage || 'hi').toLowerCase();
@@ -239,7 +272,7 @@ export async function translateArticle(article, targetLang, options = { includeC
   }
 
   try {
-    // Unified Fast Backend Gemini Translation Call (Translates Title, Highlights & Body in 1 API Call)
+    // Unified Fast Backend Gemini Translation Call (Translates Title, Summary, Highlights & Body in 1 API Call)
     const backendRes = await fetchWithTimeout(BACKEND_TRANSLATE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -248,6 +281,8 @@ export async function translateArticle(article, targetLang, options = { includeC
         lang: targetLang,
         source_lang: sourceLang,
         title: article.title,
+        summary: article.summary || '',
+        sub_title: article.sub_title || '',
         highlights: Array.isArray(article.highlights) ? article.highlights : [],
         body: includeContent ? article.content : ''
       })
@@ -260,9 +295,11 @@ export async function translateArticle(article, targetLang, options = { includeC
           ...article,
           title: backendData.title || article.title,
           content: backendData.body || article.content,
-          highlights: Array.isArray(backendData.highlights) ? backendData.highlights : (article.highlights || []),
-          summary: article.summary,
-          sub_title: article.sub_title,
+          highlights: Array.isArray(backendData.highlights) && backendData.highlights.length > 0
+            ? backendData.highlights
+            : (article.highlights || []),
+          summary: backendData.summary || (Array.isArray(backendData.highlights) && backendData.highlights[0]) || article.summary,
+          sub_title: backendData.sub_title || (Array.isArray(backendData.highlights) && backendData.highlights[1] ? backendData.highlights[1] : article.sub_title),
           originalLanguage: article.originalLanguage || 'hi',
           currentLanguage: targetLang
         };
@@ -280,30 +317,87 @@ export async function translateArticle(article, targetLang, options = { includeC
 }
 
 /**
- * Translates ONLY the titles/headlines of articles for ultra-fast front-page rendering.
+ * Translates headlines and summaries of front-page articles using a single,
+ * ultra-fast, quota-protected batch call or pre-translated disk cache.
+ * Eliminates naive 51-request client loops and protects Cloudflare Worker limits.
  */
 export async function translateHeadlinesOnly(articles, targetLang) {
   if (!Array.isArray(articles) || articles.length === 0) {
     return articles;
   }
 
-  return Promise.all(
-    articles.map(async art => {
-      const sourceLang = (art.originalLanguage || 'hi').toLowerCase();
-      if (targetLang === sourceLang) return art;
+  const normalizedTarget = (targetLang || 'hi').toLowerCase();
+  const sourceLang = (articles[0]?.originalLanguage || 'hi').toLowerCase();
+  if (normalizedTarget === sourceLang) return articles;
 
-      const articleId = art.id || art.slug;
-      const cached = getCachedArticleObject(articleId, targetLang);
-      if (cached && cached.title) {
-        return { ...art, title: cached.title };
+  // 1. Single Fast Request: Retrieve pre-translated articles from backend cache (0ms, 0 AI calls)
+  try {
+    const res = await fetch(`/api/articles?lang=${encodeURIComponent(normalizedTarget)}`);
+    if (res.ok) {
+      const backendArticles = await res.json();
+      if (Array.isArray(backendArticles) && backendArticles.length > 0) {
+        const backendMap = new Map(backendArticles.map(a => [String(a.id), a]));
+        let merged = articles.map(art => {
+          const preTrans = backendMap.get(String(art.id));
+          if (preTrans && preTrans.title && preTrans.title !== art.title) {
+            return {
+              ...art,
+              title: preTrans.title,
+              summary: preTrans.summary || art.summary,
+              sub_title: preTrans.sub_title || art.sub_title
+            };
+          }
+          return art;
+        });
+
+        // 2. Identify top visible stories (max 10) that still need translation
+        const uncachedVisible = merged.slice(0, 10).filter(art => {
+          const preTrans = backendMap.get(String(art.id));
+          // If title didn't change and originalLanguage doesn't match target, it needs translation
+          return (!preTrans || preTrans.title === art.title) && (art.originalLanguage || 'hi').toLowerCase() !== normalizedTarget;
+        });
+
+        // 3. If uncached visible stories exist, translate them in 1 single Gemini batch call
+        if (uncachedVisible.length > 0) {
+          try {
+            const batchRes = await fetch('/api/translate/batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                items: uncachedVisible.map(a => ({ id: a.id, title: a.title, summary: a.summary || '' })),
+                targetLang: normalizedTarget,
+                source_lang: sourceLang
+              })
+            });
+            if (batchRes.ok) {
+              const batchData = await batchRes.json();
+              if (batchData && Array.isArray(batchData.items)) {
+                const batchMap = new Map(batchData.items.map(it => [String(it.id), it]));
+                merged = merged.map(art => {
+                  const bItem = batchMap.get(String(art.id));
+                  if (bItem && bItem.title) {
+                    return {
+                      ...art,
+                      title: bItem.title,
+                      summary: bItem.summary || art.summary
+                    };
+                  }
+                  return art;
+                });
+              }
+            }
+          } catch (batchErr) {
+            console.warn('[Batch Translation Request Error]:', batchErr.message);
+          }
+        }
+
+        return merged;
       }
-      try {
-        const translatedTitle = await translateText(art.title, targetLang, sourceLang);
-        return { ...art, title: translatedTitle || art.title };
-      } catch (e) {
-        return art;
-      }
-    })
-  );
+    }
+  } catch (e) {
+    console.warn('[Fetch Pre-translated Articles Error]:', e.message);
+  }
+
+  return articles;
 }
 

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Sun, Moon, Search, UserCheck, Flame, Newspaper, 
-  ShieldCheck, PenTool, CheckCircle, Settings, Languages, Bookmark, Menu, X, CloudSun, Play, Pause, Calendar, ChevronRight
+  ShieldCheck, PenTool, CheckCircle, Settings, Languages, Bookmark, Menu, X, Play, Pause, Calendar, ChevronRight, Lock, LogOut
 } from 'lucide-react';
-import { MOCK_CATEGORIES, MOCK_BREAKING_NEWS } from '../../services/mockData';
+import { DEFAULT_NEWSROOM_CATEGORIES } from '../../services/taxonomyService';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
 import { t, translateCategoryName } from '../../services/uiTranslations';
 
@@ -19,18 +19,24 @@ export default function Header({
   currentLanguage,
   onLanguageChange,
   isTranslating,
-  categories = MOCK_CATEGORIES,
+  categories = DEFAULT_NEWSROOM_CATEGORIES,
   articles = [],
-  onOpenSavedDrawer
+  onOpenSavedDrawer,
+  onOpenStaffLogin,
+  onStaffLogout,
+  staffName = '',
+  onOpenSearchDrawer
 }) {
   const breakingItems = useMemo(() => {
     const fromArticles = (articles || []).filter(a => a.is_breaking).map(a => a.title);
-    return fromArticles.length > 0 ? fromArticles : MOCK_BREAKING_NEWS;
+    if (fromArticles.length > 0) return fromArticles;
+    // Fallback to top published headlines (Rule 6 compliant - real stories only)
+    return (articles || []).filter(a => a.status === 'published').slice(0, 3).map(a => a.title);
   }, [articles]);
 
   // Public category filter: Only display categories with >= 1 published article (prevents AdSense empty category rejection)
   const populatedCategories = useMemo(() => {
-    const rawCategories = categories || MOCK_CATEGORIES;
+    const rawCategories = categories && categories.length > 0 ? categories : DEFAULT_NEWSROOM_CATEGORIES;
     return rawCategories.filter(cat => {
       return (articles || []).some(art => 
         art.status === 'published' && 
@@ -44,17 +50,6 @@ export default function Header({
   const [isTickerPlaying, setIsTickerPlaying] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSticky, setIsSticky] = useState(false);
-  const [weather, setWeather] = useState({ temperature: '28°C', location: 'Delhi NCR' });
-
-  // Fetch dynamic weather data from backend API
-  useEffect(() => {
-    fetch('/api/weather')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.temperature) setWeather(data);
-      })
-      .catch(err => console.warn('[Weather API] Offline fallback:', err));
-  }, []);
 
   // Sticky header on scroll detection (triggers as soon as masthead-top scrolls away)
   useEffect(() => {
@@ -83,7 +78,23 @@ export default function Header({
     return () => clearInterval(timer);
   }, [handleNextTicker, isTickerPlaying]);
 
-  const currentDate = new Date().toLocaleDateString('en-IN', {
+  const dateLocaleMap = {
+    hi: 'hi-IN',
+    en: 'en-IN',
+    bn: 'bn-IN',
+    mr: 'mr-IN',
+    te: 'te-IN',
+    ta: 'ta-IN',
+    gu: 'gu-IN',
+    kn: 'kn-IN',
+    ml: 'ml-IN',
+    pa: 'pa-IN',
+    or: 'or-IN',
+    as: 'as-IN',
+    ur: 'ur-IN'
+  };
+  const activeDateLocale = dateLocaleMap[currentLanguage] || (currentLanguage ? `${currentLanguage}-IN` : 'hi-IN');
+  const currentDate = new Date().toLocaleDateString(activeDateLocale, {
     weekday: 'short',
     year: 'numeric',
     month: 'short',
@@ -155,7 +166,7 @@ export default function Header({
 
             {/* Quick Search */}
             <button 
-              onClick={() => onNavigate('search')} 
+              onClick={() => onOpenSearchDrawer ? onOpenSearchDrawer() : onNavigate('search')} 
               className="mobile-action-icon"
               title={t('search', currentLanguage)}
               aria-label="Search"
@@ -169,9 +180,9 @@ export default function Header({
               className="mobile-action-icon"
               title={t('savedBookmarks', currentLanguage)}
               aria-label="Open Saved Stories"
-              style={{ color: '#f59e0b' }}
+              style={{ color: 'var(--accent-crimson)' }}
             >
-              <Bookmark size={15} fill="#f59e0b" color="#f59e0b" />
+              <Bookmark size={15} fill="var(--accent-crimson)" color="var(--accent-crimson)" />
             </button>
 
             {/* Dark / Light Toggle */}
@@ -181,7 +192,7 @@ export default function Header({
               title="Toggle Dark/Light Mode"
               aria-label="Toggle Theme"
             >
-              {theme === 'dark' ? <Sun size={15} color="#F59E0B" /> : <Moon size={15} />}
+              {theme === 'dark' ? <Sun size={15} color="var(--accent-crimson)" /> : <Moon size={15} />}
             </button>
           </div>
         </div>
@@ -193,9 +204,6 @@ export default function Header({
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.8rem' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
               <Calendar size={13} color="var(--text-subtle)" /> {currentDate}
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', color: 'var(--accent-amber)', fontWeight: '700' }}>
-              <CloudSun size={15} /> {weather.temperature} {weather.location}
             </span>
             <span className="hide-on-mobile" style={{ color: 'var(--accent-emerald)', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
               <ShieldCheck size={14} /> {t('factChecked', currentLanguage)}
@@ -252,50 +260,84 @@ export default function Header({
               </select>
             </div>
 
-            {/* Institutional Newsroom Staff Access (Desktop) */}
-            <div className="hide-on-mobile" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'var(--bg-secondary)', padding: '0.25rem 0.55rem', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', border: '1px solid var(--border-light)' }}>
-              <UserCheck size={13} color={currentRole === 'visitor' ? 'var(--text-subtle)' : 'var(--accent-indigo)'} />
-              <select 
-                value={currentRole} 
-                onChange={(e) => onRoleChange(e.target.value)}
-                title="Staff & Editorial Desks"
-                aria-label="Staff & Editorial Desks"
-                style={{ background: 'transparent', border: 'none', fontWeight: '700', color: currentRole === 'visitor' ? 'var(--text-subtle)' : 'var(--text-main)', cursor: 'pointer', outline: 'none', fontSize: '0.75rem' }}
+            {/* Discrete Broadsheet Active Session Badge (Desktop: Only shown when logged in, keeping visitor masthead 100% clean) */}
+            {currentRole === 'visitor' ? null : (
+              <div
+                className="hide-on-mobile"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  background: 'rgba(185, 28, 28, 0.08)',
+                  padding: '0.25rem 0.6rem',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.75rem',
+                  border: '1px solid rgba(185, 28, 28, 0.25)'
+                }}
               >
-                <option value="visitor">{t('readerView', currentLanguage)}</option>
-                <option value="reporter">{t('reporterDesk', currentLanguage)}</option>
-                <option value="editor">{t('editorDesk', currentLanguage)}</option>
-                <option value="admin">{t('newsroomMgmt', currentLanguage)}</option>
-              </select>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => onNavigate(currentRole === 'developer' ? 'developer' : currentRole)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.1rem 0.25rem',
+                    borderRadius: '4px',
+                    font: 'inherit'
+                  }}
+                  title={`Open ${currentRole.toUpperCase()} Newsroom Workspace Desk`}
+                >
+                  <ShieldCheck size={13} color="var(--accent-crimson)" />
+                  <span style={{ fontWeight: '800', color: 'var(--accent-crimson)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {currentRole}
+                  </span>
+                  {staffName && (
+                    <span style={{ color: 'var(--text-subtle)', fontSize: '0.72rem' }}>
+                      ({staffName})
+                    </span>
+                  )}
+                  <span style={{ fontSize: '0.7rem', color: 'var(--accent-crimson)', fontWeight: '800', marginLeft: '2px' }}>
+                    Desk ↗
+                  </span>
+                </button>
+
+                <div style={{ width: '1px', height: '14px', backgroundColor: 'var(--border-medium)', opacity: 0.5 }} />
+
+                <button
+                  onClick={onStaffLogout}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    minWidth: '32px',
+                    minHeight: '32px',
+                    padding: '0.35rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-subtle)',
+                    borderRadius: '4px'
+                  }}
+                  title="Sign Out of Newsroom"
+                >
+                  <LogOut size={14} />
+                </button>
+              </div>
+            )}
 
             {/* Theme Toggle */}
             <button 
               onClick={onToggleTheme} 
               className="btn btn-outline" 
-              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', minHeight: '32px', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
               title="Toggle Dark/Light Mode"
             >
-              {theme === 'dark' ? <Sun size={14} color="#F59E0B" /> : <Moon size={14} color="#1E293B" />}
+              {theme === 'dark' ? <Sun size={14} color="var(--accent-crimson)" /> : <Moon size={14} color="var(--text-main)" />}
               <span className="hide-on-mobile">{theme === 'dark' ? t('lightMode', currentLanguage) : t('darkMode', currentLanguage)}</span>
-            </button>
-
-            {/* Mobile Hamburger Button */}
-            <button
-              className="mobile-menu-btn"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              style={{
-                display: 'none',
-                background: 'var(--gradient-accent)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                padding: '0.3rem 0.5rem',
-                cursor: 'pointer'
-              }}
-              title="Toggle Menu"
-            >
-              {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
           </div>
         </div>
@@ -356,10 +398,10 @@ export default function Header({
                 className="btn-hover-subtle"
               >
                 <Menu size={18} />
-                <span>{t('allNews', currentLanguage) || 'Sections'}</span>
+                <span>{t('allCategories', currentLanguage) || 'Sections'}</span>
               </button>
               <button
-                onClick={() => onNavigate('search')}
+                onClick={() => onOpenSearchDrawer ? onOpenSearchDrawer() : onNavigate('search')}
                 title={t('search', currentLanguage)}
                 style={{
                   background: 'transparent',
@@ -420,56 +462,6 @@ export default function Header({
             >
               {t('tagline', currentLanguage)}
             </div>
-
-            {/* Right Quick Actions (Snappy fade and slide) */}
-            <div 
-              style={{ 
-                position: 'absolute', 
-                right: '1.25rem', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '0.45rem',
-                zIndex: 2,
-                opacity: isSticky ? 1 : 0,
-                transform: isSticky ? 'translateX(0)' : 'translateX(8px)',
-                pointerEvents: isSticky ? 'auto' : 'none',
-                transition: 'opacity 0.2s ease, transform 0.2s ease'
-              }}
-            >
-              {/* Quick Language Pill */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', background: 'var(--accent-crimson-bg)', padding: '0.2rem 0.45rem', borderRadius: '4px', border: '1px solid var(--accent-crimson)' }}>
-                <Languages size={12} color="var(--accent-crimson)" />
-                <select 
-                  value={currentLanguage} 
-                  onChange={(e) => onLanguageChange(e.target.value)}
-                  style={{ background: 'transparent', border: 'none', fontWeight: '800', color: 'var(--accent-crimson)', cursor: 'pointer', fontSize: '0.72rem', outline: 'none' }}
-                >
-                  {SUPPORTED_LANGUAGES.map(l => (
-                    <option key={l.code} value={l.code}>{l.code.toUpperCase()}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Theme Toggle Button */}
-              <button
-                onClick={onToggleTheme}
-                title="Toggle Dark/Light Mode"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid var(--border-medium)',
-                  color: 'var(--text-main)',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '0.3rem 0.45rem',
-                  borderRadius: 'var(--radius-sm)',
-                  transition: 'background 0.2s ease'
-                }}
-                className="btn-hover-subtle"
-              >
-                {theme === 'dark' ? <Sun size={14} color="#F59E0B" /> : <Moon size={14} color="#1E293B" />}
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -484,17 +476,17 @@ export default function Header({
         <div className={`ticker-content ${isFading ? 'fade-out' : ''}`}>
           {breakingItems[tickerIndex % breakingItems.length]}
         </div>
-        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
           <button 
             onClick={() => setIsTickerPlaying(!isTickerPlaying)}
-            style={{ background: 'rgba(255,255,255,0.2)', color: 'white', padding: '0.15rem 0.4rem', borderRadius: '4px', fontSize: '0.75rem', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+            style={{ background: 'rgba(255,255,255,0.2)', color: 'white', minHeight: '28px', minWidth: '28px', padding: '0.2rem 0.45rem', borderRadius: '4px', fontSize: '0.75rem', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
             title={isTickerPlaying ? 'Pause Ticker' : 'Play Ticker'}
           >
             {isTickerPlaying ? <Pause size={12} /> : <Play size={12} />}
           </button>
           <button 
             onClick={handleNextTicker}
-            style={{ background: 'rgba(255,255,255,0.2)', color: 'white', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer', border: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
+            style={{ background: 'rgba(255,255,255,0.2)', color: 'white', minHeight: '28px', padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}
           >
             <span>{t('next', currentLanguage)}</span>
             <ChevronRight size={12} />
@@ -508,24 +500,31 @@ export default function Header({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden', flex: 1 }}>
             {/* Dedicated Bookmark Button */}
             <button 
-              onClick={() => { onSelectCategory('bookmarks'); onNavigate('home'); }}
+              onClick={() => {
+                if (onOpenSavedDrawer) {
+                  onOpenSavedDrawer();
+                } else {
+                  onSelectCategory('bookmarks');
+                  onNavigate('home');
+                }
+              }}
               title={t('savedBookmarks', currentLanguage)}
               style={{
-                background: activeCategory === 'bookmarks' ? '#f59e0b' : 'rgba(245, 158, 11, 0.15)',
-                color: activeCategory === 'bookmarks' ? '#ffffff' : '#d97706',
-                border: '1.5px solid #f59e0b',
+                background: activeCategory === 'bookmarks' ? 'var(--accent-crimson)' : 'var(--accent-crimson-bg)',
+                color: activeCategory === 'bookmarks' ? '#ffffff' : 'var(--accent-crimson)',
+                border: '1.5px solid var(--accent-crimson)',
                 borderRadius: '8px',
                 padding: '0.4rem 0.65rem',
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                boxShadow: activeCategory === 'bookmarks' ? '0 2px 8px rgba(245, 158, 11, 0.4)' : 'none',
+                boxShadow: activeCategory === 'bookmarks' ? '0 2px 8px rgba(184, 29, 19, 0.35)' : 'none',
                 transition: 'all 0.2s ease',
                 flexShrink: 0
               }}
             >
-              <Bookmark size={16} fill={activeCategory === 'bookmarks' ? '#ffffff' : 'none'} color={activeCategory === 'bookmarks' ? '#ffffff' : '#f59e0b'} />
+              <Bookmark size={16} fill={activeCategory === 'bookmarks' ? '#ffffff' : 'none'} color={activeCategory === 'bookmarks' ? '#ffffff' : 'var(--accent-crimson)'} />
             </button>
 
             <div style={{ width: '1px', height: '22px', backgroundColor: 'var(--border-medium)', opacity: 0.6, flexShrink: 0 }} />
@@ -552,7 +551,7 @@ export default function Header({
           </div>
 
           <button 
-            onClick={() => onNavigate('search')} 
+            onClick={() => onOpenSearchDrawer ? onOpenSearchDrawer() : onNavigate('search')} 
             className="btn btn-outline" 
             style={{ padding: '0.35rem 0.75rem', fontSize: '0.825rem', flexShrink: 0 }}
           >
@@ -585,41 +584,65 @@ export default function Header({
               </button>
             </div>
 
-            {/* Quick Workspace Switcher for Newsroom & Readers */}
+            {/* Staff Access & Workspaces in Mobile Drawer */}
             <div>
               <label style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.5rem' }}>
-                Workspace & Desks
+                Newsroom Access
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.4rem' }}>
+              {currentRole === 'visitor' ? (
                 <button
-                  onClick={() => { onRoleChange('visitor'); onNavigate('home'); setIsMobileMenuOpen(false); }}
-                  className={`btn ${currentRole === 'visitor' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
+                  onClick={() => { setIsMobileMenuOpen(false); onOpenStaffLogin(); }}
+                  className="btn btn-outline"
+                  style={{ width: '100%', justifyContent: 'flex-start', padding: '0.6rem 0.75rem', fontSize: '0.85rem', borderColor: 'var(--accent-crimson)', color: 'var(--accent-crimson)' }}
                 >
-                  <Newspaper size={15} /> {t('readerView', currentLanguage)}
+                  <Lock size={15} /> Staff Access Login
                 </button>
-                <button
-                  onClick={() => { onRoleChange('reporter'); onNavigate('reporter'); setIsMobileMenuOpen(false); }}
-                  className={`btn ${currentRole === 'reporter' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
-                >
-                  <PenTool size={15} /> {t('reporterDesk', currentLanguage)}
-                </button>
-                <button
-                  onClick={() => { onRoleChange('editor'); onNavigate('editor'); setIsMobileMenuOpen(false); }}
-                  className={`btn ${currentRole === 'editor' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
-                >
-                  <CheckCircle size={15} /> {t('editorDesk', currentLanguage)}
-                </button>
-                <button
-                  onClick={() => { onRoleChange('admin'); onNavigate('admin'); setIsMobileMenuOpen(false); }}
-                  className={`btn ${currentRole === 'admin' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
-                >
-                  <Settings size={15} /> {t('newsroomMgmt', currentLanguage)}
-                </button>
-              </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(185, 28, 28, 0.08)', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <ShieldCheck size={14} color="var(--accent-crimson)" />
+                      <span style={{ fontWeight: 800, fontSize: '0.8rem', color: 'var(--accent-crimson)', textTransform: 'uppercase' }}>
+                        {currentRole}
+                      </span>
+                      {staffName && <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>({staffName})</span>}
+                    </div>
+                    <button
+                      onClick={() => { setIsMobileMenuOpen(false); onStaffLogout(); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', padding: '4px' }}
+                    >
+                      <LogOut size={14} />
+                    </button>
+                  </div>
+                  {currentRole === 'reporter' && (
+                    <button
+                      onClick={() => { onNavigate('reporter'); setIsMobileMenuOpen(false); }}
+                      className="btn btn-primary"
+                      style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
+                    >
+                      <PenTool size={15} /> {t('reporterDesk', currentLanguage)}
+                    </button>
+                  )}
+                  {currentRole === 'editor' && (
+                    <button
+                      onClick={() => { onNavigate('editor'); setIsMobileMenuOpen(false); }}
+                      className="btn btn-primary"
+                      style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
+                    >
+                      <CheckCircle size={15} /> {t('editorDesk', currentLanguage)}
+                    </button>
+                  )}
+                  {(currentRole === 'admin' || currentRole === 'developer') && (
+                    <button
+                      onClick={() => { onNavigate('admin'); setIsMobileMenuOpen(false); }}
+                      className="btn btn-primary"
+                      style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
+                    >
+                      <Settings size={15} /> {t('newsroomMgmt', currentLanguage)}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Mobile Categories */}
@@ -636,9 +659,17 @@ export default function Header({
                   {t('topStories', currentLanguage)}
                 </button>
                 <button
-                  onClick={() => { onSelectCategory('bookmarks'); onNavigate('home'); setIsMobileMenuOpen(false); }}
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    if (onOpenSavedDrawer) {
+                      onOpenSavedDrawer();
+                    } else {
+                      onSelectCategory('bookmarks');
+                      onNavigate('home');
+                    }
+                  }}
                   className={`btn ${activeCategory === 'bookmarks' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ justifyContent: 'flex-start', width: '100%', padding: '0.45rem 0.75rem', fontSize: '0.825rem', borderColor: '#f59e0b', color: activeCategory === 'bookmarks' ? '#fff' : '#d97706' }}
+                  style={{ justifyContent: 'flex-start', width: '100%', padding: '0.45rem 0.75rem', fontSize: '0.825rem', borderColor: activeCategory === 'bookmarks' ? 'var(--accent-crimson)' : 'var(--border-medium)', color: activeCategory === 'bookmarks' ? '#fff' : 'var(--text-main)' }}
                 >
                   <Bookmark size={15} /> {t('savedBookmarks', currentLanguage)}
                 </button>
@@ -657,7 +688,7 @@ export default function Header({
 
             {/* Bottom Drawer Meta */}
             <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-              <div>{currentDate} • {weather.temperature}</div>
+              <div>{currentDate}</div>
             </div>
           </div>
         </div>

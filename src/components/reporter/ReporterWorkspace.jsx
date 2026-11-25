@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { PenTool, FileText, Send, CheckCircle, Clock, AlertCircle, Image as ImageIcon, Sparkles, Plus, Trash2, Check, RefreshCw, Languages, Lock, FolderOpen, X, Radio, Edit3, XCircle, ShieldCheck } from 'lucide-react';
-import { MOCK_CATEGORIES } from '../../services/mockData';
+import { PenTool, FileText, Send, CheckCircle, Clock, AlertCircle, Image as ImageIcon, Sparkles, Plus, Trash2, Check, RefreshCw, Languages, Lock, FolderOpen, X, Radio, Edit3, XCircle, ShieldCheck, UserCheck } from 'lucide-react';
+import { DEFAULT_NEWSROOM_CATEGORIES } from '../../services/taxonomyService';
 import { compressImageToWebP } from '../../services/mediaService';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
+import { getSessionStaffName, getSessionStaffEmail } from '../../services/authClient';
 import MediaLibraryDesk from '../admin/MediaLibraryDesk';
 
 export default function ReporterWorkspace({ 
@@ -11,12 +12,20 @@ export default function ReporterWorkspace({
   onResubmitArticle,
   pendingArticles = [],
   rejectedArticles = [],
-  publishedArticles = []
+  publishedArticles = [],
+  staffName: propStaffName,
+  staffEmail: propStaffEmail
 }) {
-  const activeCategories = categories && categories.length > 0 ? categories : MOCK_CATEGORIES;
+  const activeCategories = categories && categories.length > 0 ? categories : DEFAULT_NEWSROOM_CATEGORIES;
   const [activeTab, setActiveTab] = useState('create');
   
-  const DRAFT_KEY = 'ps_reporter_draft_v1';
+  // Reporter Identity & Story Isolation (Task 17 Subtopic 17.3)
+  const effectiveEmail = (propStaffEmail || getSessionStaffEmail() || 'reporter@publicspark.in').toLowerCase().trim();
+  const effectiveName = (propStaffName || getSessionStaffName() || 'राजेश कुमार (Field Reporter)').trim();
+
+  // Storage keys isolated per reporter email preventing cross-account leakage
+  const DRAFT_KEY = `ps_reporter_draft_${effectiveEmail.replace(/[^a-z0-9]/g, '_')}`;
+  const STORAGE_KEY = `ps_reporter_my_stories_${effectiveEmail.replace(/[^a-z0-9]/g, '_')}`;
 
   // Restore saved draft on initialization if available
   const initialDraft = (() => {
@@ -175,25 +184,41 @@ export default function ReporterWorkspace({
   const [editingStoryId, setEditingStoryId] = useState(null);
   const [rejectionNotice, setRejectionNotice] = useState('');
 
-  // Submissions list with LocalStorage persistence
+  // Helper: Strictly verify if story belongs to this authenticated reporter (Task 17 Subtopic 17.3)
+  const belongsToMe = (story) => {
+    if (!story) return false;
+    const authorEmail = story.author?.email?.toLowerCase()?.trim();
+    if (authorEmail) {
+      return authorEmail === effectiveEmail;
+    }
+    // Fallback for legacy stories without author.email: match by author.name
+    const authorName = story.author?.name?.toLowerCase()?.trim();
+    if (authorName && effectiveName) {
+      return authorName === effectiveName.toLowerCase();
+    }
+    return false;
+  };
+
+  // Submissions list with per-reporter LocalStorage persistence
   const [myStories, setMyStories] = useState(() => {
     try {
-      const raw = localStorage.getItem('ps_reporter_my_stories_v1');
-      return raw ? JSON.parse(raw) : [
-        {
-          id: 'my-1',
-          title: 'ISRO का नया कीर्तिमान: स्वदेशी उपग्रह प्रणाली स्थापित',
-          category: 'Science & Environment',
-          status: 'published',
-          updated_at: 'आज, 14:20 IST'
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(s => {
+            const email = s.author?.email?.toLowerCase()?.trim();
+            return !email || email === effectiveEmail;
+          });
         }
-      ];
+      }
+      return [];
     } catch {
       return [];
     }
   });
 
-  // Keep myStories synchronized with App-level status changes (Rejection, Approval/Publishing, Review queue)
+  // Keep myStories synchronized strictly with articles authored by THIS reporter
   const isFirstSyncRef = useRef(true);
   useEffect(() => {
     if (isFirstSyncRef.current) {
@@ -204,9 +229,15 @@ export default function ReporterWorkspace({
     }
     setMyStories(prevStories => {
       let hasChanges = false;
-      const updated = prevStories.map(story => {
+      // Filter out any leaked stories from other reporters
+      const filteredPrev = prevStories.filter(belongsToMe);
+      if (filteredPrev.length !== prevStories.length) {
+        hasChanges = true;
+      }
+
+      const updated = filteredPrev.map(story => {
         // 1. Check if rejected by editor
-        const rejectedMatch = rejectedArticles.find(r => r.id === story.id);
+        const rejectedMatch = rejectedArticles.find(r => r.id === story.id && belongsToMe(r));
         if (rejectedMatch) {
           if (story.status !== 'rejected' || story.rejection_reason !== rejectedMatch.rejection_reason) {
             hasChanges = true;
@@ -221,7 +252,7 @@ export default function ReporterWorkspace({
         }
 
         // 2. Check if published
-        const publishedMatch = publishedArticles.find(p => p.id === story.id);
+        const publishedMatch = publishedArticles.find(p => p.id === story.id && belongsToMe(p));
         if (publishedMatch) {
           if (story.status !== 'published') {
             hasChanges = true;
@@ -236,7 +267,7 @@ export default function ReporterWorkspace({
         }
 
         // 3. Check if pending review
-        const pendingMatch = pendingArticles.find(p => p.id === story.id);
+        const pendingMatch = pendingArticles.find(p => p.id === story.id && belongsToMe(p));
         if (pendingMatch) {
           if (story.status !== 'pending') {
             hasChanges = true;
@@ -253,9 +284,9 @@ export default function ReporterWorkspace({
         return story;
       });
 
-      // Ensure any rejected article is present in reporter's desk list
+      // Ensure any rejected article belonging to THIS reporter is present in reporter's desk list
       rejectedArticles.forEach(rej => {
-        if (!updated.some(s => s.id === rej.id)) {
+        if (belongsToMe(rej) && !updated.some(s => s.id === rej.id)) {
           updated.unshift({
             ...rej,
             status: 'rejected',
@@ -265,15 +296,26 @@ export default function ReporterWorkspace({
         }
       });
 
+      // Ensure any pending article belonging to THIS reporter is present
+      pendingArticles.forEach(pend => {
+        if (belongsToMe(pend) && !updated.some(s => s.id === pend.id)) {
+          updated.unshift({
+            ...pend,
+            status: 'pending'
+          });
+          hasChanges = true;
+        }
+      });
+
       return hasChanges ? updated : prevStories;
     });
-  }, [rejectedArticles, pendingArticles, publishedArticles]);
+  }, [rejectedArticles, pendingArticles, publishedArticles, effectiveEmail, effectiveName]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('ps_reporter_my_stories_v1', JSON.stringify(myStories));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(myStories));
     } catch(e) {}
-  }, [myStories]);
+  }, [myStories, STORAGE_KEY]);
 
   // Image Upload Processing
   const handleImageChange = async (e) => {
@@ -470,18 +512,19 @@ export default function ReporterWorkspace({
       live_status: format === 'live' ? liveStatus : null,
       live_updates: [],
       video_url: videoUrl.trim() || null,
-      featured_image: imagePreview || 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=1200&q=80',
+      featured_image: imagePreview || '',
       image_caption: imageCaption || title,
       media_credits: mediaCredits || 'PublicSpark Bureau',
       author: {
-        name: 'संवाददाता (Staff Reporter)',
+        name: effectiveName,
+        email: effectiveEmail,
         role: 'Field Reporter',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
+        avatar: ''
       },
       status: 'pending', // SENT TO EDITOR DESK FOR EDITORIAL REVIEW
       rejection_reason: null,
       is_breaking: false,
-      views_count: 1,
+      views_count: 0,
       reading_time_mins: Math.max(1, Math.ceil(content.length / 500)),
       published_at: 'Just now',
       fact_check: {
@@ -544,7 +587,7 @@ export default function ReporterWorkspace({
     <div className="container" style={{ padding: '2rem 1.25rem' }}>
       {/* Reporter Desk Header */}
       <div className="workspace-header" style={{ padding: '1.25rem', borderRadius: 'var(--radius-md)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
           <div>
             <h2 className="workspace-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <PenTool color="var(--accent-crimson)" /> Writer Desk (समाचार लेखन)
@@ -553,21 +596,50 @@ export default function ReporterWorkspace({
               सरल फ़ॉर्म: हेडलाइन, बॉडी, फ़ोटो (कैप्शन व क्रेडिट), कैटेगरी और टैग्स भरें।
             </p>
           </div>
-          <div style={{ background: '#FEF3C7', color: '#92400E', padding: '0.4rem 0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <Clock size={14} /> Workflow: Reporter → Editor Desk Review → Live
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+            {/* Verified Reporter Byline Tag */}
+            <div style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-medium)',
+              padding: '0.4rem 0.85rem',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <UserCheck size={15} style={{ color: 'var(--accent-emerald)' }} />
+              <span>
+                <strong>{effectiveName}</strong> ({effectiveEmail})
+              </span>
+              <span style={{
+                background: 'rgba(16, 185, 129, 0.12)',
+                color: 'var(--accent-emerald)',
+                fontSize: '0.7rem',
+                fontWeight: '800',
+                padding: '0.1rem 0.4rem',
+                borderRadius: '4px'
+              }}>
+                Byline Auto-Attributed
+              </span>
+            </div>
+
+            <div style={{ background: '#FEF3C7', color: '#92400E', padding: '0.4rem 0.8rem', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Clock size={14} /> Workflow: Reporter → Editor Review → Live
+            </div>
           </div>
         </div>
       </div>
 
       {hasDraftRestored && (
-        <div style={{ background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem', fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: 'var(--accent-indigo-bg, rgba(99, 102, 241, 0.12))', color: 'var(--accent-indigo)', border: '1px solid var(--accent-indigo)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.25rem', fontSize: '0.875rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: '600' }}>
-            <Clock size={16} color="#2563EB" /> आपका पिछला अनसेव्ड ड्राफ्ट सुरक्षित है और रीस्टोर कर लिया गया है।
+            <Clock size={16} color="var(--accent-indigo)" /> आपका पिछला अनसेव्ड ड्राफ्ट सुरक्षित है और रीस्टोर कर लिया गया है।
           </span>
           <button
             type="button"
             onClick={handleDiscardDraft}
-            style={{ background: 'transparent', border: 'none', color: '#DC2626', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '800', textDecoration: 'underline' }}
+            style={{ background: 'transparent', border: 'none', color: 'var(--accent-crimson)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '800', textDecoration: 'underline' }}
           >
             ड्राफ्ट हटाएं (Discard)
           </button>
@@ -575,7 +647,7 @@ export default function ReporterWorkspace({
       )}
 
       {statusMessage && (
-        <div style={{ background: '#ECFDF5', color: 'var(--accent-emerald)', border: '1px solid var(--accent-emerald)', padding: '1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div style={{ background: 'var(--accent-emerald-bg, rgba(16, 185, 129, 0.12))', color: 'var(--accent-emerald)', border: '1px solid var(--accent-emerald)', padding: '1rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <CheckCircle size={18} /> {statusMessage}
         </div>
       )}

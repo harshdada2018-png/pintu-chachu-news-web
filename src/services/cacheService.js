@@ -4,13 +4,14 @@
  */
 
 const CACHE_KEYS = {
-  ARTICLES: 'ps_cached_articles_v1',
-  BREAKING: 'ps_cached_breaking_v1',
-  CATEGORIES: 'ps_cached_categories_v1',
-  TIMESTAMP: 'ps_cache_timestamp_v1'
+  ARTICLES: 'ps_cached_articles_v2',
+  BREAKING: 'ps_cached_breaking_v2',
+  CATEGORIES: 'ps_cached_categories_v2',
+  TIMESTAMP: 'ps_cache_timestamp_v2'
 };
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL
+const TEST_ARTICLE_IDS = new Set(['art-1', 'art-2', 'art-3', 'art-4']);
 
 export function getCachedNews() {
   try {
@@ -25,8 +26,13 @@ export function getCachedNews() {
       return null;
     }
 
+    const parsed = JSON.parse(rawArticles);
+    const sanitized = Array.isArray(parsed)
+      ? parsed.filter(a => a && !TEST_ARTICLE_IDS.has(String(a.id)))
+      : [];
+
     return {
-      articles: JSON.parse(rawArticles),
+      articles: sanitized,
       isStale: age > CACHE_TTL_MS / 2
     };
   } catch (err) {
@@ -107,11 +113,18 @@ export function getClientStorageStats() {
   }
 
   const totalBytes = localBytes + sessionBytes;
+  const totalItems = localKeysCount + sessionKeysCount;
+  const formattedSize = totalBytes >= 1048576 
+    ? (totalBytes / (1024 * 1024)).toFixed(2) + ' MB'
+    : (totalBytes / 1024).toFixed(1) + ' KB';
+
   return {
     localKb: (localBytes / 1024).toFixed(2),
     sessionKb: (sessionBytes / 1024).toFixed(2),
     totalMb: (totalBytes / (1024 * 1024)).toFixed(3),
     totalKb: (totalBytes / 1024).toFixed(2),
+    totalItems,
+    formattedSize,
     localKeysCount,
     sessionKeysCount,
     // 5MB is typical browser origin limit for localStorage

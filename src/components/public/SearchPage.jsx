@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Search, Filter, Clock, Eye, ArrowLeft, Newspaper } from 'lucide-react';
-import { MOCK_CATEGORIES } from '../../services/mockData';
+import { DEFAULT_NEWSROOM_CATEGORIES } from '../../services/taxonomyService';
 import { t, translateCategoryName } from '../../services/uiTranslations';
 
 export default function SearchPage({ articles, categories, onSelectArticle, onBack, currentLanguage = 'hi' }) {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
 
-  const activeCategories = categories && categories.length > 0 ? categories : MOCK_CATEGORIES;
+  const activeCategories = categories && categories.length > 0 ? categories : DEFAULT_NEWSROOM_CATEGORIES;
 
   const filteredArticles = articles.filter((art) => {
     const matchesQuery = 
@@ -35,8 +35,8 @@ export default function SearchPage({ articles, categories, onSelectArticle, onBa
       </h2>
 
       {/* Search Bar & Category Filter */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
+      <div className="search-filter-controls">
+        <div style={{ position: 'relative', flex: '1 1 240px' }}>
           <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }} />
           <input 
             type="text" 
@@ -75,17 +75,7 @@ export default function SearchPage({ articles, categories, onSelectArticle, onBa
             <div 
               key={art.id}
               onClick={() => onSelectArticle(art)}
-              style={{ 
-                background: 'var(--bg-surface)', 
-                padding: '1.25rem', 
-                borderRadius: 'var(--radius-md)', 
-                border: '1px solid var(--border-light)', 
-                display: 'grid', 
-                gridTemplateColumns: '140px 1fr', 
-                gap: '1.25rem', 
-                cursor: 'pointer',
-                transition: 'var(--transition-fast)'
-              }}
+              className="search-result-card"
             >
               {art.featured_image ? (
                 <img 

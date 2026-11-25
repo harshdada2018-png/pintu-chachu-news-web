@@ -264,14 +264,17 @@ export async function fetchBackendTtsAudio({ articleId, text, langCode = 'hi' })
   if (!BACKEND_TTS_URL) return null;
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
+    const timer = setTimeout(() => controller.abort(), 15000);
 
     const response = await fetch(BACKEND_TTS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        article_id: String(articleId || ''),
         articleId: String(articleId || ''),
         text: text.slice(0, 3000),
+        title: text.slice(0, 300),
+        lang: langCode,
         langCode
       }),
       signal: controller.signal
@@ -280,8 +283,9 @@ export async function fetchBackendTtsAudio({ articleId, text, langCode = 'hi' })
 
     if (response.ok) {
       const data = await response.json();
-      if (data && data.audioUrl) {
-        return data.audioUrl;
+      const url = data.audio_url || data.audioUrl;
+      if (data && url) {
+        return url;
       }
     }
   } catch (err) {
@@ -292,77 +296,12 @@ export async function fetchBackendTtsAudio({ articleId, text, langCode = 'hi' })
 }
 
 /**
- * Client-side direct Google Translate TTS fallback for offline / standalone mode
+ * Client-side fallback TTS helper:
+ * Avoids direct cross-origin fetches that trigger browser CORS violations.
+ * Audio synthesis is handled securely via the backend /api/tts proxy or native browser Web Speech API.
  */
-async function fetchGoogleTranslateTtsClient(text, langCode) {
-  if (!text || !text.trim()) return null;
-  let targetLang = (langCode || 'hi').split('-')[0];
-  
-  if (targetLang === 'or' || targetLang === 'as') {
-    targetLang = 'bn';
-  }
-
-  const parts = text.replace(/<[^>]*>/g, '').match(/[^.!?\n।;:]+[.!?\n।;:]*|\S+/g) || [text];
-  const chunks = [];
-  let current = '';
-
-  for (const part of parts) {
-    if ((current + ' ' + part).trim().length <= 120) {
-      current = (current + ' ' + part).trim();
-    } else {
-      if (current) chunks.push(current);
-      if (part.length > 120) {
-        for (let i = 0; i < part.length; i += 100) {
-          chunks.push(part.slice(i, i + 100).trim());
-        }
-        current = '';
-      } else {
-        current = part;
-      }
-    }
-  }
-  if (current) chunks.push(current);
-
-  const safeChunks = chunks.filter(c => c && c.trim()).slice(0, 15);
-  if (safeChunks.length === 0) return null;
-
-  try {
-    const buffers = await Promise.all(safeChunks.map(async (chunk) => {
-      try {
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&q=${encodeURIComponent(chunk)}&tl=${encodeURIComponent(targetLang)}`;
-        const res = await fetch(url);
-        if (res.ok) {
-          return await res.arrayBuffer();
-        }
-      } catch (e) {
-        console.warn('[Client TTS Chunk Error]', e);
-      }
-      return new ArrayBuffer(0);
-    }));
-
-    const validBuffers = buffers.filter(b => b.byteLength > 0);
-    if (validBuffers.length === 0) return null;
-
-    const totalLength = validBuffers.reduce((acc, b) => acc + b.byteLength, 0);
-    const combined = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const b of validBuffers) {
-      combined.set(new Uint8Array(b), offset);
-      offset += b.byteLength;
-    }
-
-    let binary = '';
-    const bytes = combined;
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const base64 = btoa(binary);
-    return `data:audio/mp3;base64,${base64}`;
-  } catch (err) {
-    console.warn('[Client TTS Generation Exception]', err);
-    return null;
-  }
+async function fetchGoogleTranslateTtsClient() {
+  return null;
 }
 
 /**
@@ -370,6 +309,17 @@ async function fetchGoogleTranslateTtsClient(text, langCode) {
  */
 export async function playCloudAudioWithCache({ articleId, text, langCode, onStart, onPlay, onEnd, onError, onTimeUpdate, startPosition = 0 }) {
   stopCloudAudio();
+
+  // Crucial: Synchronously prime and unlock Audio element during user interaction gesture
+  const unlockedAudio = new Audio();
+  unlockedAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+  try {
+    const p = unlockedAudio.play();
+    if (p !== undefined) {
+      p.then(() => unlockedAudio.pause()).catch(() => {});
+    }
+  } catch (e) {}
+  currentActiveAudio = unlockedAudio;
 
   if (onStart) onStart();
 
@@ -392,7 +342,7 @@ export async function playCloudAudioWithCache({ articleId, text, langCode, onSta
       throw new Error('Audio generation produced no audio content');
     }
 
-    const audio = new Audio();
+    const audio = currentActiveAudio || unlockedAudio;
     currentActiveAudio = audio;
     audio.src = audioSrc;
     try {

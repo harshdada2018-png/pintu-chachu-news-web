@@ -13,6 +13,50 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import lamejs from '@breezystack/lamejs';
+import {
+  initStaffStore,
+  getStaffList,
+  saveStaffList,
+  hashPassword,
+  verifyPassword,
+  checkLoginRateLimit,
+  recordFailedLogin,
+  clearFailedLogin,
+  generateStaffSessionToken,
+  verifyStaffSessionToken,
+  createOtpForEmail,
+  verifyAndDestroyOtp,
+  updateStaffPassword,
+  updateStaffPasswordWithToken,
+  getSanitizedStaffList,
+  approveStaffMember,
+  updateStaffRole,
+  updateStaffStatus,
+  deleteStaffMember,
+  adminResetStaffPassword,
+  createTemp2faToken,
+  verifyTemp2faToken,
+  getStaff2faStatus,
+  initiate2faSetup,
+  confirm2faSetup,
+  verify2faLogin,
+  revokeStaffSessionToken,
+  checkOtpIpRateLimit,
+  clearAllSecurityLocks,
+  getSecurityDiagnostics
+} from './services/staffAuthService.js';
+import { dispatchOtpEmail } from './services/emailSenderService.js';
+import { sendNewsroomEmail, isEmailConfigured } from './services/emailSenderService.js';
+import {
+  generateNewsroomBackupZip,
+  generateNewsroomBackupZipAsync,
+  listAvailableBackups,
+  getSafeBackupFilePath,
+  deleteBackupFile,
+  dispatchBackupToGmail,
+  getBackupSettings,
+  updateBackupSettings
+} from './services/backupService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,8 +112,15 @@ const MEDIA_LIBRARY_FILE = path.join(DATA_DIR, 'media_library.json');
 // Standardized 19 Supported Language Codes
 const SUPPORTED_LANG_CODES = [
   'en', 'hi', 'bn', 'mr', 'te', 'ta', 'gu', 'kn', 'ml', 'pa', 
-  'or', 'as', 'ur', 'fr', 'it', 'ja', 'id', 'zh-TW', 'ru'
+  'or', 'as', 'ur', 'fr', 'it', 'ja', 'id', 'zh-TW', 'zh-tw', 'ru'
 ];
+
+function normalizeLanguageCode(code) {
+  if (!code) return 'hi';
+  const c = String(code).trim();
+  if (c.toLowerCase() === 'zh-tw' || c === 'zh-TW') return 'zh-TW';
+  return c.toLowerCase();
+}
 
 const ROOT_DIR = path.join(__dirname, '..');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
@@ -201,7 +252,7 @@ function renderArticleHtml(article, host, baseHtml) {
 
     <!-- Google News & Discover Schema.org JSON-LD -->
     <script type="application/ld+json">
-${JSON.stringify(newsArticleSchema, null, 2)}
+${JSON.stringify(newsArticleSchema, null, 2).replace(/</g, '\\u003c')}
     </script>
   `;
 
@@ -363,12 +414,24 @@ function saveTranslationRecord(articleId, lang, record) {
       article_id: articleId,
       lang,
       ...record,
-      created_at: record.created_at || new Date().toISOString()
+      created_at: record.created_at || new Date().toISOString(),
+      last_accessed_at: record.last_accessed_at || new Date().toISOString()
     };
     fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(store, null, 2));
   } catch (e) {
     console.error('[Save Translation Error]', e.message);
   }
+}
+
+function touchTranslationAccess(articleId, lang) {
+  try {
+    const store = getTranslationsStore();
+    const key = `${articleId}:${lang}`;
+    if (store[key]) {
+      store[key].last_accessed_at = new Date().toISOString();
+      fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(store, null, 2));
+    }
+  } catch (e) {}
 }
 
 // In-Flight Promise Locks to prevent duplicate simultaneous calls for same (article_id, lang)
@@ -408,12 +471,204 @@ function saveAudioRecord(articleId, lang, clipType, record) {
       lang,
       clip_type: clipType,
       ...record,
-      created_at: record.created_at || new Date().toISOString()
+      created_at: record.created_at || new Date().toISOString(),
+      last_played_at: record.last_played_at || new Date().toISOString()
     };
     fs.writeFileSync(AUDIO_RECORDS_FILE, JSON.stringify(store, null, 2));
   } catch (e) {
     console.error('[Save Audio Record Error]', e.message);
   }
+}
+
+function touchAudioAccess(articleId, lang, clipType, targetPath) {
+  try {
+    const store = getAudioRecordsStore();
+    const key = `${articleId}:${lang}:${clipType}`;
+    if (store[key]) {
+      store[key].last_played_at = new Date().toISOString();
+      fs.writeFileSync(AUDIO_RECORDS_FILE, JSON.stringify(store, null, 2));
+    }
+    if (targetPath && fs.existsSync(targetPath)) {
+      const now = new Date();
+      fs.utimesSync(targetPath, now, now);
+    }
+  } catch (e) {}
+}
+
+/**
+ * Cascading Article Data Cleaner
+ * When an article is deleted, immediately removes all associated translations,
+ * revision history trees, audio records, physical disk audio files, and in-memory cache keys.
+ */
+function cascadeDeleteArticleData(articleId) {
+  const aId = String(articleId);
+  const sanitizedId = aId.replace(/[^a-zA-Z0-9-_]/g, '_');
+  let translationsDeleted = 0;
+  let audioRecordsDeleted = 0;
+  let audioFilesDeleted = 0;
+  let revisionsDeleted = 0;
+
+  try {
+    // 1. Purge from translations.json
+    if (fs.existsSync(TRANSLATIONS_FILE)) {
+      const transStore = getTranslationsStore();
+      let transChanged = false;
+      for (const [key, val] of Object.entries(transStore)) {
+        if (key.startsWith(`${aId}:`) || String(val.article_id) === aId) {
+          delete transStore[key];
+          transChanged = true;
+          translationsDeleted++;
+        }
+      }
+      if (transChanged) {
+        fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(transStore, null, 2));
+      }
+    }
+
+    // 2. Purge from article_revisions.json
+    if (fs.existsSync(ARTICLE_REVISIONS_FILE)) {
+      const revStore = getArticleRevisionsStore();
+      if (revStore[aId]) {
+        delete revStore[aId];
+        saveArticleRevisionsStore(revStore);
+        revisionsDeleted++;
+      }
+    }
+
+    // 3. Purge from audio_records.json
+    if (fs.existsSync(AUDIO_RECORDS_FILE)) {
+      const audioStore = getAudioRecordsStore();
+      let audioChanged = false;
+      for (const [key, val] of Object.entries(audioStore)) {
+        if (key.startsWith(`${aId}:`) || key.startsWith(`${sanitizedId}:`) || String(val.article_id) === aId) {
+          delete audioStore[key];
+          audioChanged = true;
+          audioRecordsDeleted++;
+        }
+      }
+      if (audioChanged) {
+        fs.writeFileSync(AUDIO_RECORDS_FILE, JSON.stringify(audioStore, null, 2));
+      }
+    }
+
+    // 4. Unlink physical audio files from uploads/
+    if (fs.existsSync(UPLOADS_DIR)) {
+      const files = fs.readdirSync(UPLOADS_DIR);
+      for (const file of files) {
+        if ((file.startsWith(`audio_${aId}_`) || file.startsWith(`audio_${sanitizedId}_`)) &&
+            (file.endsWith('.mp3') || file.endsWith('.wav'))) {
+          try {
+            fs.unlinkSync(path.join(UPLOADS_DIR, file));
+            audioFilesDeleted++;
+          } catch (e) {}
+        }
+      }
+    }
+
+    // 5. Evict from in-memory caches
+    for (const key of serverAudioCache.keys()) {
+      if (key.startsWith(aId) || key.startsWith(sanitizedId)) {
+        serverAudioCache.delete(key);
+      }
+    }
+    for (const key of serverTranslationCache.keys()) {
+      if (key.startsWith(aId) || key.includes(aId)) {
+        serverTranslationCache.delete(key);
+      }
+    }
+
+    console.log(`[Cascading Article Cleanup] Article ${aId}: purged ${translationsDeleted} translations, ${revisionsDeleted} revision trees, ${audioRecordsDeleted} audio records, ${audioFilesDeleted} disk audio files.`);
+  } catch (err) {
+    console.error(`[Cascading Cleanup Error] Failed to cascade delete article ${aId}:`, err.message);
+  }
+
+  return { translationsDeleted, revisionsDeleted, audioRecordsDeleted, audioFilesDeleted };
+}
+
+/**
+ * Startup & Periodic Orphan Sweeper
+ * Sweeps translations.json, article_revisions.json, and audio_records.json
+ * to permanently eliminate orphaned/ghost records belonging to deleted articles.
+ */
+function purgeOrphanedSatelliteData() {
+  let orphanedTranslationsPurged = 0;
+  let orphanedRevisionsPurged = 0;
+  let orphanedAudioPurged = 0;
+  let orphanedFilesUnlinked = 0;
+
+  try {
+    const articles = getSavedArticles();
+    const validArticleIds = new Set(articles.map(a => String(a.id)));
+
+    // 1. Sweep translations.json
+    if (fs.existsSync(TRANSLATIONS_FILE)) {
+      const transStore = getTranslationsStore();
+      let transChanged = false;
+      for (const [key, val] of Object.entries(transStore)) {
+        const artId = String(val.article_id || key.split(':')[0] || '');
+        if (artId && !validArticleIds.has(artId)) {
+          delete transStore[key];
+          transChanged = true;
+          orphanedTranslationsPurged++;
+        }
+      }
+      if (transChanged) {
+        fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(transStore, null, 2));
+      }
+    }
+
+    // 2. Sweep article_revisions.json
+    if (fs.existsSync(ARTICLE_REVISIONS_FILE)) {
+      const revStore = getArticleRevisionsStore();
+      let revChanged = false;
+      for (const key of Object.keys(revStore)) {
+        if (!validArticleIds.has(String(key))) {
+          delete revStore[key];
+          revChanged = true;
+          orphanedRevisionsPurged++;
+        }
+      }
+      if (revChanged) {
+        saveArticleRevisionsStore(revStore);
+      }
+    }
+
+    // 3. Sweep audio_records.json
+    if (fs.existsSync(AUDIO_RECORDS_FILE)) {
+      const audioStore = getAudioRecordsStore();
+      let audioChanged = false;
+      for (const [key, val] of Object.entries(audioStore)) {
+        const artId = String(val.article_id || key.split(':')[0] || '');
+        if (artId && artId !== 'general' && !validArticleIds.has(artId)) {
+          if (val.audio_url) {
+            const localPath = path.join(UPLOADS_DIR, path.basename(val.audio_url));
+            if (fs.existsSync(localPath)) {
+              try { fs.unlinkSync(localPath); orphanedFilesUnlinked++; } catch (e) {}
+            }
+          }
+          delete audioStore[key];
+          audioChanged = true;
+          orphanedAudioPurged++;
+        }
+      }
+      if (audioChanged) {
+        fs.writeFileSync(AUDIO_RECORDS_FILE, JSON.stringify(audioStore, null, 2));
+      }
+    }
+
+    if (orphanedTranslationsPurged > 0 || orphanedRevisionsPurged > 0 || orphanedAudioPurged > 0) {
+      console.log(`[Orphan Sweeper] Purged ${orphanedTranslationsPurged} ghost translations, ${orphanedRevisionsPurged} ghost revisions, ${orphanedAudioPurged} ghost audio records.`);
+    }
+  } catch (err) {
+    console.warn('[Orphan Sweeper Error]', err.message);
+  }
+
+  return {
+    orphanedTranslationsPurged,
+    orphanedRevisionsPurged,
+    orphanedAudioPurged,
+    orphanedFilesUnlinked
+  };
 }
 
 // Startup Cleanup: Purge any legacy scraper errors (QUERY LENGTH LIMIT / MYMEMORY)
@@ -446,108 +701,7 @@ function purgeCorruptedTranslations() {
 }
 purgeCorruptedTranslations();
 
-const DEFAULT_ARTICLES = [
-  {
-    id: 'art-1',
-    title: 'ISRO Milestone: Indigenous Satellite System Deployed to Monitor Agricultural Yields & Climate Signals',
-    slug: 'isro-milestone-indigenous-satellite-system-deployed',
-    sub_title: 'The polar satellite launch vehicle successfully injected three payloads into sun-synchronous orbit.',
-    content: `Sriharikota — In a stellar demonstration of space technology, ISRO successfully launched its latest satellite constellation designed to provide high-resolution multispectral imagery for national agricultural monitoring.
-
-The spacecraft, carrying state-of-the-art synthetic aperture radar, separated cleanly from the four-stage vehicle 18 minutes after liftoff. 
-
-"This mission ensures our farming communities receive accurate soil moisture forecasts, drought early-warnings, and flood impact metrics directly on their mobile devices," stated ISRO Chairman.`,
-    summary: 'ISRO launches advanced agricultural satellite constellation offering all-weather sub-meter resolution crop and disaster monitoring.',
-    format: 'standard',
-    featured_image: 'https://images.unsplash.com/photo-1517976487492-5750f3195933?auto=format&fit=crop&w=1200&q=80',
-    image_caption: 'ISRO PSLV rocket lifting off from Sriharikota launch pad.',
-    media_credits: 'ISRO / Space Media',
-    author: {
-      name: 'Dr. Priya Ramachandran',
-      role: 'Senior Space & Tech Editor',
-      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80'
-    },
-    category: 'Science & Environment',
-    category_slug: 'science',
-    status: 'published',
-    is_breaking: true,
-    views_count: 14200,
-    likes_count: 1840,
-    published_at: '10 mins ago'
-  },
-  {
-    id: 'art-2',
-    title: 'The AI Sovereign Infrastructure Push: Why Nations Are Building Local Compute Grid Clusters',
-    slug: 'ai-sovereign-infrastructure-push-nations-compute-clusters',
-    sub_title: 'Countries are prioritizing domestic AI data centers to secure critical infrastructure and data privacy.',
-    content: `Across Asia and Europe, governments are accelerating investments into sovereign AI computing facilities to reduce dependency on foreign cloud monopolies.`,
-    summary: 'Countries invest heavily in local AI server clusters to protect national data security and technological autonomy.',
-    format: 'explainer',
-    featured_image: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80',
-    image_caption: 'High-density server room at national supercomputing center.',
-    media_credits: 'Tech Archive',
-    author: {
-      name: 'Arjun Mehta',
-      role: 'Technology Correspondent',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'
-    },
-    category: 'Technology',
-    category_slug: 'technology',
-    status: 'published',
-    is_breaking: false,
-    views_count: 8900,
-    likes_count: 950,
-    published_at: '45 mins ago'
-  },
-  {
-    id: 'art-3',
-    title: 'Clean Energy Transition: Renewable Generation Surpasses Fossil Fuel Share in Regional Grid',
-    slug: 'clean-energy-transition-renewable-surpasses-fossil-fuel',
-    sub_title: 'Solar and wind capacity additions over the past two quarters pushed renewable energy share past 52%.',
-    content: `A watershed moment for clean energy as wind-solar hybrid projects achieve unprecedented capacity factors across major industrial corridors.`,
-    summary: 'Renewable energy output breaks historic threshold, exceeding fossil fuels in daily electricity grid generation.',
-    format: 'standard',
-    featured_image: 'https://images.unsplash.com/photo-1466611653911-95081537e5b7?auto=format&fit=crop&w=800&q=80',
-    image_caption: 'Wind farm turbines generating clean power at sunset.',
-    media_credits: 'Green Power Media',
-    author: {
-      name: 'Sneha Verma',
-      role: 'Environment & Climate Lead',
-      avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=200&q=80'
-    },
-    category: 'Science & Environment',
-    category_slug: 'science',
-    status: 'published',
-    is_breaking: false,
-    views_count: 6300,
-    likes_count: 720,
-    published_at: '2 hours ago'
-  },
-  {
-    id: 'art-4',
-    title: 'Editorial: Protecting Public Interest Journalism in the Age of Automated Content Farms',
-    slug: 'editorial-protecting-public-interest-journalism',
-    sub_title: 'As synthetic media floods digital platforms, the human commitment to verified reporting is vital.',
-    content: `Journalism is not merely information aggregation; it is the rigorous pursuit of truth through verification, human accountability, and contextual understanding.`,
-    summary: 'Why human editorial oversight and ground verification remain irreplaceable in high-quality journalism.',
-    format: 'opinion',
-    featured_image: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=800&q=80',
-    image_caption: 'Vintage printing press layout at a newsroom print house.',
-    media_credits: 'PublicSpark Editorial Desk',
-    author: {
-      name: 'Kabir Roy',
-      role: 'Editor-in-Chief',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80'
-    },
-    category: 'Opinion',
-    category_slug: 'opinion',
-    status: 'published',
-    is_breaking: false,
-    views_count: 11200,
-    likes_count: 1410,
-    published_at: '3 hours ago'
-  }
-];
+const DEFAULT_ARTICLES = [];
 
 /**
  * Evaluates scheduled articles against the server clock (Task 20).
@@ -579,6 +733,12 @@ function evaluateScheduledArticles(articlesList) {
     try {
       fs.writeFileSync(ARTICLES_FILE, JSON.stringify(evaluated, null, 2), 'utf8');
       console.log('[Auto-Publish Engine] Flipped articles saved to disk successfully.');
+      purgeCloudflareEdgeCache('scheduled_articles_auto_published');
+      // Proactively pre-translate newly flipped published stories to English
+      evaluated.filter(a => a.status === 'published' && a.published_at === 'Just now').forEach(art => {
+        autoPreTranslatePublishedArticle(art);
+        autoPreWarmPublishedAudio(art);
+      });
     } catch (e) {
       console.error('[Auto-Publish Engine] Error saving auto-published articles:', e);
     }
@@ -587,26 +747,168 @@ function evaluateScheduledArticles(articlesList) {
   return evaluated;
 }
 
+// -------------------------------------------------------------
+// Cloudflare Edge Cache Invalidation on Article Publish / Update / Delete
+// -------------------------------------------------------------
+async function purgeCloudflareEdgeCache(reason = 'articles_updated') {
+  try {
+    // Clear local in-memory translation cache on server
+    if (typeof serverTranslationCache !== 'undefined' && serverTranslationCache && serverTranslationCache.clear) {
+      serverTranslationCache.clear();
+    }
+
+    const zoneId = process.env.CLOUDFLARE_ZONE_ID;
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+
+    if (!zoneId || !apiToken) {
+      console.log(`[Edge Cache Invalidation] (${reason}): No Cloudflare credentials configured in environment. Local cache flushed.`);
+      return { success: true, localOnly: true, reason };
+    }
+
+    console.log(`[Cloudflare Purge API] Invalidate triggered for zone ${zoneId} (${reason})...`);
+    const purgeUrl = `https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`;
+    const res = await fetch(purgeUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ purge_everything: true })
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
+      console.log(`[Cloudflare Purge API SUCCESS] Global edge cache purged worldwide in <200ms (${reason}).`);
+      return { success: true, cloudflare: true, reason };
+    } else {
+      console.warn(`[Cloudflare Purge API Warning] Purge returned errors:`, data.errors || data);
+      return { success: false, errors: data.errors, reason };
+    }
+  } catch (err) {
+    console.warn(`[Cloudflare Purge API Error]:`, err.message);
+    return { success: false, error: err.message, reason };
+  }
+}
+
+// -------------------------------------------------------------
+// Proactive Background Pre-Translation for Published Breaking News
+// Ensures newly published stories are immediately available in English
+// without reader latency or 5-minute cache desynchronization.
+// -------------------------------------------------------------
+function autoPreTranslatePublishedArticle(article) {
+  if (!article || article.status !== 'published' || !article.id || !article.title) return;
+
+  setImmediate(async () => {
+    try {
+      const store = getTranslationsStore();
+      const enKey = `${article.id}:en`;
+
+      // Check if already translated to English and up-to-date
+      const contentHash = computeContentHash(`${article.title}:::${article.content || ''}`);
+      if (store[enKey] && store[enKey].title && store[enKey].status === 'done' && store[enKey].content_hash === contentHash) {
+        return;
+      }
+
+      console.log(`[Auto Pre-Translation] Proactively translating new story "${article.title.slice(0, 50)}..." to English...`);
+      const rawSummary = article.summary || (Array.isArray(article.highlights) ? article.highlights[0] : '') || '';
+      const rawHighlights = Array.isArray(article.highlights) && article.highlights.length > 0
+        ? article.highlights
+        : (rawSummary ? [rawSummary] : []);
+
+      const translated = await translateWithGemini(
+        article.title,
+        article.content || '',
+        rawHighlights,
+        'en',
+        article.originalLanguage || 'hi',
+        rawSummary
+      );
+
+      if (translated && translated.title) {
+        saveTranslationRecord(article.id, 'en', {
+          title: translated.title,
+          summary: translated.summary || (Array.isArray(translated.highlights) ? translated.highlights[0] : '') || rawSummary,
+          sub_title: translated.sub_title || article.sub_title || '',
+          highlights: translated.highlights || rawHighlights,
+          body: translated.body || article.content || '',
+          status: 'done',
+          content_hash: contentHash
+        });
+        console.log(`[Auto Pre-Translation SUCCESS] Article ${article.id} English translation written to disk cache.`);
+      }
+    } catch (err) {
+      console.warn(`[Auto Pre-Translation Warning] Proactive translation failed for ${article.id}:`, err.message);
+    }
+  });
+}
+
+// -------------------------------------------------------------
+// Proactive Background Pre-Warming for Published Stories Audio
+// Pre-generates Clip 1 (Headline + Highlights) in the background
+// so reader clicks have 0ms latency and zero browser autoplay blocks.
+// -------------------------------------------------------------
+function autoPreWarmPublishedAudio(article) {
+  if (!article || article.status !== 'published' || !article.id || !article.title) return;
+
+  setImmediate(async () => {
+    try {
+      const sanitizedArticleId = article.id.replace(/[^a-zA-Z0-9-_]/g, '_');
+      const targetLang = (article.originalLanguage || 'hi').toLowerCase();
+      const audioFileNameMp3 = `audio_${sanitizedArticleId}_${targetLang}_clip_1_intro.mp3`;
+      const audioFilePathMp3 = path.join(UPLOADS_DIR, audioFileNameMp3);
+
+      if (fs.existsSync(audioFilePathMp3) && fs.statSync(audioFilePathMp3).size > 500) {
+        return; // Already cached
+      }
+
+      console.log(`[Auto Audio Pre-Warm] Generating Gemini audio for "${article.title.slice(0, 50)}..." (${targetLang})`);
+      const cleanTitle = (article.title || '').trim();
+      const cleanHighlights = Array.isArray(article.highlights) && article.highlights.length > 0
+        ? article.highlights.filter(h => h && typeof h === 'string').join('. ')
+        : (article.summary || '');
+      const textToRead = cleanHighlights ? `${cleanTitle}. ${cleanHighlights}` : cleanTitle;
+
+      if (!textToRead) return;
+
+      const rawAudioBuffer = await generateGeminiAudio(textToRead, targetLang);
+      const finalAudioBuffer = compressAudioBufferToMp3(rawAudioBuffer, 32);
+      fs.writeFileSync(audioFilePathMp3, finalAudioBuffer);
+      incrementDailyUsage('Gemini_TTS');
+
+      saveAudioRecord(sanitizedArticleId, targetLang, 'clip_1_intro', {
+        audio_url: `/uploads/${audioFileNameMp3}`,
+        size_bytes: finalAudioBuffer.length,
+        status: 'done'
+      });
+      console.log(`[Auto Audio Pre-Warm SUCCESS] Audio ready on disk for ${sanitizedArticleId} (${finalAudioBuffer.length} bytes)`);
+    } catch (err) {
+      console.warn(`[Auto Audio Pre-Warm Error for ${article.id}]:`, err.message);
+    }
+  });
+}
+
 function getSavedArticles() {
   try {
     if (fs.existsSync(ARTICLES_FILE)) {
       const raw = fs.readFileSync(ARTICLES_FILE, 'utf8');
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return evaluateScheduledArticles(parsed);
       }
     }
     // Initialize file on disk on first access
-    fs.writeFileSync(ARTICLES_FILE, JSON.stringify(DEFAULT_ARTICLES, null, 2), 'utf8');
+    fs.writeFileSync(ARTICLES_FILE, JSON.stringify([], null, 2), 'utf8');
   } catch (e) {
     console.error('Error reading/initializing articles file:', e);
   }
-  return evaluateScheduledArticles(DEFAULT_ARTICLES);
+  return [];
 }
 
-function saveArticles(articlesList) {
+function saveArticles(articlesList, reason = 'articles_updated') {
   try {
     fs.writeFileSync(ARTICLES_FILE, JSON.stringify(articlesList, null, 2), 'utf8');
+    // Global Edge Cache Invalidation: Automatically purge Cloudflare Edge & local server RAM cache
+    purgeCloudflareEdgeCache(reason);
     return articlesList;
   } catch (e) {
     console.error('Error saving articles file:', e);
@@ -880,7 +1182,15 @@ function parseRssItems(xmlText) {
       .replace(/\s+/g, ' ')
       .trim();
 
-    let cleanTitle = rawTitle.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    let cleanTitle = rawTitle
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '')
+      .replace(/&gt;/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     items.push({
       id: `live-feed-${Date.now()}-${index}`,
@@ -893,12 +1203,12 @@ function parseRssItems(xmlText) {
       category_slug: 'india',
       status: 'pending_admin_approval',
       published_at: pubDateMatch ? pubDateMatch[1].slice(0, 16) : 'Just now',
-      featured_image: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80',
+      featured_image: '',
       is_breaking: false,
       author: {
         name: sourceName,
         role: 'Live RSS Stream',
-        avatar: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=100&q=80'
+        avatar: ''
       }
     });
   });
@@ -917,26 +1227,31 @@ const DEFAULT_SETTINGS = {
     headingFont: 'Playfair Display',
     bodyFont: 'Plus Jakarta Sans',
     headingScale: 100,
+    headingWeight: 800,
     bodySize: 16,
+    bodyWeight: 400,
+    mobileHeadingScale: 85,
+    mobileBodySize: 15,
     regionalFonts: {
-      hi: { headingFont: 'Rozha One', bodyFont: 'Mukta' },
+      hi: { headingFont: 'Playfair Display', bodyFont: 'Plus Jakarta Sans' },
       en: { headingFont: 'Playfair Display', bodyFont: 'Plus Jakarta Sans' },
-      bn: { headingFont: 'Noto Serif Bengali', bodyFont: 'Noto Sans Bengali' },
-      mr: { headingFont: 'Noto Serif Devanagari', bodyFont: 'Mukta' },
-      te: { headingFont: 'Noto Serif Telugu', bodyFont: 'Noto Sans Telugu' },
-      ta: { headingFont: 'Noto Serif Tamil', bodyFont: 'Noto Sans Tamil' },
-      gu: { headingFont: 'Noto Serif Gujarati', bodyFont: 'Noto Sans Gujarati' },
-      kn: { headingFont: 'Noto Serif Kannada', bodyFont: 'Noto Sans Kannada' },
-      ml: { headingFont: 'Noto Serif Malayalam', bodyFont: 'Noto Sans Malayalam' },
-      pa: { headingFont: 'Noto Serif Gurmukhi', bodyFont: 'Noto Sans Gurmukhi' },
-      or: { headingFont: 'Noto Sans Oriya', bodyFont: 'Noto Sans Oriya' },
-      as: { headingFont: 'Noto Serif Bengali', bodyFont: 'Noto Sans Bengali' },
-      ur: { headingFont: 'Noto Nastaliq Urdu', bodyFont: 'Noto Sans Arabic' },
-      ja: { headingFont: 'Noto Sans JP', bodyFont: 'Noto Sans JP' },
-      'zh-TW': { headingFont: 'Noto Sans TC', bodyFont: 'Noto Sans TC' },
+      bn: { headingFont: 'Noto Serif Bengali', bodyFont: 'Plus Jakarta Sans' },
+      mr: { headingFont: 'Noto Serif Devanagari', bodyFont: 'Plus Jakarta Sans' },
+      te: { headingFont: 'Noto Serif Telugu', bodyFont: 'Plus Jakarta Sans' },
+      ta: { headingFont: 'Noto Serif Tamil', bodyFont: 'Plus Jakarta Sans' },
+      gu: { headingFont: 'Noto Serif Gujarati', bodyFont: 'Plus Jakarta Sans' },
+      kn: { headingFont: 'Noto Serif Kannada', bodyFont: 'Plus Jakarta Sans' },
+      ml: { headingFont: 'Noto Serif Malayalam', bodyFont: 'Plus Jakarta Sans' },
+      pa: { headingFont: 'Noto Serif Gurmukhi', bodyFont: 'Plus Jakarta Sans' },
+      or: { headingFont: 'Noto Sans Oriya', bodyFont: 'Plus Jakarta Sans' },
+      as: { headingFont: 'Noto Serif Bengali', bodyFont: 'Plus Jakarta Sans' },
+      ur: { headingFont: 'Noto Nastaliq Urdu', bodyFont: 'Plus Jakarta Sans' },
+      ja: { headingFont: 'Noto Sans JP', bodyFont: 'Plus Jakarta Sans' },
+      'zh-TW': { headingFont: 'Noto Sans TC', bodyFont: 'Plus Jakarta Sans' },
       fr: { headingFont: 'Playfair Display', bodyFont: 'Plus Jakarta Sans' },
       it: { headingFont: 'Playfair Display', bodyFont: 'Plus Jakarta Sans' },
-      id: { headingFont: 'Plus Jakarta Sans', bodyFont: 'Inter' }
+      id: { headingFont: 'Playfair Display', bodyFont: 'Plus Jakarta Sans' },
+      ru: { headingFont: 'Playfair Display', bodyFont: 'Plus Jakarta Sans' }
     }
   },
   theme: {
@@ -1128,6 +1443,30 @@ function saveSettings(newSettings) {
 }
 
 const PRESETS_FILE = path.join(DATA_DIR, 'presets.json');
+const GRIEVANCES_FILE = path.join(DATA_DIR, 'grievances.json');
+
+function getSavedGrievances() {
+  try {
+    if (fs.existsSync(GRIEVANCES_FILE)) {
+      const raw = fs.readFileSync(GRIEVANCES_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Error reading grievances file:', e);
+  }
+  return [];
+}
+
+function saveGrievances(grievances) {
+  try {
+    fs.writeFileSync(GRIEVANCES_FILE, JSON.stringify(grievances, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('Error saving grievances file:', e);
+    return false;
+  }
+}
 
 function getPresets() {
   try {
@@ -1154,8 +1493,6 @@ function savePresets(newPresets) {
 // -------------------------------------------------------------
 // SECURITY & INPUT SANITIZATION CONTROLS (OWASP COMPLIANT)
 // -------------------------------------------------------------
-const ADMIN_API_SECRET = process.env.ADMIN_API_SECRET || 'publicspark-admin-secret-key-2026';
-
 const ALLOWED_THEME_KEYS = [
   'primary', 'bgPrimary', 'bgSurface', 'bgSecondary',
   'textMain', 'textMuted', 'textSubtle',
@@ -1205,23 +1542,97 @@ function sanitizeAndValidateTheme(input) {
 }
 
 function verifyAdminAuthorization(req) {
-  const authHeader = req.headers['authorization'];
-  const secretHeader = req.headers['x-admin-key'];
+  const authHeader = req.headers['authorization'] || '';
   
-  if (secretHeader && secretHeader === ADMIN_API_SECRET) return true;
+  // Cryptographic session Bearer token check (must be verified Newsroom Administrator or Sovereign Developer)
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.slice(7).trim();
-    if (token === ADMIN_API_SECRET) return true;
-  }
-  
-  // Safe origin check: allows browser requests originating from known development host
-  const origin = req.headers['origin'] || req.headers['referer'] || '';
-  if (origin.includes('localhost:5173') || origin.includes('127.0.0.1:5173')) {
-    return true;
+    const session = verifyStaffSessionToken(token);
+    if (session && (session.role === 'admin' || session.role === 'developer')) {
+      return true;
+    }
   }
 
   return false;
 }
+
+function verifyDeveloperAuthorization(req) {
+  const authHeader = req.headers['authorization'] || '';
+  
+  // Cryptographic session Bearer token check (Strictly Sovereign Developer, SEC-043 Fix)
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    const session = verifyStaffSessionToken(token);
+    if (session && session.role === 'developer') {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function formatProcessUptime(seconds) {
+  const d = Math.floor(seconds / (3600 * 24));
+  const h = Math.floor((seconds % (3600 * 24)) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  parts.push(`${s}s`);
+  return parts.join(' ');
+}
+
+function auditDatabaseFiles() {
+  const results = [];
+  try {
+    const files = fs.readdirSync(DATA_DIR);
+    for (const f of files) {
+      if (!f.endsWith('.json')) continue;
+      const fullPath = path.join(DATA_DIR, f);
+      try {
+        const stat = fs.statSync(fullPath);
+        const raw = fs.readFileSync(fullPath, 'utf8');
+        let records = 0;
+        let isValid = false;
+        try {
+          const parsed = JSON.parse(raw);
+          isValid = true;
+          if (Array.isArray(parsed)) {
+            records = parsed.length;
+          } else if (parsed && typeof parsed === 'object') {
+            records = Object.keys(parsed).length;
+          }
+        } catch {
+          isValid = false;
+        }
+
+        results.push({
+          file: f,
+          sizeBytes: stat.size,
+          sizeFormatted: (stat.size / 1024).toFixed(1) + ' KB',
+          records,
+          valid: isValid,
+          mtime: stat.mtime
+        });
+      } catch (err) {
+        results.push({
+          file: f,
+          sizeBytes: 0,
+          sizeFormatted: '0 KB',
+          records: 0,
+          valid: false,
+          error: err.message
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[Database Audit Error]:', err.message);
+  }
+  return results;
+}
+
 
 function getSavedCategories() {
   try {
@@ -1505,13 +1916,49 @@ const adClickTracker = new Map();
 const IMPRESSION_TTL_MS = 30 * 60 * 1000;
 const CLICK_TTL_MS = 5 * 60 * 1000;
 
-function getClientIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    const list = forwarded.split(',');
-    if (list[0] && list[0].trim()) return list[0].trim();
+// IPv4 standard regex (0-255 octets)
+const IPV4_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+// IPv6 standard basic regex
+const IPV6_REGEX = /^[0-9a-fA-F:]{2,39}$/;
+
+export function sanitizeIp(rawIp) {
+  if (!rawIp || typeof rawIp !== 'string') return null;
+  let ip = rawIp.trim();
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.substring(7);
   }
-  return req.socket?.remoteAddress || '127.0.0.1';
+  if (ip === '::1') return '127.0.0.1';
+  if (IPV4_REGEX.test(ip) || IPV6_REGEX.test(ip)) {
+    return ip;
+  }
+  return null;
+}
+
+export function getClientIp(req) {
+  if (!req) return '127.0.0.1';
+
+  // 1. Cloudflare authoritative connecting IP (SEC-020: Only trust when BEHIND_CLOUDFLARE is explicitly enabled in env)
+  if (process.env.BEHIND_CLOUDFLARE === 'true' && req.headers && req.headers['cf-connecting-ip']) {
+    const cfIp = sanitizeIp(req.headers['cf-connecting-ip']);
+    if (cfIp) return cfIp;
+  }
+
+  // 2. Standard X-Forwarded-For: Leftmost validated IP address (only when explicitly behind a trusted reverse proxy)
+  const trustProxy = process.env.BEHIND_PROXY === 'true' || process.env.TRUST_PROXY === 'true';
+  const forwarded = req.headers && req.headers['x-forwarded-for'];
+  if (trustProxy && forwarded && typeof forwarded === 'string') {
+    const list = forwarded.split(',');
+    for (const candidate of list) {
+      const sanitized = sanitizeIp(candidate);
+      if (sanitized) return sanitized;
+    }
+  }
+
+  // 3. Socket / Connection remoteAddress fallback
+  const socketIp = sanitizeIp(req.socket?.remoteAddress || req.connection?.remoteAddress);
+  if (socketIp) return socketIp;
+
+  return '127.0.0.1';
 }
 
 function recordAdImpression(campaignId, slotKey, clientIp) {
@@ -1630,6 +2077,8 @@ const LANGUAGE_VOICE_MAP = {
   'ja': { provider: 'google', languageCode: 'ja-JP', voiceName: 'ja-JP-Neural2-B', gender: 'FEMALE' },
   'id': { provider: 'google', languageCode: 'id-ID', voiceName: 'id-ID-Wavenet-A', gender: 'FEMALE' },
   'zh-tw': { provider: 'google', languageCode: 'zh-TW', voiceName: 'zh-TW-Wavenet-A', gender: 'FEMALE' },
+  'zh-TW': { provider: 'google', languageCode: 'zh-TW', voiceName: 'zh-TW-Wavenet-A', gender: 'FEMALE' },
+  'ru': { provider: 'google', languageCode: 'ru-RU', voiceName: 'ru-RU-Wavenet-A', gender: 'FEMALE' },
   // Odia & Assamese -> Handled via Sarvam AI API
   'or': { provider: 'sarvam', languageCode: 'od-IN', speaker: 'meera' },
   'as': { provider: 'sarvam', languageCode: 'as-IN', speaker: 'meera' }
@@ -1639,6 +2088,121 @@ const LANGUAGE_VOICE_MAP = {
 const serverAudioCache = new Map();
 const serverTranslationCache = new Map();
 const serverAudioProgressMap = new Map();
+const serverWeatherCache = new Map();
+const serverCityGeoCache = new Map();
+
+/**
+ * Open-Meteo Weather Proxy Engine
+ * Fetches real-time weather with 20-minute sliding cache.
+ * Open-Meteo is 100% free with zero API key requirement.
+ */
+async function fetchOpenMeteoWeather(lat, lon, cityName = 'Jaitahari') {
+  const roundedLat = Math.round(Number(lat) * 100) / 100;
+  const roundedLon = Math.round(Number(lon) * 100) / 100;
+  const cacheKey = `${roundedLat}_${roundedLon}`;
+  const now = Date.now();
+
+  const cached = serverWeatherCache.get(cacheKey);
+  if (cached && (now - cached.timestamp < 20 * 60 * 1000)) { // 20 mins TTL
+    return { ...cached.data, isCached: true };
+  }
+
+  const endpoint = `https://api.open-meteo.com/v1/forecast?latitude=${roundedLat}&longitude=${roundedLon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
+  
+  const response = await fetch(endpoint, {
+    headers: { 'User-Agent': 'PublicSparkNewsroom/1.0' },
+    signal: AbortSignal.timeout(8000)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Open-Meteo returned status ${response.status}`);
+  }
+
+  const data = await response.json();
+  const current = data.current || {};
+  const daily = data.daily || {};
+
+  const forecastDays = [];
+  if (Array.isArray(daily.time)) {
+    for (let i = 0; i < Math.min(3, daily.time.length); i++) {
+      forecastDays.push({
+        date: daily.time[i],
+        maxTemp: daily.temperature_2m_max ? daily.temperature_2m_max[i] : null,
+        minTemp: daily.temperature_2m_min ? daily.temperature_2m_min[i] : null,
+        weatherCode: daily.weather_code ? daily.weather_code[i] : 0
+      });
+    }
+  }
+
+  const result = {
+    cityName: cityName || 'Local Region',
+    latitude: roundedLat,
+    longitude: roundedLon,
+    current: {
+      temperature: current.temperature_2m !== undefined ? Math.round(current.temperature_2m) : 24,
+      apparentTemperature: current.apparent_temperature !== undefined ? Math.round(current.apparent_temperature) : (current.temperature_2m !== undefined ? Math.round(current.temperature_2m) : 24),
+      humidity: current.relative_humidity_2m ?? 50,
+      windSpeed: current.wind_speed_10m ? Math.round(current.wind_speed_10m) : 8,
+      precipitation: current.precipitation ?? 0,
+      isDay: current.is_day ?? 1,
+      weatherCode: current.weather_code ?? 0
+    },
+    daily: forecastDays,
+    updatedAt: new Date().toISOString(),
+    isCached: false
+  };
+
+  serverWeatherCache.set(cacheKey, { timestamp: now, data: result });
+  return result;
+}
+
+/**
+ * Open-Meteo Geocoding City Search Engine
+ * Searches cities globally with 24-hour cache.
+ */
+async function searchOpenMeteoCities(query) {
+  const cleanQ = String(query || '').trim().toLowerCase();
+  if (cleanQ.length < 2) return [];
+
+  const now = Date.now();
+  const cached = serverCityGeoCache.get(cleanQ);
+  if (cached && (now - cached.timestamp < 24 * 60 * 60 * 1000)) { // 24 hours TTL
+    return cached.data;
+  }
+
+  const endpoint = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cleanQ)}&count=6&language=en&format=json`;
+  const response = await fetch(endpoint, {
+    headers: { 'User-Agent': 'PublicSparkNewsroom/1.0' },
+    signal: AbortSignal.timeout(6000)
+  });
+
+  if (!response.ok) return [];
+
+  const data = await response.json();
+  const results = (data.results || []).map(item => ({
+    id: item.id,
+    name: item.name,
+    state: item.admin1 || '',
+    country: item.country || '',
+    latitude: item.latitude,
+    longitude: item.longitude
+  }));
+
+  serverCityGeoCache.set(cleanQ, { timestamp: now, data: results });
+  return results;
+}
+
+/**
+ * High-performance Bounded LRU Cache Setter
+ * Caps serverTranslationCache at maxEntries (default 500), evicting oldest on overflow.
+ */
+function setBoundedTranslationCache(key, value, maxEntries = 500) {
+  if (serverTranslationCache.size >= maxEntries) {
+    const oldestKey = serverTranslationCache.keys().next().value;
+    serverTranslationCache.delete(oldestKey);
+  }
+  serverTranslationCache.set(key, value);
+}
 
 // -------------------------------------------------------------
 // ANALYTICS & STATISTICS DATA STORE & AGGREGATOR
@@ -1656,8 +2220,7 @@ const activeViewSessions = new Map();
 const articleLikes = [];
 
 function resolveIpToCountry(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  const ip = forwarded ? forwarded.split(',')[0].trim() : req.socket?.remoteAddress || '127.0.0.1';
+  const ip = getClientIp(req);
   
   if (req.headers['cf-ipcountry']) {
     return req.headers['cf-ipcountry'].toUpperCase();
@@ -1795,8 +2358,12 @@ function seedMockLikesData() {
   console.log(`[Analytics Engine] Seeded ${articleLikes.length} raw like events across articles.`);
 }
 
-seedMockAnalyticsData();
-seedMockLikesData();
+if (process.env.ENABLE_MOCK_ANALYTICS === 'true') {
+  seedMockAnalyticsData();
+  seedMockLikesData();
+} else {
+  console.log('[Analytics Engine] Production Mode: Synthetic mock data injection disabled (Rule 6). Real reader events only.');
+}
 
 function getArticleLikesStats(articleId, sessionId = null) {
   const artIdStr = String(articleId);
@@ -1884,11 +2451,10 @@ async function callGeminiApi(prompt, isJson = false) {
   // Use current fast, high-quota recommended models in order of availability
   const models = [
     'gemini-3.5-flash',
-    'gemini-3.7-flash',
-    'gemini-flash-latest',
     'gemini-3.5-flash-lite',
+    'gemini-3.7-flash',
     'gemini-3.8-flash',
-    'gemini-flash-lite-latest'
+    'gemini-flash-latest'
   ];
   let lastError = null;
 
@@ -1912,6 +2478,21 @@ async function callGeminiApi(prompt, isJson = false) {
 
       if (!response.ok) {
         const errorText = await response.text();
+        if ((response.status === 503 || response.status === 429) && model === 'gemini-3.5-flash-lite') {
+          console.warn(`[Gemini Temporary ${response.status}] High demand spike. Waiting 1.5s before retry...`);
+          await new Promise(r => setTimeout(r, 1500));
+          const retryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (retryRes.ok) {
+            const retryResult = await retryRes.json();
+            const retryParts = retryResult?.candidates?.[0]?.content?.parts || [];
+            const retryText = retryParts.find(p => p.text && !p.thought)?.text || retryParts[0]?.text;
+            if (retryText) return retryText.trim();
+          }
+        }
         throw new Error(`Gemini API error (${model} - ${response.status}): ${errorText}`);
       }
 
@@ -1931,22 +2512,25 @@ async function callGeminiApi(prompt, isJson = false) {
   throw lastError || new Error('All Gemini translation models failed to return content');
 }
 
-async function translateWithGemini(title, body, highlights = [], targetLang, sourceLang = 'hi') {
+async function translateWithGemini(title, body, highlights = [], targetLang, sourceLang = 'hi', summary = '') {
+  const normalizedTarget = normalizeLanguageCode(targetLang);
+  const normalizedSource = normalizeLanguageCode(sourceLang);
   const langNames = {
     hi: 'Hindi', en: 'English', bn: 'Bengali', mr: 'Marathi', te: 'Telugu',
     ta: 'Tamil', gu: 'Gujarati', kn: 'Kannada', ml: 'Malayalam', pa: 'Punjabi',
     or: 'Odia', as: 'Assamese', ur: 'Urdu', fr: 'French', it: 'Italian',
-    ja: 'Japanese', id: 'Indonesian', 'zh-TW': 'Traditional Chinese', ru: 'Russian'
+    ja: 'Japanese', id: 'Indonesian', 'zh-TW': 'Traditional Chinese', 'zh-tw': 'Traditional Chinese', ru: 'Russian'
   };
-  const targetLanguageName = langNames[targetLang] || targetLang;
-  const sourceLanguageName = langNames[sourceLang] || sourceLang;
+  const targetLanguageName = langNames[normalizedTarget] || langNames[targetLang] || targetLang;
+  const sourceLanguageName = langNames[normalizedSource] || langNames[sourceLang] || sourceLang;
 
-  const prompt = `You are a professional multilingual newsroom editor and translator. Translate the following news headline, 30-second bullet highlights, and article body from ${sourceLanguageName} into ${targetLanguageName} (${targetLang}).
+  const prompt = `You are a professional multilingual newsroom editor and translator. Translate the following news headline, summary, 30-second bullet highlights, and article body from ${sourceLanguageName} into ${targetLanguageName} (${targetLang}).
 Maintain journalistic tone, objectivity, natural vocabulary, and preserve all markdown formatting (headings, lists, bold, italics, quotes).
 PRESERVE all numbers, dates, statistics, vehicle plate numbers, and proper nouns accurately.
 DO NOT summarize, omit, or truncate. Return strictly valid JSON with no markdown wrapping or backticks, matching this exact schema:
 {
   "title": "translated headline",
+  "summary": "translated summary",
   "highlights": ["translated highlight 1", "translated highlight 2"],
   "body": "translated article body"
 }
@@ -1954,6 +2538,9 @@ DO NOT summarize, omit, or truncate. Return strictly valid JSON with no markdown
 Content to translate:
 HEADLINE:
 ${title || ''}
+
+SUMMARY:
+${summary || ''}
 
 HIGHLIGHTS:
 ${Array.isArray(highlights) ? JSON.stringify(highlights) : '[]'}
@@ -1966,6 +2553,7 @@ ${body || ''}`;
   const parsed = JSON.parse(cleanJson);
   return {
     title: parsed.title || title,
+    summary: parsed.summary || summary || (Array.isArray(parsed.highlights) ? parsed.highlights[0] : ''),
     highlights: Array.isArray(parsed.highlights) ? parsed.highlights : (highlights || []),
     body: parsed.body || body
   };
@@ -2131,18 +2719,25 @@ function compressAudioBufferToMp3(audioBuffer, kbps = 32) {
 }
 
 /**
- * 14-Day Automated Audio Rolling Cache Cleanup
- * Deletes audio files in server/data/uploads/ older than 14 days to keep storage permanently capped under 60-80 MB.
+ * Dual-Gated Rolling Audio Cleanup Engine (Age + 1 GB Quota Guard)
+ * Gate 1: Purges audio files older than 14 days.
+ * Gate 2: If total audio exceeds 921.6 MB (90% of 1 GB quota), auto-evicts least recently used (LRU) files until under 716.8 MB (70%).
+ * Gate 3: Unconditionally reconciles audio_records.json and evicts deleted audio from serverAudioCache.
  */
-function cleanupExpiredAudioFiles(maxAgeDays = 14) {
-  if (!fs.existsSync(UPLOADS_DIR)) return;
+function cleanupExpiredAudioFiles(maxAgeDays = 14, options = {}) {
+  if (!fs.existsSync(UPLOADS_DIR)) return { deletedCount: 0, quotaPurgedCount: 0, freedBytes: 0 };
   const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
   const now = Date.now();
   let deletedCount = 0;
   let freedBytes = 0;
+  let quotaPurgedCount = 0;
 
   try {
+    const audioRecords = getAudioRecordsStore();
     const files = fs.readdirSync(UPLOADS_DIR);
+    const audioFilesList = [];
+
+    // Gate 1: Age-Based Expiration
     for (const file of files) {
       if (file.startsWith('audio_') && (file.endsWith('.mp3') || file.endsWith('.wav'))) {
         const filePath = path.join(UPLOADS_DIR, file);
@@ -2152,37 +2747,191 @@ function cleanupExpiredAudioFiles(maxAgeDays = 14) {
             freedBytes += stats.size;
             fs.unlinkSync(filePath);
             deletedCount++;
+          } else {
+            // Find corresponding record for LRU tracking
+            let lastPlayedAt = stats.mtimeMs;
+            for (const rec of Object.values(audioRecords)) {
+              if (rec.audio_url && path.basename(rec.audio_url) === file) {
+                if (rec.last_played_at) {
+                  lastPlayedAt = new Date(rec.last_played_at).getTime() || stats.mtimeMs;
+                }
+                break;
+              }
+            }
+            audioFilesList.push({ file, filePath, size: stats.size, lastPlayedAt, mtimeMs: stats.mtimeMs });
           }
         } catch (e) {}
       }
     }
 
-    if (deletedCount > 0) {
-      console.log(`[Audio Cleanup] Purged ${deletedCount} audio files older than ${maxAgeDays} days (${(freedBytes / 1024 / 1024).toFixed(2)} MB freed).`);
-      // Synchronize audio_records.json
-      if (fs.existsSync(AUDIO_RECORDS_FILE)) {
+    // Gate 2: Quota-Based LRU Eviction (90% trigger = 921.6 MB, target = 716.8 MB)
+    let currentTotalAudioBytes = audioFilesList.reduce((acc, f) => acc + f.size, 0);
+    const quotaTriggerBytes = options.quotaTriggerBytes || (921.6 * 1024 * 1024);
+    const quotaTargetBytes = options.quotaTargetBytes || (716.8 * 1024 * 1024);
+
+    if (currentTotalAudioBytes > quotaTriggerBytes || options.forceQuotaPurge) {
+      // Sort ascending by lastPlayedAt (oldest/least-used first)
+      audioFilesList.sort((a, b) => a.lastPlayedAt - b.lastPlayedAt);
+      for (const item of audioFilesList) {
+        if (currentTotalAudioBytes <= quotaTargetBytes && !options.forceQuotaPurge) break;
         try {
-          const records = JSON.parse(fs.readFileSync(AUDIO_RECORDS_FILE, 'utf-8'));
-          let recordChanged = false;
-          for (const key of Object.keys(records)) {
-            const url = records[key]?.audio_url;
-            if (url) {
-              const localPath = path.join(UPLOADS_DIR, path.basename(url));
-              if (!fs.existsSync(localPath)) {
-                delete records[key];
-                recordChanged = true;
-              }
-            }
-          }
-          if (recordChanged) {
-            fs.writeFileSync(AUDIO_RECORDS_FILE, JSON.stringify(records, null, 2));
-          }
+          fs.unlinkSync(item.filePath);
+          freedBytes += item.size;
+          currentTotalAudioBytes -= item.size;
+          quotaPurgedCount++;
         } catch (e) {}
       }
+      console.log(`[Audio Quota LRU Purge] Evicted ${quotaPurgedCount} least recently used audio files (${(freedBytes / 1024 / 1024).toFixed(2)} MB freed).`);
+    }
+
+    // Gate 3: Unconditional Synchronization of audio_records.json
+    if (fs.existsSync(AUDIO_RECORDS_FILE)) {
+      try {
+        const records = JSON.parse(fs.readFileSync(AUDIO_RECORDS_FILE, 'utf-8'));
+        let recordChanged = false;
+        for (const key of Object.keys(records)) {
+          const url = records[key]?.audio_url;
+          if (url) {
+            const localPath = path.join(UPLOADS_DIR, path.basename(url));
+            if (!fs.existsSync(localPath)) {
+              delete records[key];
+              recordChanged = true;
+            }
+          }
+        }
+        if (recordChanged) {
+          fs.writeFileSync(AUDIO_RECORDS_FILE, JSON.stringify(records, null, 2));
+        }
+      } catch (e) {}
+    }
+
+    // Gate 4: Evict unlinked files from in-memory serverAudioCache
+    for (const [key, cachedVal] of serverAudioCache.entries()) {
+      if (typeof cachedVal === 'string' && cachedVal.includes('/uploads/')) {
+        const fName = path.basename(cachedVal);
+        if (!fs.existsSync(path.join(UPLOADS_DIR, fName))) {
+          serverAudioCache.delete(key);
+        }
+      }
+    }
+
+    if (deletedCount > 0 || quotaPurgedCount > 0) {
+      console.log(`[Audio Cleanup Complete] Purged ${deletedCount + quotaPurgedCount} files (${(freedBytes / 1024 / 1024).toFixed(2)} MB freed).`);
     }
   } catch (err) {
     console.warn('[Audio Cleanup Error]', err.message);
   }
+
+  return { deletedCount, quotaPurgedCount, freedBytes };
+}
+
+/**
+ * Automated Dual-Threshold Storage Watchdog
+ * Monitors Audio (1 GB), D1 DB (500 MB), and RAM (128 MB):
+ * - 80% threshold: Raises Alert Notification state
+ * - 90% threshold: Auto-triggers LRU cleanup down to 70% target
+ */
+function runStorageWatchdogAndCleanup(options = {}) {
+  const result = {
+    audioCleanup: null,
+    orphanCleanup: null,
+    translationsPurged: 0,
+    alerts: [],
+    status: 'normal'
+  };
+
+  try {
+    // 1. Purge zero-usage orphans first
+    result.orphanCleanup = purgeOrphanedSatelliteData();
+
+    // 2. Audio Storage Monitor (1024 MB Quota)
+    let audioBytes = 0;
+    if (fs.existsSync(UPLOADS_DIR)) {
+      const files = fs.readdirSync(UPLOADS_DIR);
+      for (const f of files) {
+        if (f.startsWith('audio_') && (f.endsWith('.mp3') || f.endsWith('.wav'))) {
+          try { audioBytes += fs.statSync(path.join(UPLOADS_DIR, f)).size; } catch (e) {}
+        }
+      }
+    }
+    const audioMb = audioBytes / 1024 / 1024;
+    const audioPercent = (audioMb / 1024) * 100;
+
+    if (audioPercent >= 90 || options.forceAudioCleanup) {
+      result.status = 'critical_cleanup_90';
+      result.alerts.push(`Audio Storage exceeded 90% (${audioMb.toFixed(1)} MB / 1024 MB). Emergency LRU cleanup triggered.`);
+      result.audioCleanup = cleanupExpiredAudioFiles(14, { forceQuotaPurge: options.forceAudioCleanup });
+    } else if (audioPercent >= 80) {
+      if (result.status !== 'critical_cleanup_90') result.status = 'warning_80';
+      result.alerts.push(`Audio Storage warning: Reached 80% capacity (${audioMb.toFixed(1)} MB / 1024 MB).`);
+      result.audioCleanup = cleanupExpiredAudioFiles(14);
+    } else {
+      result.audioCleanup = cleanupExpiredAudioFiles(14);
+    }
+
+    // 3. Cloudflare D1 Database Monitor (500 MB Quota)
+    let d1Bytes = 0;
+    if (fs.existsSync(DATA_DIR)) {
+      const dbFiles = fs.readdirSync(DATA_DIR);
+      for (const df of dbFiles) {
+        if (df.endsWith('.json')) {
+          try { d1Bytes += fs.statSync(path.join(DATA_DIR, df)).size; } catch (e) {}
+        }
+      }
+    }
+    const d1Mb = d1Bytes / 1024 / 1024;
+    const d1Percent = (d1Mb / 500) * 100;
+
+    if (d1Percent >= 90 || options.forceDbCleanup) {
+      result.status = 'critical_cleanup_90';
+      result.alerts.push(`Cloudflare D1 Database exceeded 90% (${d1Mb.toFixed(2)} MB / 500 MB). LRU translation purge triggered.`);
+      // Purge oldest unused translations until under 350 MB (70%)
+      if (fs.existsSync(TRANSLATIONS_FILE)) {
+        const transStore = getTranslationsStore();
+        const records = Object.entries(transStore).map(([k, v]) => ({
+          key: k,
+          lastAccessed: v.last_accessed_at ? new Date(v.last_accessed_at).getTime() : 0
+        }));
+        records.sort((a, b) => a.lastAccessed - b.lastAccessed);
+        let currentSize = d1Bytes;
+        const targetSize = 350 * 1024 * 1024;
+        let purgedTrans = 0;
+        for (const item of records) {
+          if (currentSize <= targetSize && !options.forceDbCleanup) break;
+          const recBytes = Buffer.byteLength(JSON.stringify(transStore[item.key] || ''));
+          delete transStore[item.key];
+          currentSize -= recBytes;
+          purgedTrans++;
+        }
+        if (purgedTrans > 0) {
+          fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(transStore, null, 2));
+          result.translationsPurged = purgedTrans;
+          console.log(`[D1 Database LRU Purge] Evicted ${purgedTrans} stale translations.`);
+        }
+      }
+    } else if (d1Percent >= 80) {
+      if (result.status !== 'critical_cleanup_90') result.status = 'warning_80';
+      result.alerts.push(`Cloudflare D1 Database warning: Reached 80% capacity (${d1Mb.toFixed(2)} MB / 500 MB).`);
+    }
+
+    // 4. Worker Isolate RAM Monitor (128 MB Quota)
+    const memUsage = process.memoryUsage();
+    const heapMb = memUsage.heapUsed / 1024 / 1024;
+    if (heapMb >= 115.2) { // 90%
+      serverAudioCache.clear();
+      serverTranslationCache.clear();
+      serverAudioProgressMap.clear();
+      result.status = 'critical_cleanup_90';
+      result.alerts.push(`Worker RAM exceeded 90% (${heapMb.toFixed(1)} MB / 128 MB). Cleared in-memory caches.`);
+    } else if (heapMb >= 102.4) { // 80%
+      if (result.status === 'normal') result.status = 'warning_80';
+      result.alerts.push(`Worker RAM warning: Reached 80% capacity (${heapMb.toFixed(1)} MB / 128 MB).`);
+    }
+  } catch (err) {
+    console.warn('[Storage Watchdog Error]', err.message);
+  }
+
+  return result;
 }
 
 /**
@@ -2215,35 +2964,213 @@ BODY: ${body || ''}`;
 }
 
 async function translateTextSnippetWithGemini(text, targetLang) {
+  const normalizedTarget = normalizeLanguageCode(targetLang);
   const langNames = {
     hi: 'Hindi', en: 'English', bn: 'Bengali', mr: 'Marathi', te: 'Telugu',
     ta: 'Tamil', gu: 'Gujarati', kn: 'Kannada', ml: 'Malayalam', pa: 'Punjabi',
     or: 'Odia', as: 'Assamese', ur: 'Urdu', fr: 'French', it: 'Italian',
-    ja: 'Japanese', id: 'Indonesian', 'zh-TW': 'Traditional Chinese', ru: 'Russian'
+    ja: 'Japanese', id: 'Indonesian', 'zh-TW': 'Traditional Chinese', 'zh-tw': 'Traditional Chinese', ru: 'Russian'
   };
-  const targetLanguageName = langNames[targetLang] || targetLang;
+  const targetLanguageName = langNames[normalizedTarget] || langNames[targetLang] || targetLang;
 
-  const prompt = `Translate the following text into ${targetLanguageName} (${targetLang}). Return ONLY the translated text without commentary, quotes, or markdown backticks:
+  const prompt = `Translate the following text into ${targetLanguageName} (${normalizedTarget}). Return ONLY the translated text without commentary, quotes, or markdown backticks:
 ${text}`;
 
   const textOutput = await callGeminiApi(prompt, false);
   return textOutput || text;
 }
 
+async function translateHeadlinesBatchWithGemini(items, targetLang) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const normalizedTarget = normalizeLanguageCode(targetLang);
+  const langNames = {
+    hi: 'Hindi', en: 'English', bn: 'Bengali', mr: 'Marathi', te: 'Telugu',
+    ta: 'Tamil', gu: 'Gujarati', kn: 'Kannada', ml: 'Malayalam', pa: 'Punjabi',
+    or: 'Odia', as: 'Assamese', ur: 'Urdu', fr: 'French', it: 'Italian',
+    ja: 'Japanese', id: 'Indonesian', 'zh-TW': 'Traditional Chinese', 'zh-tw': 'Traditional Chinese', ru: 'Russian'
+  };
+  const targetLanguageName = langNames[normalizedTarget] || langNames[targetLang] || targetLang;
+
+  const prompt = `You are a professional journalistic translator for PublicSpark News.
+Translate the following headlines and summaries into ${targetLanguageName} (${normalizedTarget}).
+Return a valid JSON array of objects. Each object MUST have:
+- 'id': the exact same id from input (do not alter)
+- 'title': accurately translated headline
+- 'summary': accurately translated summary (if input summary is non-empty, otherwise empty string)
+
+Rules:
+- Strictly return valid JSON only (no markdown code blocks, no commentary).
+- Preserve all proper nouns, locations, organization names, figures, numbers, and dates accurately.
+
+Input JSON:
+${JSON.stringify(items.map(it => ({ id: it.id, title: it.title || '', summary: it.summary || it.excerpt || '' })))}`;
+
+  try {
+    const rawJson = await callGeminiApi(prompt, true);
+    if (!rawJson) return items;
+    const cleanJson = typeof rawJson === 'string'
+      ? rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+      : JSON.stringify(rawJson);
+    const parsed = JSON.parse(cleanJson);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    return items;
+  } catch (err) {
+    console.warn('[Gemini Batch Translation Error]:', err.message);
+    return items;
+  }
+}
+
+// -------------------------------------------------------------
+// RESTRICTIVE CORS HARDENING (SEC-005)
+// Strictly restricts browser cross-origin requests to trusted origins.
+// Blocks cross-origin mutation attacks (CSRF) from untrusted third parties.
+// -------------------------------------------------------------
+const TRUSTED_CORS_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5000',
+  'http://127.0.0.1:5000',
+  'https://publicspark.in',
+  'https://www.publicspark.in'
+];
+
+if (process.env.CLIENT_URL) {
+  const customUrl = process.env.CLIENT_URL.trim();
+  if (customUrl && !TRUSTED_CORS_ORIGINS.includes(customUrl)) {
+    TRUSTED_CORS_ORIGINS.push(customUrl);
+  }
+}
+if (process.env.ALLOWED_ORIGINS) {
+  process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()).forEach(o => {
+    if (o && !TRUSTED_CORS_ORIGINS.includes(o)) {
+      TRUSTED_CORS_ORIGINS.push(o);
+    }
+  });
+}
+
+export function evaluateCors(req) {
+  const origin = req.headers?.origin;
+  // If no Origin header (same-origin, curl, mobile app, internal scripts), permit
+  if (!origin) {
+    return { isAllowed: true, origin: null };
+  }
+  const isAllowed = TRUSTED_CORS_ORIGINS.includes(origin);
+  return { isAllowed, origin };
+}
 
 const server = http.createServer(async (req, res) => {
-  // CORS Headers for Local Development
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // CORS Hardening Policy Evaluation (SEC-005)
+  const corsResult = evaluateCors(req);
 
+  if (corsResult.origin) {
+    if (corsResult.isAllowed) {
+      res.setHeader('Access-Control-Allow-Origin', corsResult.origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    // Untrusted Origin: Access-Control-Allow-Origin header is strictly omitted
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-admin-secret, x-dev-otp');
+  res.setHeader('Access-Control-Max-Age', '86400');
+
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost:5000'}`);
+
+  // Preflight OPTIONS Gatekeeper
   if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
+    if (corsResult.isAllowed) {
+      res.writeHead(204);
+      return res.end();
+    } else {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: false,
+        error: `CORS policy violation: Preflight rejected for unauthorized origin ${corsResult.origin}.`
+      }));
+    }
   }
 
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  // Unauthorized Cross-Origin Mutation Shield (POST, PUT, DELETE, PATCH) (SEC-005 & SEC-047)
+  const isMutatingMethod = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method);
+  if (isMutatingMethod) {
+    const effectiveOrigin = corsResult.origin || (req.headers.referer ? (() => { try { return new URL(req.headers.referer).origin; } catch (_e) { return null; } })() : null);
+    if (effectiveOrigin && !TRUSTED_CORS_ORIGINS.includes(effectiveOrigin)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: false,
+        error: `CORS policy violation: Cross-origin mutating requests from ${effectiveOrigin} are strictly forbidden.`
+      }));
+    }
+  }
+
+  // Global HTTP Security Headers (SEC-028 & SEC-046)
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://pagead2.googlesyndication.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; media-src 'self' data: blob: https:; connect-src 'self' https://api.imgbb.com https://open-meteo.com; frame-src 'self' https://www.youtube.com https://googleads.g.doubleclick.net;"
+  );
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+
+  // Central Request Body Size Guard (SEC-018: Anti-DoS / Memory Exhaustion Protection)
+  if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    const isUpload = url.pathname.startsWith('/api/upload');
+    const maxPayloadBytes = isUpload ? 10 * 1024 * 1024 : 2 * 1024 * 1024; // 10MB for media uploads, 2MB standard
+    
+    const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+    if (contentLength > maxPayloadBytes) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        error: `Payload Too Large: Request body exceeds maximum permitted limit of ${(maxPayloadBytes / (1024 * 1024)).toFixed(1)} MB.`
+      }));
+    }
+
+    let bytesReceived = 0;
+    const originalOn = req.on.bind(req);
+    let payloadExceeded = false;
+
+    req.on = function(event, listener) {
+      if (event === 'data') {
+        const wrappedListener = function(chunk) {
+          if (payloadExceeded) return;
+          bytesReceived += chunk.length;
+          if (bytesReceived > maxPayloadBytes) {
+            payloadExceeded = true;
+            req.destroy();
+            if (!res.headersSent) {
+              res.writeHead(413, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                error: `Payload Too Large: Request stream exceeded maximum limit of ${(maxPayloadBytes / (1024 * 1024)).toFixed(1)} MB.`
+              }));
+            }
+            return;
+          }
+          return listener(chunk);
+        };
+        return originalOn(event, wrappedListener);
+      }
+      return originalOn(event, listener);
+    };
+  }
+
+  // Security & Credential Cache Prevention: Strictly forbid caching for auth & staff endpoints
+  if (url.pathname.startsWith('/api/auth') || url.pathname.startsWith('/api/staff')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  }
 
   // 1. DYNAMIC GOOGLE NEWS XML SITEMAP
   if (req.method === 'GET' && url.pathname === '/sitemap.xml') {
@@ -2282,8 +3209,9 @@ const server = http.createServer(async (req, res) => {
     return res.end(adsContent);
   }
 
-  // 3. SERVER-SIDE DYNAMIC ARTICLE PRE-RENDERING GATEWAY (SSR / Prerendering for Googlebot & Social Scrapers)
-  if (req.method === 'GET' && (url.pathname.startsWith('/article/') || url.pathname.startsWith('/news/') || (url.pathname === '/' && url.searchParams.has('article')))) {
+  // 3. SERVER-SIDE DYNAMIC ARTICLE PRE-RENDERING GATEWAY & CLIENT SPA ROUTING
+  const isClientSpaRoute = ['/', '/login', '/staff', '/reporter', '/editor', '/admin', '/developer', '/rescue', '/search'].includes(url.pathname);
+  if (req.method === 'GET' && (url.pathname.startsWith('/article/') || url.pathname.startsWith('/news/') || (url.pathname === '/' && url.searchParams.has('article')) || isClientSpaRoute)) {
     let articleIdOrSlug = '';
     if (url.pathname.startsWith('/article/')) {
       articleIdOrSlug = decodeURIComponent(url.pathname.replace(/^\/article\//, '').split('/')[0]);
@@ -2294,7 +3222,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const allArticles = getSavedArticles();
-    const article = allArticles.find(a => a.id === articleIdOrSlug || a.slug === articleIdOrSlug);
+    const article = articleIdOrSlug ? allArticles.find(a => a.id === articleIdOrSlug || a.slug === articleIdOrSlug) : null;
 
     const baseHtmlPath = fs.existsSync(path.join(DIST_DIR, 'index.html'))
       ? path.join(DIST_DIR, 'index.html')
@@ -2316,11 +3244,19 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 4. STANDALONE WEBP IMAGE UPLOAD ENDPOINT (Zero Base64 Database Bloat)
+  // 4. STANDALONE WEBP IMAGE UPLOAD ENDPOINT (Zero Base64 Database Bloat - Gated SEC-017)
   if (req.method === 'POST' && (url.pathname === '/api/upload/image' || url.pathname === '/api/upload')) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['reporter', 'editor', 'admin', 'developer'].includes(session.role)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Unauthorized: Staff authentication required to upload media assets.' }));
+    }
+
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const body = JSON.parse(bodyText || '{}');
         const { imageBase64, articleId = 'general' } = body;
@@ -2331,18 +3267,60 @@ const server = http.createServer(async (req, res) => {
         }
 
         const matches = imageBase64.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
-        const ext = matches ? (matches[1] === 'jpeg' ? 'jpg' : matches[1]) : 'webp';
+        const rawExt = matches ? matches[1].toLowerCase().replace('jpeg', 'jpg') : 'webp';
+        const ALLOWED_EXTS = ['webp', 'jpg', 'png'];
+        if (!ALLOWED_EXTS.includes(rawExt)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Rejected: Only WebP, JPG, and PNG images are permitted.' }));
+        }
+        const ext = rawExt;
         const rawBase64 = matches ? matches[2] : imageBase64;
         const imgBuffer = Buffer.from(rawBase64, 'base64');
+
+        // SEC-048: Binary Magic Byte Validation for image headers (CWE-434 Fix)
+        const isPng = imgBuffer.length > 8 && imgBuffer[0] === 0x89 && imgBuffer[1] === 0x50 && imgBuffer[2] === 0x4E && imgBuffer[3] === 0x47;
+        const isJpg = imgBuffer.length > 3 && imgBuffer[0] === 0xFF && imgBuffer[1] === 0xD8 && imgBuffer[2] === 0xFF;
+        const isWebp = imgBuffer.length > 12 && imgBuffer.toString('ascii', 0, 4) === 'RIFF' && imgBuffer.toString('ascii', 8, 12) === 'WEBP';
+        if (!isPng && !isJpg && !isWebp) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Security Exception: Binary header does not match a valid image format.' }));
+        }
 
         const sanitizedId = String(articleId).replace(/[^a-zA-Z0-9-_]/g, '_');
         const fileName = `img_${sanitizedId}_${Date.now()}.${ext}`;
         const filePath = path.join(UPLOADS_DIR, fileName);
 
-        fs.writeFileSync(filePath, imgBuffer);
-        const publicUrl = `/uploads/${fileName}`;
+        let publicUrl = `/uploads/${fileName}`;
+        let cloudProvider = 'local';
 
-        console.log(`[Image Upload] Saved ${fileName} (${(imgBuffer.length / 1024).toFixed(1)} KB)`);
+        // ImgBB API Cloud Tier Hybrid Dispatch (100% Free Forever, Unlimited Storage, Zero Server Disk)
+        if (process.env.IMGBB_API_KEY) {
+          try {
+            const formData = new FormData();
+            formData.append('image', rawBase64);
+            const imgbbRes = await fetch(`https://api.imgbb.com/1/upload?key=${encodeURIComponent(process.env.IMGBB_API_KEY)}`, {
+              method: 'POST',
+              body: formData
+            });
+            if (imgbbRes.ok) {
+              const imgbbData = await imgbbRes.json();
+              if (imgbbData?.data?.url) {
+                publicUrl = imgbbData.data.url;
+                cloudProvider = 'imgbb';
+                console.log(`[ImgBB Cloud Upload] Success: Hosted permanently at ${publicUrl} (0 KB server disk consumed)`);
+              }
+            } else {
+              console.warn(`[ImgBB Upload Warning] Remote API returned status ${imgbbRes.status}, falling back to local storage.`);
+            }
+          } catch (imgbbErr) {
+            console.warn('[ImgBB Upload Error] Network exception, falling back to local storage:', imgbbErr.message);
+          }
+        }
+
+        if (cloudProvider === 'local') {
+          fs.writeFileSync(filePath, imgBuffer);
+          console.log(`[Image Upload] Saved locally ${fileName} (${(imgBuffer.length / 1024).toFixed(1)} KB)`);
+        }
 
         // Task 22: Immediately index newly uploaded media asset
         const syncedAssets = syncAndIndexMediaAssets();
@@ -2383,9 +3361,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 5. PRODUCTION STATIC ASSETS ROUTE (/assets/ & /logo.png & /favicon.svg)
+  // 5. PRODUCTION STATIC ASSETS ROUTE (/assets/ & /logo.png & /favicon.svg) (SEC-050 Defense-in-Depth)
   if (req.method === 'GET' && url.pathname.startsWith('/assets/')) {
-    const assetPath = path.join(DIST_DIR, path.normalize(url.pathname));
+    const assetPath = path.resolve(DIST_DIR, path.normalize(url.pathname));
+    if (!assetPath.startsWith(DIST_DIR + path.sep) && assetPath !== DIST_DIR) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Access denied: Directory traversal strictly prohibited.' }));
+    }
     if (fs.existsSync(assetPath)) {
       const ext = path.extname(assetPath).toLowerCase();
       const mime = ext === '.js' ? 'application/javascript' : ext === '.css' ? 'text/css' : 'application/octet-stream';
@@ -2407,7 +3389,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Serve uploaded media files (WebP images, WAV/MP3 audio) from server/data/uploads/ (Zero-Card Setup)
-  if (req.method === 'GET' && url.pathname.startsWith('/uploads/')) {
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname.startsWith('/uploads/')) {
     const safePath = path.join(DATA_DIR, path.normalize(url.pathname));
     if (safePath.startsWith(UPLOADS_DIR) && fs.existsSync(safePath)) {
       const ext = path.extname(safePath).toLowerCase();
@@ -2421,6 +3403,17 @@ const server = http.createServer(async (req, res) => {
       };
       const contentType = mimeTypes[ext] || 'application/octet-stream';
       const stats = fs.statSync(safePath);
+
+      if (req.method === 'HEAD') {
+        res.writeHead(200, {
+          'Content-Length': stats.size,
+          'Accept-Ranges': 'bytes',
+          'Content-Type': contentType,
+          'Cache-Control': 'public, max-age=604800, immutable'
+        });
+        return res.end();
+      }
+
       const range = req.headers.range;
 
       if (range) {
@@ -2493,8 +3486,13 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const body = JSON.parse(bodyText || '{}');
-        const { article_id, lang = 'hi', clip_type = 'clip_1_intro', title = '', highlights = [], body: articleBody = '', text = '' } = body;
-        const targetLang = (lang || 'hi').toLowerCase();
+        const article_id = body.article_id || body.articleId || 'general';
+        const targetLang = normalizeLanguageCode(body.lang || body.langCode || 'hi');
+        const clip_type = body.clip_type || body.clipType || 'clip_1_intro';
+        const title = body.title || '';
+        const highlights = body.highlights || [];
+        const articleBody = body.body || '';
+        const text = body.text || '';
 
         // Guardrail 1: Assamese voice is explicitly not supported -> auto-hide
         if (targetLang === 'as') {
@@ -2509,7 +3507,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         // Guardrail 3: Published articles only (reject drafts)
-        if (article_id) {
+        if (article_id && article_id !== 'general') {
           const allArticles = getSavedArticles();
           const targetArticle = allArticles.find(a => a.id === article_id || a.slug === article_id);
           if (targetArticle && targetArticle.status === 'draft') {
@@ -2532,12 +3530,15 @@ const server = http.createServer(async (req, res) => {
           const stats = fs.statSync(audioFilePathMp3);
           if (stats.size > 500) {
             console.log(`[TTS Audio Cache HIT - MP3] Serving cached audio for (${sanitizedArticleId}, ${targetLang}, ${validClipType})`);
+            touchAudioAccess(sanitizedArticleId, targetLang, validClipType, audioFilePathMp3);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({
               article_id: sanitizedArticleId,
+              articleId: sanitizedArticleId,
               lang: targetLang,
               clip_type: validClipType,
               audio_url: publicAudioUrlMp3,
+              audioUrl: publicAudioUrlMp3,
               size_bytes: stats.size,
               status: 'done',
               isCached: true
@@ -2550,9 +3551,11 @@ const server = http.createServer(async (req, res) => {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({
               article_id: sanitizedArticleId,
+              articleId: sanitizedArticleId,
               lang: targetLang,
               clip_type: validClipType,
               audio_url: `/uploads/${audioFileNameWav}`,
+              audioUrl: `/uploads/${audioFileNameWav}`,
               size_bytes: stats.size,
               status: 'done',
               isCached: true
@@ -2624,9 +3627,11 @@ const server = http.createServer(async (req, res) => {
 
           return {
             article_id: sanitizedArticleId,
+            articleId: sanitizedArticleId,
             lang: targetLang,
             clip_type: validClipType,
             audio_url: targetUrl,
+            audioUrl: targetUrl,
             size_bytes: finalAudioBuffer.length,
             status: 'done',
             isCached: false
@@ -2662,6 +3667,118 @@ const server = http.createServer(async (req, res) => {
 
 
   // -------------------------------------------------------------
+  // BATCH MULTILINGUAL TRANSLATION ENDPOINT (1 Single Fast Call for Visible Stories)
+  // -------------------------------------------------------------
+  if (req.method === 'POST' && url.pathname === '/api/translate/batch') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', async () => {
+      try {
+        const clientIp = getClientIp(req);
+        if (!checkIpRateLimit(clientIp)) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            error: 'Hourly translation rate limit exceeded for your IP. Please try again later.',
+            status: 'rate_limited'
+          }));
+        }
+
+        const body = JSON.parse(bodyText || '{}');
+        const { items = [], targetLang = 'hi', source_lang = 'hi' } = body;
+        const normalizedTarget = normalizeLanguageCode(targetLang);
+
+        if (!Array.isArray(items) || items.length === 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'items must be a non-empty array' }));
+        }
+
+        // Limit batch to at most 15 items to protect token budget and guarantee sub-2s response
+        const cappedItems = items.slice(0, 15);
+
+        // If target matches source language, return items directly
+        if (normalizedTarget === normalizeLanguageCode(source_lang)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'done', items: cappedItems, cachedCount: cappedItems.length }));
+        }
+
+        const store = getTranslationsStore();
+        const results = [];
+        const uncachedItems = [];
+
+        for (const item of cappedItems) {
+          const key = `${item.id}:${normalizedTarget}`;
+          if (store[key] && store[key].title && store[key].status === 'done') {
+            results.push({
+              id: item.id,
+              title: store[key].title,
+              summary: store[key].summary || (Array.isArray(store[key].highlights) ? store[key].highlights[0] : '') || item.summary || '',
+              isCached: true
+            });
+            touchTranslationAccess(item.id, normalizedTarget);
+          } else {
+            uncachedItems.push(item);
+          }
+        }
+
+        // If all items were in cache, return immediately (0ms, 0 AI calls!)
+        if (uncachedItems.length === 0) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ status: 'done', items: results, cachedCount: results.length }));
+        }
+
+        // Translate only the uncached items in 1 single Gemini call
+        const batchKey = `batch_${normalizedTarget}_${uncachedItems.map(i => i.id).join('_')}`;
+        let translatedItems;
+
+        if (inFlightTranslations.has(batchKey)) {
+          translatedItems = await inFlightTranslations.get(batchKey);
+        } else {
+          const promise = translateHeadlinesBatchWithGemini(uncachedItems, normalizedTarget);
+          inFlightTranslations.set(batchKey, promise);
+          try {
+            translatedItems = await promise;
+          } finally {
+            inFlightTranslations.delete(batchKey);
+          }
+        }
+
+        // Save newly translated items into translationsStore permanently
+        if (Array.isArray(translatedItems)) {
+          for (const trans of translatedItems) {
+            if (trans && trans.id && trans.title) {
+              saveTranslationRecord(trans.id, normalizedTarget, {
+                title: trans.title,
+                summary: trans.summary || '',
+                status: 'done'
+              });
+              results.push({
+                id: trans.id,
+                title: trans.title,
+                summary: trans.summary || '',
+                isCached: false
+              });
+            }
+          }
+        }
+
+        // Ensure all input items are accounted for (fallback to original if any missing)
+        const finalResults = cappedItems.map(orig => {
+          const found = results.find(r => String(r.id) === String(orig.id));
+          return found || orig;
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ status: 'done', items: finalResults, cachedCount: cappedItems.length - uncachedItems.length }));
+      } catch (err) {
+        console.error('[Batch Translation Error]:', err.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: err.message, status: 'failed' }));
+      }
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
   // MULTILINGUAL TRANSLATION ENDPOINT (Lazy Loading + In-Flight Mutex Lock + Integrity Validation)
   // -------------------------------------------------------------
   if (req.method === 'POST' && url.pathname === '/api/translate') {
@@ -2670,7 +3787,7 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         // IP Hourly Rate Limiter (Max 30 requests/hour per IP)
-        const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+        const clientIp = getClientIp(req);
         if (!checkIpRateLimit(clientIp)) {
           res.writeHead(429, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({
@@ -2682,15 +3799,15 @@ const server = http.createServer(async (req, res) => {
 
         const body = JSON.parse(bodyText || '{}');
         const { article_id, lang, source_lang, title, highlights = [], body: articleBody, text, targetLang } = body;
-        const targetLanguage = (lang || targetLang || 'hi').toLowerCase();
+        const targetLanguage = normalizeLanguageCode(lang || targetLang || 'hi');
 
-        let sourceLanguage = (source_lang || '').toLowerCase();
+        let sourceLanguage = normalizeLanguageCode(source_lang || '');
         let targetArticle = null;
         if (article_id) {
           const allArticles = getSavedArticles();
           targetArticle = allArticles.find(a => a.id === article_id || a.slug === article_id);
           if (targetArticle && !sourceLanguage) {
-            sourceLanguage = (targetArticle.originalLanguage || 'hi').toLowerCase();
+            sourceLanguage = normalizeLanguageCode(targetArticle.originalLanguage || 'hi');
           }
         }
         if (!sourceLanguage) sourceLanguage = 'hi';
@@ -2726,7 +3843,20 @@ const server = http.createServer(async (req, res) => {
 
           const rawTitle = (targetArticle && targetArticle.title) ? targetArticle.title : (title || '');
           const rawBody = (targetArticle && targetArticle.content) ? targetArticle.content : (articleBody || '');
-          const rawHighlights = (targetArticle && Array.isArray(targetArticle.highlights) && targetArticle.highlights.length > 0) ? targetArticle.highlights : (highlights || []);
+          const rawSummary = (targetArticle && targetArticle.summary) ? targetArticle.summary : (body.summary || '');
+          const rawSubTitle = (targetArticle && targetArticle.sub_title) ? targetArticle.sub_title : (body.sub_title || '');
+
+          let rawHighlights = (targetArticle && Array.isArray(targetArticle.highlights) && targetArticle.highlights.length > 0)
+            ? [...targetArticle.highlights]
+            : (Array.isArray(highlights) && highlights.length > 0 ? [...highlights] : []);
+
+          // Task 33 Subtopic B: Summary-to-highlights bridge
+          // If highlights array is empty, bridge from summary and sub_title so 30s bullets are translated
+          if (rawHighlights.length === 0) {
+            if (rawSummary) rawHighlights.push(rawSummary);
+            if (rawSubTitle && rawSubTitle !== rawSummary) rawHighlights.push(rawSubTitle);
+          }
+
           const contentHash = computeContentHash(`${rawTitle}:::${rawBody}`);
 
           // Check Database for existing translation with matching content_hash
@@ -2736,11 +3866,13 @@ const server = http.createServer(async (req, res) => {
 
           if (existingRecord && existingRecord.status === 'done' && existingRecord.content_hash === contentHash) {
             console.log(`[Translations DB HIT] Serving cached translation for (${article_id}, ${targetLanguage})`);
+            touchTranslationAccess(article_id, targetLanguage);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({
               article_id,
               lang: targetLanguage,
               title: existingRecord.title,
+              summary: existingRecord.summary || (Array.isArray(existingRecord.highlights) ? existingRecord.highlights[0] : ''),
               highlights: existingRecord.highlights || [],
               body: existingRecord.body,
               translatedText: existingRecord.body,
@@ -2770,7 +3902,7 @@ const server = http.createServer(async (req, res) => {
 
           // Create promise with in-flight lock
           const translationPromise = (async () => {
-            const translated = await translateWithGemini(rawTitle, rawBody, rawHighlights, targetLanguage, sourceLanguage);
+            const translated = await translateWithGemini(rawTitle, rawBody, rawHighlights, targetLanguage, sourceLanguage, rawSummary);
             
             // Strict Integrity Validation before saving
             const isValid = validateTranslationIntegrity(rawTitle, rawBody, translated.title, translated.body);
@@ -2783,6 +3915,7 @@ const server = http.createServer(async (req, res) => {
             // Save to database only on verified integrity
             saveTranslationRecord(article_id, targetLanguage, {
               title: translated.title,
+              summary: translated.summary || (Array.isArray(translated.highlights) ? translated.highlights[0] : ''),
               highlights: translated.highlights || [],
               body: translated.body,
               status: 'done',
@@ -2794,6 +3927,7 @@ const server = http.createServer(async (req, res) => {
               article_id,
               lang: targetLanguage,
               title: translated.title,
+              summary: translated.summary || (Array.isArray(translated.highlights) ? translated.highlights[0] : ''),
               highlights: translated.highlights || [],
               body: translated.body,
               translatedText: translated.body,
@@ -2839,22 +3973,42 @@ const server = http.createServer(async (req, res) => {
           }));
         }
 
+        // In-Flight Promise Lock for Snippets (Prevents duplicate parallel calls for same text)
+        if (inFlightTranslations.has(snippetCacheKey)) {
+          const inFlightSnippet = await inFlightTranslations.get(snippetCacheKey);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(inFlightSnippet));
+        }
+
         // Check daily limit
         if (getDailyUsage('Gemini') >= 1450) {
           res.writeHead(429, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Daily translation limit reached.', status: 'rate_limited' }));
         }
 
-        const translatedSnippet = await translateTextSnippetWithGemini(inputText, targetLanguage);
-        incrementDailyUsage('Gemini');
-        serverTranslationCache.set(snippetCacheKey, translatedSnippet);
+        const snippetPromise = (async () => {
+          const translatedSnippet = await translateTextSnippetWithGemini(inputText, targetLanguage);
+          incrementDailyUsage('Gemini');
+          setBoundedTranslationCache(snippetCacheKey, translatedSnippet, 500);
+          return {
+            translatedText: translatedSnippet,
+            isCached: false,
+            status: 'done'
+          };
+        })();
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({
-          translatedText: translatedSnippet,
-          isCached: false,
-          status: 'done'
-        }));
+        inFlightTranslations.set(snippetCacheKey, snippetPromise);
+        try {
+          const snippetResult = await snippetPromise;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(snippetResult));
+        } catch (snippetErr) {
+          console.error('[Snippet Translation Error]:', snippetErr.message);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ translatedText: inputText, status: 'fallback', isCached: true }));
+        } finally {
+          inFlightTranslations.delete(snippetCacheKey);
+        }
 
       } catch (err) {
         console.error('[Server Translation Exception]', err);
@@ -2879,7 +4033,7 @@ const server = http.createServer(async (req, res) => {
         const { articleId = '1', userId = null } = body;
         const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const country = resolveIpToCountry(req);
-        const ipAddress = req.socket?.remoteAddress || '127.0.0.1';
+        const ipAddress = getClientIp(req);
 
         const viewRecord = {
           id: `v-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -2995,9 +4149,10 @@ const server = http.createServer(async (req, res) => {
         const body = JSON.parse(bodyText || '{}');
         const { articleId = '1', sessionId = null } = body;
         const artIdStr = String(articleId);
-        const userSess = sessionId || `user_sess_${req.socket?.remoteAddress || 'default'}`;
+        const clientIp = getClientIp(req);
+        const userSess = sessionId || `user_sess_${clientIp}`;
         const country = resolveIpToCountry(req);
-        const ipAddress = req.socket?.remoteAddress || '127.0.0.1';
+        const ipAddress = clientIp;
 
         const existingIndex = articleLikes.findIndex(l => l.articleId === artIdStr && l.sessionId === userSess);
         let action = 'liked';
@@ -3182,6 +4337,11 @@ const server = http.createServer(async (req, res) => {
         if (articleId && langCode) {
           const key = `${articleId}_${langCode}`;
           const pos = Math.max(0, parseFloat(positionSeconds) || 0);
+          // SEC-049: Rolling FIFO Cap (5,000 max entries) to prevent heap exhaustion DoS (CWE-400)
+          if (serverAudioProgressMap.size >= 5000 && !serverAudioProgressMap.has(key)) {
+            const oldestKey = serverAudioProgressMap.keys().next().value;
+            serverAudioProgressMap.delete(oldestKey);
+          }
           serverAudioProgressMap.set(key, pos);
           console.log(`[Backend Audio Progress Saved] (${key}): ${pos.toFixed(1)}s`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -3223,13 +4383,56 @@ const server = http.createServer(async (req, res) => {
     const heapTotalMb = parseFloat((mem.heapTotal / 1024 / 1024).toFixed(2));
     const rssMb = parseFloat((mem.rss / 1024 / 1024).toFixed(2));
 
+    const localDbUsedMb = parseFloat(((fs.existsSync(DATA_DIR) ? fs.readdirSync(DATA_DIR).reduce((acc, f) => {
+      try { return acc + fs.statSync(path.join(DATA_DIR, f)).size; } catch (e) { return acc; }
+    }, 0) : 0) / 1024 / 1024).toFixed(2));
+
+    const uploadsFiles = fs.existsSync(UPLOADS_DIR) ? fs.readdirSync(UPLOADS_DIR) : [];
+    let audioBytes = 0;
+    let audioCount = 0;
+    let imageBytes = 0;
+    let imageCount = 0;
+
+    uploadsFiles.forEach(f => {
+      try {
+        const fullPath = path.join(UPLOADS_DIR, f);
+        const size = fs.statSync(fullPath).size;
+        if (f.startsWith('audio_') || f.endsWith('.mp3')) {
+          audioBytes += size;
+          audioCount++;
+        } else {
+          imageBytes += size;
+          imageCount++;
+        }
+      } catch (e) {}
+    });
+
+    const audioUsedMb = parseFloat((audioBytes / 1024 / 1024).toFixed(2));
+    const uploadsUsedMb = parseFloat(((audioBytes + imageBytes) / 1024 / 1024).toFixed(2));
+
+    // Cloudflare Workers free tier isolate RAM ceiling is 128 MB
+    const workerIsolateCapMb = 128;
+    const workerUsagePercent = Math.min(100, parseFloat(((heapUsedMb / workerIsolateCapMb) * 100).toFixed(1)));
+
+    // Auto-cleanup memory buffers if heap crosses 85% threshold (108.8 MB)
+    if (heapUsedMb > 108.8) {
+      serverAudioCache.clear();
+      serverTranslationCache.clear();
+      serverAudioProgressMap.clear();
+      console.log('[Auto-Cleanup Watchdog] Worker Isolate RAM crossed 85% threshold (108.8 MB). In-memory buffers flushed.');
+    }
+
+    const isImgbbActive = Boolean(process.env.IMGBB_API_KEY);
+
     const statusReport = {
       timestamp: new Date().toISOString(),
       serverRam: {
         heapUsedMb,
         heapTotalMb,
         rssMb,
-        usagePercent: Math.min(100, parseFloat(((heapUsedMb / 512) * 100).toFixed(1)))
+        limitMb: workerIsolateCapMb,
+        usagePercent: workerUsagePercent,
+        alertThresholdMb: 108.8
       },
       inMemoryCaches: {
         audioCacheCount: serverAudioCache.size,
@@ -3237,37 +4440,98 @@ const server = http.createServer(async (req, res) => {
         audioProgressCount: serverAudioProgressMap.size
       },
       storageTiers: {
-        supabase: {
-          name: 'Supabase PostgreSQL (Master DB)',
-          usedMb: 14.8,
+        cloudflareD1: {
+          name: 'Cloudflare D1 SQL (Master DB)',
+          usedMb: localDbUsedMb,
           limitMb: 500,
+          accountPoolMb: 5120, // 5 GB across 10 databases
+          percent: Math.min(100, parseFloat(((localDbUsedMb / 500) * 100).toFixed(2))),
           unit: 'MB',
-          percent: 2.96,
-          status: 'healthy',
-          details: 'Articles, Categories, User Auth & RLS Policies'
+          status: localDbUsedMb >= 450 ? 'critical' : (localDbUsedMb >= 400 ? 'warning' : 'healthy'),
+          details: 'Articles, Categories, Settings, Grievances & Staff Records (500 MB Cap / DB)',
+          alertThresholdMb: 400, // 80% of 500MB
+          cleanupThresholdMb: 450, // 90% of 500MB
+          targetPostCleanupMb: 350 // 70% of 500MB
         },
-        turso: {
-          name: 'Turso Edge SQLite (Translation Cache)',
-          usedMb: 8.5,
-          limitMb: 9216, // 9 GB
+        imgbbCdn: {
+          name: 'ImgBB Cloud Image CDN (Media)',
+          isCloudActive: isImgbbActive,
+          usedMb: parseFloat((imageBytes / 1024 / 1024).toFixed(2)),
+          limitMb: 2048,
+          cloudTier: 'Unlimited Free Tier',
+          fileSizeCapMb: 32,
+          percent: Math.min(100, parseFloat(((imageBytes / (2048 * 1024 * 1024)) * 100).toFixed(2))),
           unit: 'MB',
-          percent: 0.09,
           status: 'healthy',
-          details: '18-Language translation cache & content hashes'
+          details: isImgbbActive
+            ? 'ImgBB Cloud CDN Active: 0 KB server disk, unlimited image hosting'
+            : 'ImgBB CDN Ready (Free Unlimited Tier) - Set IMGBB_API_KEY in .env'
         },
-        cloudflareR2: {
-          name: 'Cloudflare R2 (Audio & Image Storage)',
-          usedMb: 32.4,
-          limitMb: 10240, // 10 GB
+        audioStorage: {
+          name: 'Audio Stories MP3 Storage',
+          usedMb: audioUsedMb,
+          limitMb: 1024,
+          percent: Math.min(100, parseFloat(((audioUsedMb / 1024) * 100).toFixed(2))),
+          fileCount: audioCount,
           unit: 'MB',
-          percent: 0.31,
-          status: 'healthy',
-          details: 'Generated MP3 Audio & Compressed WebP Images (0 Egress)'
+          cloudTier: 'Cloudflare Workers KV (1 GB Free Tier, Zero Card)',
+          status: audioUsedMb >= 921.6 ? 'critical' : (audioUsedMb >= 819.2 ? 'warning' : 'healthy'),
+          alertState: audioUsedMb >= 921.6 ? 'critical_cleanup_90' : (audioUsedMb >= 819.2 ? 'warning_80' : 'normal'),
+          alertThresholdMb: 819.2, // 80% of 1024MB
+          cleanupThresholdMb: 921.6, // 90% of 1024MB
+          targetPostCleanupMb: 716.8, // 70% of 1024MB
+          details: `Generated 32kbps mono MP3 audio clips (${audioCount} files, Dual-Gated 80% Alert / 90% LRU Auto-Cleanup)`
+        },
+        // Backward compatibility mappings
+        localJsonDatabase: {
+          name: 'Cloudflare D1 SQL (Master DB)',
+          usedMb: localDbUsedMb,
+          limitMb: 500,
+          percent: Math.min(100, parseFloat(((localDbUsedMb / 500) * 100).toFixed(2))),
+          unit: 'MB',
+          status: localDbUsedMb >= 450 ? 'critical' : (localDbUsedMb >= 400 ? 'warning' : 'healthy'),
+          details: 'Articles, Categories, Settings, Grievances & Staff Records'
+        },
+        uploadsAndMedia: {
+          name: 'Audio Stories MP3 Storage',
+          usedMb: audioUsedMb,
+          limitMb: 1024,
+          percent: Math.min(100, parseFloat(((audioUsedMb / 1024) * 100).toFixed(2))),
+          unit: 'MB',
+          status: audioUsedMb >= 921.6 ? 'critical' : (audioUsedMb >= 819.2 ? 'warning' : 'healthy'),
+          details: `Audio Clips & Uploads Buffer (${audioCount} MP3 files stored, 1 GB Cloudflare KV Tier)`
         }
+      },
+      alertState: (audioUsedMb >= 921.6 || localDbUsedMb >= 450)
+        ? 'critical_cleanup_90'
+        : ((audioUsedMb >= 819.2 || localDbUsedMb >= 400) ? 'warning_80' : 'normal'),
+      thresholdPolicies: {
+        warningPercent: 80,
+        emergencyCleanupPercent: 90,
+        postCleanupTargetPercent: 70
+      },
+      quotas: {
+        cloudflareWorkersDaily: 100000,
+        cloudflareD1DailyReads: 5000000,
+        cloudflareD1DailyWrites: 100000,
+        cloudflareKvStorageLimitMb: 1024,
+        imgbbStorageLimit: 'Unlimited'
       },
       autoCleanup: {
         enabled: true,
-        thresholdPercent: 85,
+        warningThresholdPercent: 80,
+        emergencyCleanupPercent: 90,
+        postCleanupTargetPercent: 70,
+        alertThresholds: {
+          d1Mb: 400,
+          workerRamMb: 102.4,
+          audioStorageMb: 819.2
+        },
+        cleanupThresholds: {
+          d1Mb: 450,
+          workerRamMb: 115.2,
+          audioStorageMb: 921.6
+        },
         lastRunTimestamp: new Date().toISOString()
       }
     };
@@ -3276,8 +4540,13 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(statusReport));
   }
 
-  // POST /api/storage/purge (Purge server-side in-memory translation & audio caches)
+  // POST /api/storage/purge (Deep Purge: RAM caches + Orphan sweeper + Audio reconciliation - SEC-032)
   if (req.method === 'POST' && url.pathname === '/api/storage/purge') {
+    if (!verifyAdminAuthorization(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden: Admin authorization required to purge server cache.' }));
+    }
+
     const audioPurged = serverAudioCache.size;
     const transPurged = serverTranslationCache.size;
     const progressPurged = serverAudioProgressMap.size;
@@ -3286,16 +4555,25 @@ const server = http.createServer(async (req, res) => {
     serverTranslationCache.clear();
     serverAudioProgressMap.clear();
 
-    console.log(`[Storage Purge Executed] Cleared ${audioPurged} audio items, ${transPurged} translations, ${progressPurged} progress keys.`);
+    // Trigger deep orphan sweep and audio reconciliation
+    const orphanStats = purgeOrphanedSatelliteData();
+    const audioStats = cleanupExpiredAudioFiles(14);
+    const edgePurgeStats = await purgeCloudflareEdgeCache('manual_admin_storage_purge');
+
+    console.log(`[Storage Purge Executed] Cleared RAM (${audioPurged} audio, ${transPurged} translations), purged ${orphanStats.orphanedTranslationsPurged} ghost translations, ${orphanStats.orphanedRevisionsPurged} ghost revisions, ${audioStats.deletedCount} expired audio files, edgePurge: ${edgePurgeStats.success}`);
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({
       success: true,
-      message: 'Server in-memory cache purged successfully',
+      message: 'Server in-memory cache, Cloudflare Edge cache, and orphaned records purged successfully',
       purged: {
-        audioCache: audioPurged,
-        translationCache: transPurged,
-        audioProgress: progressPurged
+        inMemoryAudio: audioPurged,
+        inMemoryTranslations: transPurged,
+        orphanedTranslations: orphanStats.orphanedTranslationsPurged,
+        orphanedRevisions: orphanStats.orphanedRevisionsPurged,
+        orphanedAudioRecords: orphanStats.orphanedAudioPurged,
+        audioFilesPurged: audioStats.deletedCount + audioStats.quotaPurgedCount,
+        edgeCachePurged: edgePurgeStats.success
       },
       timestamp: new Date().toISOString()
     }));
@@ -3314,6 +4592,11 @@ const server = http.createServer(async (req, res) => {
 
   // POST /api/settings/social (Save updated social channel links to disk)
   if (req.method === 'POST' && url.pathname === '/api/settings/social') {
+    if (!verifyAdminAuthorization(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden: Admin authorization required to modify social settings.' }));
+    }
+
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
     req.on('end', () => {
@@ -3331,32 +4614,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // GET /api/categories (Retrieve persisted categories)
-  if (req.method === 'GET' && url.pathname === '/api/categories') {
-    const cats = getSavedCategories();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(cats));
-  }
 
-  // POST /api/categories (Persist updated categories to disk)
-  if (req.method === 'POST' && url.pathname === '/api/categories') {
-    let bodyText = '';
-    req.on('data', chunk => { bodyText += chunk; });
-    req.on('end', () => {
-      try {
-        const body = JSON.parse(bodyText || '[]');
-        if (Array.isArray(body)) {
-          saveCategories(body);
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: true, count: body.length }));
-      } catch (e) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
 
   // GET /api/settings/typography (Retrieve backend-persisted typography settings)
   if (req.method === 'GET' && url.pathname === '/api/settings/typography') {
@@ -4117,7 +5375,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(poll));
   }
 
-  // POST /api/poll/vote (Submit reader vote for a specific option)
+  // POST /api/poll/vote (Submit reader vote for a specific option - SEC-027: IP Deduplicated)
   if (req.method === 'POST' && url.pathname === '/api/poll/vote') {
     let bodyText = '';
     req.on('data', chunk => {
@@ -4139,6 +5397,17 @@ const server = http.createServer(async (req, res) => {
           return res.end(JSON.stringify({ error: 'Daily Reader Poll is currently inactive.' }));
         }
 
+        // Sliding window IP deduplication (SEC-027: 1 vote per IP per 24 hours per poll)
+        const clientIp = getClientIp(req);
+        const pollVoteTracker = globalThis.__pollVoteTracker || (globalThis.__pollVoteTracker = new Map());
+        const pollKey = `${poll.id || 'poll_daily'}_${clientIp}`;
+        const lastVote = pollVoteTracker.get(pollKey);
+        const VOTE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+        if (lastVote && (Date.now() - lastVote < VOTE_COOLDOWN_MS)) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'You have already voted in this poll. One vote permitted per reader every 24 hours.' }));
+        }
+
         const targetOption = poll.options.find(o => o.id === optionId);
         if (!targetOption) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -4150,6 +5419,8 @@ const server = http.createServer(async (req, res) => {
         poll.updatedAt = new Date().toISOString();
 
         savePollData(poll);
+        pollVoteTracker.set(pollKey, Date.now());
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, poll }));
       } catch (err) {
@@ -4225,11 +5496,62 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(presets));
   }
 
-  // GET /api/weather (Retrieve dynamic weather information)
+  // GET /api/weather (Live Open-Meteo Real-Time Weather with 20-min smart cache)
   if (req.method === 'GET' && url.pathname === '/api/weather') {
-    const presets = getPresets();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(presets.weather || { temperature: '28°C', location: 'Delhi NCR', condition: 'Partly Cloudy' }));
+    try {
+      const qLat = url.searchParams.get('lat');
+      const qLon = url.searchParams.get('lon');
+      const qCity = url.searchParams.get('city');
+
+      // Default: Jaitahari / Anuppur, MP (Lat: 23.03, Lon: 81.78)
+      const lat = qLat ? parseFloat(qLat) : 23.03;
+      const lon = qLon ? parseFloat(qLon) : 81.78;
+      const cityName = qCity || (qLat ? 'Your Location' : 'Jaitahari');
+
+      const weatherData = await fetchOpenMeteoWeather(lat, lon, cityName);
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=600'
+      });
+      return res.end(JSON.stringify(weatherData));
+    } catch (err) {
+      console.warn('[Weather API Error]', err.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        cityName: url.searchParams.get('city') || 'Jaitahari',
+        latitude: 23.03,
+        longitude: 81.78,
+        current: {
+          temperature: 24,
+          apparentTemperature: 24,
+          humidity: 50,
+          windSpeed: 8,
+          precipitation: 0,
+          isDay: 1,
+          weatherCode: 0
+        },
+        daily: [],
+        isFallback: true,
+        updatedAt: new Date().toISOString()
+      }));
+    }
+  }
+
+  // GET /api/weather/search (Open-Meteo Geocoding City Search with 24-hr cache)
+  if (req.method === 'GET' && url.pathname === '/api/weather/search') {
+    try {
+      const q = url.searchParams.get('q') || '';
+      const cities = await searchOpenMeteoCities(q);
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=3600'
+      });
+      return res.end(JSON.stringify(cities));
+    } catch (err) {
+      console.warn('[Weather Search Error]', err.message);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify([]));
+    }
   }
 
   // -------------------------------------------------------------
@@ -4246,8 +5568,16 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(categories));
   }
 
-  // POST /api/categories (Save/update categories taxonomy list)
+  // POST /api/categories (Save/update categories taxonomy list - Gated SEC-024)
   if (req.method === 'POST' && url.pathname === '/api/categories') {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['admin', 'editor', 'developer'].includes(session.role)) {
+      res.writeHead(session ? 403 : 401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden: Editor or Admin authorization required to modify categories.' }));
+    }
+
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
     req.on('end', () => {
@@ -4284,32 +5614,104 @@ const server = http.createServer(async (req, res) => {
   // ARTICLES & LIVE NEWS FEED CURATION ENDPOINTS
   // -------------------------------------------------------------
 
-  // GET /api/articles (Retrieve backend-persisted articles with Public Embargo Shield)
+  // GET /api/articles (Retrieve backend-persisted articles with Public Embargo Shield - SEC-015 Fix)
   if (req.method === 'GET' && url.pathname === '/api/articles') {
     const allArticles = getSavedArticles();
     const scope = url.searchParams.get('scope');
-    const role = (url.searchParams.get('role') || '').toLowerCase();
-    const isStaff = scope === 'admin' || scope === 'all' || role === 'editor' || role === 'admin' || role === 'reporter';
 
-    // Public readers only receive 'published' articles (scheduled and drafts remain embargoed)
-    const responseArticles = isStaff
-      ? allArticles
-      : allArticles.filter(a => a.status === 'published' || !a.status);
+    // Cryptographic session verification for privileged staff access (drafts, scheduled, embargoed)
+    let isStaff = false;
+    let staffRole = null;
+    let staffEmail = null;
+    const authHeader = req.headers['authorization'] || '';
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7).trim();
+      const session = verifyStaffSessionToken(token);
+      if (session && ['reporter', 'editor', 'admin', 'developer'].includes(session.role)) {
+        isStaff = true;
+        staffRole = session.role;
+        staffEmail = session.email ? session.email.toLowerCase() : null;
+      }
+    }
 
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    // Public readers strictly receive 'published' articles (scheduled and drafts remain embargoed)
+    let responseArticles;
+    if (isStaff && (scope === 'all' || scope === 'admin')) {
+      if (staffRole === 'reporter') {
+        // Reporter sees published stories plus their own drafts
+        responseArticles = allArticles.filter(a =>
+          a.status === 'published' ||
+          !a.status ||
+          (a.author && a.author.email && a.author.email.toLowerCase() === staffEmail)
+        );
+      } else {
+        // Editors, Admins, Developers see all stories (published, draft, scheduled)
+        responseArticles = allArticles;
+      }
+    } else {
+      // Anonymous public visitors or unprivileged requests strictly receive published stories
+      responseArticles = allArticles.filter(a => a.status === 'published' || !a.status);
+    }
+
+    // Resolve pre-translated titles & summaries from disk cache for target language (0ms, 0 Gemini calls)
+    const targetLang = normalizeLanguageCode(url.searchParams.get('lang') || '');
+    if (targetLang && targetLang !== 'hi') {
+      const store = getTranslationsStore();
+      responseArticles = responseArticles.map(art => {
+        const key = `${art.id}:${targetLang}`;
+        if (store[key] && store[key].title && store[key].status === 'done') {
+          return {
+            ...art,
+            title: store[key].title,
+            summary: store[key].summary || (Array.isArray(store[key].highlights) ? store[key].highlights[0] : '') || art.summary,
+            sub_title: store[key].sub_title || art.sub_title
+          };
+        }
+        return art;
+      });
+    }
+
+    // Staff views (drafts, pending) must strictly be private; only public reader feeds are cached on Edge
+    const edgeTtl = process.env.EDGE_CACHE_TTL || '300';
+    if (isStaff && (scope === 'all' || scope === 'admin')) {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'private, no-cache, no-store, must-revalidate'
+      });
+    } else {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': `public, max-age=180, s-maxage=${edgeTtl}`
+      });
+    }
     return res.end(JSON.stringify(responseArticles));
   }
 
-  // POST /api/articles (Bulk save / replace articles list)
+  // POST /api/articles (Bulk save / replace articles list - Administrative Only, SEC-010 Fix)
   if (req.method === 'POST' && url.pathname === '/api/articles') {
+    if (!requireAdminAuth(req, res)) return;
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
     req.on('end', () => {
       try {
         const body = JSON.parse(bodyText || '{}');
         const articlesList = Array.isArray(body) ? body : body.articles || [];
+        if (!Array.isArray(articlesList) || articlesList.length === 0) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Articles payload must be a non-empty array of valid articles.' }));
+        }
+
+        // Safety Snapshot prior to bulk write (Disaster Prevention)
+        try {
+          if (fs.existsSync(ARTICLES_FILE)) {
+            const snapDir = path.join(DATA_DIR, 'backups');
+            if (!fs.existsSync(snapDir)) fs.mkdirSync(snapDir, { recursive: true });
+            fs.copyFileSync(ARTICLES_FILE, path.join(snapDir, `articles_pre_bulk_${Date.now()}.json`));
+          }
+        } catch (_snapErr) {}
+
         const updated = saveArticles(articlesList);
-        console.log('[Backend Articles Saved]:', updated.length, 'articles');
+        console.log('[Backend Articles Saved]:', updated.length, 'articles by Admin');
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, articles: updated }));
       } catch (e) {
@@ -4320,7 +5722,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/articles/update (Update single article by ID or add new with RBAC & Scheduler Guard)
+  // POST /api/articles/update (Update single article by ID or add new with RBAC & Scheduler Guard - SEC-011 Fix)
   if (req.method === 'POST' && url.pathname === '/api/articles/update') {
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
@@ -4332,12 +5734,68 @@ const server = http.createServer(async (req, res) => {
           return res.end(JSON.stringify({ error: 'Article id is required' }));
         }
 
-        // Editorial RBAC Guard: Reporters cannot publish live or schedule publication
-        const userRole = (body.userRole || body.currentUserRole || body.author?.role || '').toLowerCase();
-        if (userRole === 'reporter' && (body.status === 'published' || body.status === 'scheduled')) {
-          console.warn(`[Editorial RBAC Gate] Reporter attempted to set status to "${body.status}". Forcing to "draft".`);
-          body.status = 'draft';
-          body.scheduledPublishTime = null;
+        // Subtopic 18.1 & SEC-011 Fix: Mandatory Staff Session Verification
+        const authHeader = req.headers['authorization'] || '';
+        const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+        const session = token ? verifyStaffSessionToken(token) : null;
+
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            error: 'Unauthorized: A valid newsroom staff session (Reporter, Editor, or Admin) is strictly required to modify or create news stories.'
+          }));
+        }
+
+        let authenticatedStaff = null;
+        if (session) {
+          const staffList = getStaffList();
+          authenticatedStaff = staffList.find(s => s.id === session.id || s.email.toLowerCase() === session.email.toLowerCase()) || null;
+        }
+
+        // Strictly derive user role from authenticated session (never trust unverified client body)
+        const userRole = (authenticatedStaff?.role || session?.role || '').toLowerCase();
+        const userEmail = (authenticatedStaff?.email || session?.email || '').toLowerCase().trim();
+
+        if (!['reporter', 'editor', 'admin', 'developer'].includes(userRole)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Forbidden: Insufficient privileges to update articles.' }));
+        }
+
+        // Subtopic 18.1: Server-Side Byline Binding & Reporter Impersonation Guard
+        if (userRole === 'reporter') {
+          // Bind byline strictly to authenticated reporter credentials if session exists
+          if (authenticatedStaff) {
+            body.author = {
+              name: authenticatedStaff.name,
+              email: authenticatedStaff.email,
+              role: 'reporter'
+            };
+            body.author_name = authenticatedStaff.name;
+            body.author_email = authenticatedStaff.email;
+            body.author_role = 'reporter';
+          } else {
+            body.author = {
+              ...(body.author || {}),
+              role: 'reporter'
+            };
+            body.author_role = 'reporter';
+          }
+
+          // Editorial RBAC Guard: Reporters cannot publish live or schedule publication
+          if (body.status === 'published' || body.status === 'scheduled') {
+            console.warn(`[Editorial RBAC Gate] Reporter attempted to set status to "${body.status}". Forcing to "draft".`);
+            body.status = 'draft';
+            body.scheduledPublishTime = null;
+          }
+        }
+
+        // Editorial RBAC Guard: Unauthenticated callers or non-editors attempting to publish live or schedule
+        if (!session || !['editor', 'admin'].includes(userRole)) {
+          if (body.status === 'published' || body.status === 'scheduled') {
+            console.warn(`[Editorial RBAC Gate] Unauthenticated/unauthorized caller attempted to set status to "${body.status}". Forcing to "draft".`);
+            body.status = 'draft';
+            body.scheduledPublishTime = null;
+          }
         }
 
         // Validate scheduled publishing date-time
@@ -4361,6 +5819,20 @@ const server = http.createServer(async (req, res) => {
 
         const currentArticles = getSavedArticles();
         const existingIdx = currentArticles.findIndex(a => String(a.id) === String(body.id));
+
+        // Subtopic 18.1: Cross-Reporter Ownership Guard
+        if (existingIdx >= 0 && userRole === 'reporter') {
+          const existingArticle = currentArticles[existingIdx];
+          const existingAuthorEmail = (existingArticle.author?.email || existingArticle.author_email || '').toLowerCase().trim();
+          const existingAuthorRole = (existingArticle.author?.role || existingArticle.author_role || '').toLowerCase().trim();
+          // If existing story was drafted by another reporter, current reporter cannot modify it
+          if (existingAuthorRole === 'reporter' && existingAuthorEmail && userEmail && existingAuthorEmail !== userEmail) {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({
+              error: 'Editorial RBAC Gate: Field Reporters can only edit their own draft submissions.'
+            }));
+          }
+        }
 
         // Task 23: Live Blog Mode formatting and updates preservation
         if (body.format === 'live') {
@@ -4405,8 +5877,13 @@ const server = http.createServer(async (req, res) => {
           // Record initial creation revision
           recordArticleRevision(body, { name: body.author_name || body.author?.name, role: userRole }, body.changeNote || 'Initial story created');
         }
-        saveArticles(updatedArticles);
+        saveArticles(updatedArticles, `article_update_${body.id}`);
         console.log(`[Backend Article Updated]: ${body.id} "${body.title}" (status: ${body.status})`);
+        // Proactively pre-translate to English in background for newly published stories
+        if (body.status === 'published') {
+          autoPreTranslatePublishedArticle(body);
+          autoPreWarmPublishedAudio(body);
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: true, article: body, articles: updatedArticles }));
       } catch (e) {
@@ -4417,24 +5894,53 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/articles/delete (Delete an article by ID)
-  if (req.method === 'POST' && url.pathname === '/api/articles/delete') {
+  // POST /api/articles/delete or DELETE /api/articles/:id (Delete an article by ID with Cascading Cleanup)
+  const restArticleDeleteMatch = url.pathname.match(/^\/api\/articles\/([^/]+)$/);
+  if ((req.method === 'POST' && url.pathname === '/api/articles/delete') || (req.method === 'DELETE' && restArticleDeleteMatch)) {
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
     req.on('end', () => {
       try {
         const body = JSON.parse(bodyText || '{}');
-        const { id } = body;
+        const id = restArticleDeleteMatch ? decodeURIComponent(restArticleDeleteMatch[1]) : body.id;
         if (!id) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'Article id is required' }));
         }
+
+        // Subtopic 18.1: RBAC Guard for Article Deletion
+        const authHeader = req.headers['authorization'] || '';
+        const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+        const session = token ? verifyStaffSessionToken(token) : null;
+        let authenticatedStaff = null;
+        if (session) {
+          const staffList = getStaffList();
+          authenticatedStaff = staffList.find(s => s.id === session.id || s.email.toLowerCase() === session.email.toLowerCase()) || null;
+        }
+        // Critic Hardening: Strictly derive user role from authenticated session (never trust unverified client body)
+        const effectiveRole = (authenticatedStaff?.role || session?.role || '').toLowerCase();
+        if (!session || !['editor', 'admin'].includes(effectiveRole)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Editorial RBAC Gate: Only authenticated Editors or Admins are authorized to delete articles.'
+          }));
+        }
+
         const currentArticles = getSavedArticles();
         const updatedArticles = currentArticles.filter(a => String(a.id) !== String(id));
         saveArticles(updatedArticles);
-        console.log('[Backend Article Deleted]:', id);
+
+        // Cascading deletion of all satellite data (translations, revisions, audio files, cache)
+        const cascadeResult = cascadeDeleteArticleData(id);
+        console.log('[Backend Article Deleted with Cascade]:', id, cascadeResult);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ success: true, deletedId: id, articles: updatedArticles }));
+        return res.end(JSON.stringify({
+          success: true,
+          deletedId: id,
+          articles: updatedArticles,
+          cascade: cascadeResult
+        }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ error: e.message }));
@@ -4443,9 +5949,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // GET /api/articles/:id/revisions (Task 21: Retrieve article revision history)
+  // GET /api/articles/:id/revisions (Task 21: Retrieve article revision history - Staff Only, SEC-016 Fix)
   const revisionsMatch = url.pathname.match(/^\/api\/articles\/([^/]+)\/revisions$/);
   if (req.method === 'GET' && revisionsMatch) {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['reporter', 'editor', 'admin', 'developer'].includes(session.role)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: false,
+        error: 'Unauthorized: Newsroom staff authentication required to view article revision history.'
+      }));
+    }
+
     const articleId = decodeURIComponent(revisionsMatch[1]);
     const revisions = getRevisionsForArticle(articleId);
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -4461,13 +5978,21 @@ const server = http.createServer(async (req, res) => {
     req.on('end', () => {
       try {
         const body = JSON.parse(bodyText || '{}');
-        const userRole = (body.userRole || body.role || '').toLowerCase();
-
-        // Editorial RBAC Guard: Reporters cannot rollback articles
-        if (userRole === 'reporter') {
+        const authHeader = req.headers['authorization'] || '';
+        const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+        const session = token ? verifyStaffSessionToken(token) : null;
+        let authenticatedStaff = null;
+        if (session) {
+          const staffList = getStaffList();
+          authenticatedStaff = staffList.find(s => s.id === session.id || s.email.toLowerCase() === session.email.toLowerCase()) || null;
+        }
+        // Critic Hardening: Strictly derive user role from authenticated session (never trust unverified client body)
+        const userRole = (authenticatedStaff?.role || session?.role || '').toLowerCase();
+        if (!session || !['editor', 'admin'].includes(userRole)) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({
-            error: 'Editorial Gate: Reporters do not have authorization to rollback articles. Contact an Editor or Admin.'
+            success: false,
+            error: 'Editorial Gate: Only authenticated Editors or Admins are authorized to rollback articles.'
           }));
         }
 
@@ -4606,9 +6131,17 @@ const server = http.createServer(async (req, res) => {
     }));
   }
 
-  // POST /api/articles/:id/live-updates (Fast micro-update post without full article rewrite)
+  // POST /api/articles/:id/live-updates (Fast micro-update post - Gated SEC-023)
   const postLiveUpdatesMatch = url.pathname.match(/^\/api\/articles\/([^/]+)\/live-updates$/);
   if (req.method === 'POST' && postLiveUpdatesMatch) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['reporter', 'editor', 'admin', 'developer'].includes(session.role)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Unauthorized: Staff authentication required to post live blog updates.' }));
+    }
+
     const articleId = decodeURIComponent(postLiveUpdatesMatch[1]);
     let rawData = '';
     req.on('data', chunk => { rawData += chunk; });
@@ -4673,9 +6206,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // DELETE /api/articles/:id/live-updates/:updateId (Remove erroneous live micro-update)
+  // DELETE /api/articles/:id/live-updates/:updateId (Remove erroneous live micro-update - Gated SEC-023)
   const deleteLiveUpdateMatch = url.pathname.match(/^\/api\/articles\/([^/]+)\/live-updates\/([^/]+)$/);
   if (req.method === 'DELETE' && deleteLiveUpdateMatch) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+      res.writeHead(session ? 403 : 401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Forbidden: Editor or Admin authorization required to delete live updates.' }));
+    }
+
     const articleId = decodeURIComponent(deleteLiveUpdateMatch[1]);
     const updateId = decodeURIComponent(deleteLiveUpdateMatch[2]);
 
@@ -4710,67 +6251,174 @@ const server = http.createServer(async (req, res) => {
     }));
   }
 
-  // GET /api/live-news (Fetch live incoming RSS / SauravTech news streams for Admin Curation)
+  // =============================================================
+  // TASK 29 / SEC-037: STATUTORY GRIEVANCE REDRESSAL MECHANISM (IT RULES 2021)
+  // =============================================================
+
+  // POST /api/grievance/submit - Public reader statutory complaint submission
+  if (req.method === 'POST' && url.pathname === '/api/grievance/submit') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const {
+          complainant_name,
+          complainant_email,
+          complainant_phone,
+          category,
+          article_id,
+          article_title,
+          article_url,
+          description,
+          declaration_agreed
+        } = body;
+
+        if (!complainant_name || !complainant_email || !category || !description) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Complainant name, email, grievance category, and description are mandatory.'
+          }));
+        }
+
+        if (!declaration_agreed) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'You must agree to the statutory legal declaration before submitting.'
+          }));
+        }
+
+        const now = new Date();
+        const trackingId = `GRV-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+        const ackDeadline = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+        const disposalDeadline = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000).toISOString();
+
+        const newGrievance = {
+          id: trackingId,
+          complainant_name: String(complainant_name).trim().slice(0, 100),
+          complainant_email: String(complainant_email).trim().slice(0, 100),
+          complainant_phone: complainant_phone ? String(complainant_phone).trim().slice(0, 20) : null,
+          category: String(category).trim().slice(0, 50),
+          article_id: article_id ? String(article_id).trim() : null,
+          article_title: article_title ? String(article_title).trim().slice(0, 250) : null,
+          article_url: article_url ? String(article_url).trim().slice(0, 500) : null,
+          description: String(description).trim().slice(0, 5000),
+          declaration_agreed: true,
+          status: 'pending',
+          submitted_at: now.toISOString(),
+          acknowledgment_deadline: ackDeadline,
+          disposal_deadline: disposalDeadline,
+          resolution_notes: null,
+          resolved_at: null,
+          resolved_by: null
+        };
+
+        const currentGrievances = getSavedGrievances();
+        const updatedList = [newGrievance, ...currentGrievances];
+        saveGrievances(updatedList);
+
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          tracking_id: trackingId,
+          acknowledgment_deadline: ackDeadline,
+          disposal_deadline: disposalDeadline,
+          grievance: newGrievance
+        }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/grievances - Admin Grievance Review Desk query
+  if (req.method === 'GET' && url.pathname === '/api/grievances') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: false,
+        error: 'Unauthorized: Newsroom staff authentication required to access grievance dockets.'
+      }));
+    }
+
+    const grievances = getSavedGrievances();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, grievances }));
+  }
+
+  // POST /api/grievance/update - Update grievance disposition & officer notes
+  if (req.method === 'POST' && url.pathname === '/api/grievance/update') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: false,
+        error: 'Unauthorized: Newsroom staff authorization required to update grievance status.'
+      }));
+    }
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const { id, status, resolution_notes, resolved_by } = body;
+        if (!id || !status) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Grievance ID and status are required.' }));
+        }
+
+        const validStatuses = ['pending', 'under_review', 'resolved', 'rejected'];
+        if (!validStatuses.includes(status)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Invalid grievance status.' }));
+        }
+
+        const grievances = getSavedGrievances();
+        const index = grievances.findIndex(g => g.id === id);
+        if (index === -1) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Grievance docket not found.' }));
+        }
+
+        const now = new Date();
+        grievances[index] = {
+          ...grievances[index],
+          status,
+          resolution_notes: resolution_notes || grievances[index].resolution_notes,
+          resolved_by: resolved_by || (session.name ? `${session.name} (Grievance Officer)` : 'Grievance Officer'),
+          resolved_at: ['resolved', 'rejected'].includes(status) ? now.toISOString() : grievances[index].resolved_at
+        };
+
+        saveGrievances(grievances);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          grievance: grievances[index]
+        }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/live-news (Fetch live incoming RSS news streams for Admin Curation)
   if (req.method === 'GET' && url.pathname === '/api/live-news') {
     try {
       const topic = (url.searchParams.get('topic') || 'GENERAL').toUpperCase();
       const lang = url.searchParams.get('lang') || 'hi';
-      const provider = url.searchParams.get('provider') || 'google';
-
-      if (provider === 'saurav') {
-        const category = url.searchParams.get('category') || 'technology';
-        try {
-          const sauravUrl = `https://saurav.tech/NewsAPI/top-headlines/category/${category}/in.json`;
-          const response = await fetch(sauravUrl, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-              'Accept': 'application/json'
-            }
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            const articlesList = data.articles || [];
-            if (articlesList.length > 0) {
-              const catNameMap = {
-                technology: 'Technology',
-                business: 'Business',
-                sports: 'Sports',
-                science: 'Science & Environment',
-                entertainment: 'Entertainment',
-                general: 'India'
-              };
-              const catName = catNameMap[category] || 'India';
-              const catSlug = category === 'general' ? 'india' : category;
-
-              const parsedItems = articlesList.slice(0, 15).map((art, idx) => ({
-                id: `saurav-feed-${Date.now()}-${idx}`,
-                title: art.title || 'Live Story Headline',
-                summary: art.description ? art.description.replace(/<[^>]+>/g, '').trim() : art.title,
-                content: art.content || art.description || art.title,
-                source: art.source?.name || 'SauravTech Live Wire',
-                url: art.url || '#',
-                category: catName,
-                category_slug: catSlug,
-                status: 'pending_admin_approval',
-                published_at: art.publishedAt ? new Date(art.publishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
-                featured_image: art.urlToImage || 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=800&q=80',
-                is_breaking: false,
-                author: {
-                  name: art.author || art.source?.name || 'SauravTech Wire',
-                  role: 'SauravTech Live Wire',
-                  avatar: 'https://images.unsplash.com/photo-1585829365295-ab7cd400c167?auto=format&fit=crop&w=100&q=80'
-                }
-              }));
-
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              return res.end(JSON.stringify({ success: true, count: parsedItems.length, provider: 'saurav', category, items: parsedItems }));
-            }
-          }
-        } catch (sauravErr) {
-          console.warn('[SauravTech Fetch Exception, falling back to Google RSS]', sauravErr.message);
-        }
-      }
 
       // Google News Topic RSS Stream (100% Reliable Live RSS)
       let rssUrl;
@@ -4916,24 +6564,36 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // POST /api/media/delete (Delete media asset with Active Article Safety Guard & Editorial RBAC)
+  // POST /api/media/delete (Delete media asset with Active Article Safety Guard & Editorial RBAC - SEC-013 Fix)
   if (req.method === 'POST' && url.pathname === '/api/media/delete') {
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
     req.on('end', () => {
       try {
         const body = JSON.parse(bodyText || '{}');
-        const fileName = path.basename(String(body.fileName || ''));
-        const force = Boolean(body.force);
-        const userRole = (body.userRole || body.role || 'editor').toLowerCase();
+
+        // SEC-013 Fix: Strictly require verified staff session; reject client body-supplied roles
+        const authHeader = req.headers['authorization'] || '';
+        const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+        const session = token ? verifyStaffSessionToken(token) : null;
+
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Unauthorized: Valid staff session required to delete media assets.' }));
+        }
+
+        const userRole = (session.role || '').toLowerCase();
 
         // RBAC Rule 1: Reporters cannot delete any media assets
-        if (userRole === 'reporter') {
+        if (userRole === 'reporter' || !['editor', 'admin', 'developer'].includes(userRole)) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({
-            error: 'Editorial Gate: Reporters cannot delete media assets. Contact an Editor or Admin.'
+            error: 'Editorial Gate: Field Reporters cannot delete media assets. Contact an Editor or Admin.'
           }));
         }
+
+        const fileName = path.basename(String(body.fileName || ''));
+        const force = Boolean(body.force);
 
         if (!fileName) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -4960,8 +6620,8 @@ const server = http.createServer(async (req, res) => {
             }));
           }
 
-          // RBAC Rule 2: Force-deleting in-use media requires Newsroom Administrator role
-          if (userRole !== 'admin') {
+          // RBAC Rule 2: Force-deleting in-use media requires Newsroom Administrator or Developer role
+          if (!['admin', 'developer'].includes(userRole)) {
             res.writeHead(403, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({
               error: 'Administrative Gate: Only Newsroom Administrators can force-delete media assets currently in use by active news stories. Editors can only delete unused media.'
@@ -4989,17 +6649,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // POST /api/media/update (Update caption, credit, alt-text for an asset with Editorial RBAC)
+  // POST /api/media/update (Update caption, credit, alt-text for an asset with Editorial RBAC - SEC-025 Fix)
   if (req.method === 'POST' && url.pathname === '/api/media/update') {
     let bodyText = '';
     req.on('data', chunk => { bodyText += chunk; });
     req.on('end', () => {
       try {
         const body = JSON.parse(bodyText || '{}');
-        const userRole = (body.userRole || body.role || 'editor').toLowerCase();
+
+        // SEC-025 Fix: Strictly require verified staff session; reject client body-supplied roles
+        const authHeader = req.headers['authorization'] || '';
+        const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+        const session = token ? verifyStaffSessionToken(token) : null;
+
+        if (!session) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: 'Unauthorized: Valid staff session required to update media metadata.' }));
+        }
+
+        const userRole = (session.role || '').toLowerCase();
 
         // RBAC Rule 3: Reporters cannot edit existing media metadata
-        if (userRole === 'reporter') {
+        if (userRole === 'reporter' || !['editor', 'admin', 'developer'].includes(userRole)) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({
             error: 'Editorial Gate: Reporters cannot modify media asset metadata. Only Editors and Administrators have editing authorization.'
@@ -5037,13 +6708,1294 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // -------------------------------------------------------------
+  // TASK 17: NEWSROOM RBAC EMAIL/PASSWORD AUTH & OTP ENDPOINTS
+  // -------------------------------------------------------------
+
+  // POST /api/auth/login - Email + Password Login for Newsroom Staff
+  if (req.method === 'POST' && url.pathname === '/api/auth/login') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const email = String(body.email || '').toLowerCase().trim();
+        const password = String(body.password || '').trim();
+        const clientIp = getClientIp(req);
+        const rateLimitKey = `${clientIp}_${email}`;
+
+        if (!email || !password) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Email address and password are required.'
+          }));
+        }
+
+        // Brute-force rate limiting check
+        const rateStatus = checkLoginRateLimit(rateLimitKey);
+        if (!rateStatus.allowed) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: rateStatus.error,
+            locked: true,
+            remainingSeconds: rateStatus.remainingSeconds
+          }));
+        }
+
+        const staffList = getStaffList();
+        const staffMember = staffList.find(s => s.email === email);
+
+        if (!staffMember) {
+          const attemptRecord = recordFailedLogin(rateLimitKey);
+          const remainingAttempts = Math.max(0, 5 - attemptRecord.failedCount);
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: `Invalid email or password. ${remainingAttempts} attempt(s) remaining.`,
+            remainingAttempts
+          }));
+        }
+
+        // Check Account Status (Pending Admin Approval / Suspended)
+        if (staffMember.status === 'pending_approval') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Your journalist account is pending Super Admin approval. Please contact the Chief Editor.',
+            status: 'pending_approval'
+          }));
+        }
+
+        if (staffMember.status === 'suspended') {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'This account has been deactivated by the Editorial Administrator.',
+            status: 'suspended'
+          }));
+        }
+
+        // Verify Salted Scrypt Password
+        const isPasswordValid = verifyPassword(password, staffMember.passwordHash, staffMember.passwordSalt);
+        if (!isPasswordValid) {
+          const attemptRecord = recordFailedLogin(rateLimitKey);
+          const remainingAttempts = Math.max(0, 5 - attemptRecord.failedCount);
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: `Invalid email or password. ${remainingAttempts} attempt(s) remaining.`,
+            remainingAttempts
+          }));
+        }
+
+        // Password verified successfully! Clear failed attempts
+        clearFailedLogin(rateLimitKey);
+
+        // Check if Two-Factor Authentication (2FA) is active (Google Authenticator RFC 6238)
+        if (staffMember.twoFactorEnabled && staffMember.twoFactorSecret) {
+          const tempToken = createTemp2faToken(staffMember);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: true,
+            requires2FA: true,
+            tempToken,
+            email: staffMember.email,
+            name: staffMember.name,
+            role: staffMember.role,
+            message: 'Password verified. Please enter the 6-digit code from Google Authenticator or an Emergency Recovery Code.'
+          }));
+        }
+
+        // Direct session token if 2FA is not active
+        const token = generateStaffSessionToken(staffMember);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          id: staffMember.id,
+          name: staffMember.name,
+          email: staffMember.email,
+          role: staffMember.role,
+          token,
+          expiresIn: '24h'
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: false,
+          error: `Authentication error: ${err.message}`
+        }));
+      }
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
+  // POST /api/auth/2fa/verify-login - Step 2: Verify TOTP / Emergency Recovery Code
+  // -------------------------------------------------------------
+  if (req.method === 'POST' && url.pathname === '/api/auth/2fa/verify-login') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const tempToken = String(body.tempToken || '').trim();
+        const code = String(body.code || '').trim();
+        const isRecoveryCode = Boolean(body.isRecoveryCode);
+
+        if (!tempToken || !code) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: isRecoveryCode ? 'Emergency recovery code is required.' : '6-digit Authenticator code is required.'
+          }));
+        }
+
+        const result = verify2faLogin({ tempToken, code, isRecoveryCode });
+        if (!result.success) {
+          res.writeHead(result.expired ? 401 : 400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(result));
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          id: result.id,
+          name: result.name,
+          email: result.email,
+          role: result.role,
+          token: result.token,
+          expiresIn: '24h',
+          usedRecoveryCode: result.usedRecoveryCode || false,
+          remainingRecoveryCodes: result.remainingRecoveryCodes
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: `2FA verification error: ${err.message}` }));
+      }
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
+  // GET /api/auth/2fa/status - Get Current 2FA Activation Status
+  // -------------------------------------------------------------
+  if (req.method === 'GET' && url.pathname === '/api/auth/2fa/status') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const session = verifyStaffSessionToken(token);
+
+    if (!session || (session.role !== 'admin' && session.role !== 'developer')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Admin or Developer privileges required.' }));
+    }
+
+    try {
+      const status = getStaff2faStatus(session.email);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, ...status }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+  }
+
+  // -------------------------------------------------------------
+  // POST /api/auth/2fa/setup - Initiate 2FA Enrollment (Generate QR & 10 Recovery Codes)
+  // -------------------------------------------------------------
+  if (req.method === 'POST' && url.pathname === '/api/auth/2fa/setup') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const session = verifyStaffSessionToken(token);
+
+    if (!session || (session.role !== 'admin' && session.role !== 'developer')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Super Admin or Developer privileges required.' }));
+    }
+
+    try {
+      const setupData = initiate2faSetup(session.email);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, ...setupData }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+  }
+
+  // -------------------------------------------------------------
+  // POST /api/auth/2fa/confirm-setup - Confirm 2FA Pairing with First TOTP Code
+  // -------------------------------------------------------------
+  if (req.method === 'POST' && url.pathname === '/api/auth/2fa/confirm-setup') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const session = verifyStaffSessionToken(token);
+
+    if (!session || (session.role !== 'admin' && session.role !== 'developer')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized: Super Admin or Developer privileges required.' }));
+    }
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const code = String(body.code || '').trim();
+
+        if (!code) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: '6-digit confirmation code is required.' }));
+        }
+
+        const result = confirm2faSetup(session.email, code);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/auth/register/send-otp - Step 1: Send 5-Min OTP to confirm Gmail ownership BEFORE application
+  if (req.method === 'POST' && url.pathname === '/api/auth/register/send-otp') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', async () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const name = String(body.name || '').trim();
+        const email = String(body.email || '').toLowerCase().trim();
+        const password = String(body.password || '').trim();
+
+        if (!name || !email || !password) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Full name, email address, and password are required.'
+          }));
+        }
+
+        // Strict Email Format & Delimiter Sanitization (SEC-044 Fix)
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!emailRegex.test(email) || email.includes(':') || email.includes(';') || email.includes(' ') || email.includes('"')) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Please enter a valid email address (colons and special delimiter characters are strictly prohibited).'
+          }));
+        }
+
+        if (password.length < 6) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Password must be at least 6 characters long.'
+          }));
+        }
+
+        const staffList = getStaffList();
+        const exists = staffList.find(s => s.email === email);
+        if (exists) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'An account with this email address already exists. Please sign in or reset your password.'
+          }));
+        }
+
+        // Sliding-Window IP Rate Limiter for Outbound OTP Dispatch (SEC-004)
+        const clientIp = getClientIp(req);
+        const ipRateLimit = checkOtpIpRateLimit(clientIp);
+        if (!ipRateLimit.allowed) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: ipRateLimit.error,
+            rateLimited: true,
+            retryAfterMinutes: ipRateLimit.waitMinutes
+          }));
+        }
+
+        const otpRes = createOtpForEmail(email, name, 'email_verification');
+        if (!otpRes.success) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: otpRes.error,
+            cooldown: otpRes.cooldown,
+            remainingSeconds: otpRes.remainingSeconds
+          }));
+        }
+
+        // Live SMTP Dispatch (if GMAIL_USER and GMAIL_APP_PASS are configured)
+        const isLiveSmtp = isEmailConfigured();
+        let dispatchResult = null;
+        if (isLiveSmtp) {
+          dispatchResult = await sendNewsroomEmail({
+            to: email,
+            subject: 'PublicSpark Newsroom - Verify Your Email Ownership (5-Minute Passcode)',
+            html: otpRes.emailHtml,
+            text: `PublicSpark Newsroom Verification Passcode: ${otpRes.otpCode}. Valid for 5 minutes.`
+          });
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: isLiveSmtp && (dispatchResult?.delivered || dispatchResult?.sent)
+            ? `A 5-minute security passcode has been sent to ${email}. Please check your Gmail inbox.`
+            : `A 5-minute verification passcode has been sent to ${email}.`,
+          expiresInSeconds: otpRes.expiresInSeconds,
+          liveSent: Boolean(dispatchResult?.delivered || dispatchResult?.sent)
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/auth/register/verify-and-submit - Step 2: Verify Gmail OTP & Submit for Super Admin Approval
+  if (req.method === 'POST' && (url.pathname === '/api/auth/register/verify-and-submit' || url.pathname === '/api/auth/register')) {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const name = String(body.name || '').trim();
+        const email = String(body.email || '').toLowerCase().trim();
+        const password = String(body.password || '').trim();
+        const phone = String(body.phone || '').trim();
+        const role = String(body.role || 'reporter').toLowerCase().trim();
+        const otpCode = String(body.otpCode || '').trim();
+
+        if (!name || !email || !password) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Full name, email address, and password are required.'
+          }));
+        }
+
+        // Strict Email Format & Delimiter Sanitization (SEC-044 Fix)
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!emailRegex.test(email) || email.includes(':') || email.includes(';') || email.includes(' ') || email.includes('"')) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Please enter a valid email address (colons and special delimiter characters are strictly prohibited).'
+          }));
+        }
+
+        if (password.length < 6) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Password must be at least 6 characters long.'
+          }));
+        }
+
+        // Mandatory Gmail Ownership OTP Verification Gate
+        if (!otpCode || otpCode.length !== 6) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'Email verification required. Please enter the 6-digit OTP code sent to your Gmail.'
+          }));
+        }
+
+        const staffList = getStaffList();
+        const exists = staffList.find(s => s.email === email);
+        if (exists) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: 'An account with this email address already exists.'
+          }));
+        }
+
+        // Validate and destroy OTP
+        const verifyRes = verifyAndDestroyOtp(email, otpCode);
+        if (!verifyRes.valid) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: verifyRes.error,
+            attemptsLeft: verifyRes.attemptsLeft
+          }));
+        }
+
+        // Password hashing via scrypt
+        const { hash, salt } = hashPassword(password);
+        const newStaff = {
+          id: `staff_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          name,
+          email,
+          phone,
+          role: role === 'editor' ? 'editor' : 'reporter',
+          passwordHash: hash,
+          passwordSalt: salt,
+          emailVerified: true,
+          emailVerifiedAt: new Date().toISOString(),
+          status: 'pending_approval', // Locked until Super Admin explicitly approves!
+          createdAt: new Date().toISOString()
+        };
+
+        staffList.push(newStaff);
+        saveStaffList(staffList);
+
+        console.log(`[Newsroom Application]: Gmail verified applicant: ${name} (${email}) - Submitted to Super Admin Desk for approval`);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: 'Gmail verified successfully! Your application has been submitted to the Super Admin Desk for approval.',
+          email: newStaff.email,
+          status: newStaff.status,
+          emailVerified: true
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/auth/forgot-password/send-otp - Request 5-Minute Verification OTP
+  if (req.method === 'POST' && url.pathname === '/api/auth/forgot-password/send-otp') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', async () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const email = String(body.email || '').toLowerCase().trim();
+
+        if (!email) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Email address is required.' }));
+        }
+
+        // Sliding-Window IP Rate Limiter for Outbound OTP Dispatch (SEC-004)
+        const clientIp = getClientIp(req);
+        const ipRateLimit = checkOtpIpRateLimit(clientIp);
+        if (!ipRateLimit.allowed) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: ipRateLimit.error,
+            rateLimited: true,
+            retryAfterMinutes: ipRateLimit.waitMinutes
+          }));
+        }
+
+        const staffList = getStaffList();
+        const staff = staffList.find(s => s.email === email);
+        if (!staff) {
+          // Security standard: Do not reveal whether email exists or not
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: true,
+            message: 'If the email is registered in our newsroom, a 5-minute security OTP has been sent.'
+          }));
+        }
+
+        const otpRes = createOtpForEmail(email, staff.name, 'password_reset');
+        if (!otpRes.success) {
+          res.writeHead(429, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: false,
+            error: otpRes.error,
+            cooldown: otpRes.cooldown,
+            remainingSeconds: otpRes.remainingSeconds
+          }));
+        }
+
+        // Live SMTP Dispatch (if GMAIL_USER and GMAIL_APP_PASS are configured)
+        const isLiveSmtp = isEmailConfigured();
+        let dispatchResult = null;
+        if (isLiveSmtp) {
+          dispatchResult = await sendNewsroomEmail({
+            to: email,
+            subject: 'PublicSpark Newsroom - Reset Your Password (5-Minute Security OTP)',
+            html: otpRes.emailHtml,
+            text: `PublicSpark Newsroom Password Reset Passcode: ${otpRes.otpCode}. Valid for 5 minutes.`
+          });
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: isLiveSmtp && (dispatchResult?.delivered || dispatchResult?.sent)
+            ? 'A 5-minute security OTP has been dispatched directly to your Gmail inbox.'
+            : 'A 5-minute security OTP has been dispatched to your email.',
+          expiresInSeconds: otpRes.expiresInSeconds,
+          liveSent: Boolean(dispatchResult?.delivered || dispatchResult?.sent)
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/auth/forgot-password/verify-otp - Verify OTP with Instant Single-Use Destruction
+  if (req.method === 'POST' && url.pathname === '/api/auth/forgot-password/verify-otp') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const email = String(body.email || '').toLowerCase().trim();
+        const otp = String(body.otp || '').trim();
+
+        if (!email || !otp) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Email and OTP code are required.' }));
+        }
+
+        const verifyRes = verifyAndDestroyOtp(email, otp);
+        if (!verifyRes.valid) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: verifyRes.error }));
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: 'OTP verified successfully. You may now set your new password.',
+          resetToken: verifyRes.resetToken
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/auth/reset-password - Set New Password After OTP Verification
+  if (req.method === 'POST' && url.pathname === '/api/auth/reset-password') {
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const email = String(body.email || '').toLowerCase().trim();
+        const newPassword = String(body.newPassword || '').trim();
+        const resetToken = String(body.resetToken || '').trim();
+
+        if (!email || !newPassword || !resetToken) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Email, new password, and reset authorization token are required.' }));
+        }
+
+        if (newPassword.length < 6) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Password must be at least 6 characters long.' }));
+        }
+
+        // Audit Finding 1 Fix: Cryptographically verify reset authorization token
+        const result = updateStaffPasswordWithToken(email, newPassword, resetToken);
+        if (!result.success) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: result.error }));
+        }
+
+        console.log(`[Newsroom Security]: Password updated successfully for ${email}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: 'Password successfully updated. You can now login with your new credentials.'
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/auth/me - Verify Staff Session Token
+  if (req.method === 'GET' && url.pathname === '/api/auth/me') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    if (!token) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ authenticated: false, error: 'No token provided.' }));
+    }
+
+    const session = verifyStaffSessionToken(token);
+    if (!session) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ authenticated: false, error: 'Session token expired or invalid.' }));
+    }
+
+    const staffList = getStaffList();
+    const account = staffList.find(s => s.id === session.id) || { name: 'Staff Member', role: session.role };
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      authenticated: true,
+      id: session.id,
+      email: session.email,
+      role: session.role,
+      name: account.name
+    }));
+  }
+
+  // POST /api/auth/logout - Server-Side Session Revocation (Task 18 Subtopic 18.2 / SEC-007)
+  if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (token) {
+      // Critic Hardening: Only blacklist if token is a valid, signed session token (prevents disk bloat attack)
+      const validSession = verifyStaffSessionToken(token);
+      if (validSession) {
+        revokeStaffSessionToken(token);
+      }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, message: 'Session successfully revoked on server.' }));
+  }
+
+  // -------------------------------------------------------------
+  // NEWSROOM STAFF & PERMISSION MANAGEMENT ENDPOINTS (Task 17 Subtopic 17.4)
+  // -------------------------------------------------------------
+
+  function requireAdminAuth(req, res) {
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    if (!token) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Unauthorized: Newsroom Administrator token required.' }));
+      return null;
+    }
+
+    const session = verifyStaffSessionToken(token);
+    if (!session || (session.role !== 'admin' && session.role !== 'developer')) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Forbidden: Insufficient privileges. Only Newsroom Administrators can access staff management.' }));
+      return null;
+    }
+
+    return session;
+  }
+
+  // GET /api/staff - List all staff members (sanitized)
+  if (req.method === 'GET' && url.pathname === '/api/staff') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    try {
+      const staff = getSanitizedStaffList();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, staff }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+  }
+
+  // POST /api/staff/approve - Approve pending staff member & grant role
+  if (req.method === 'POST' && url.pathname === '/api/staff/approve') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const staffId = String(body.staffId || '').trim();
+        const role = String(body.role || '').toLowerCase().trim();
+
+        if (!staffId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Staff ID is required.' }));
+        }
+
+        const updated = approveStaffMember({ staffId, role });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: `Staff member ${updated.name} has been approved as ${updated.role}.`,
+          staff: updated
+        }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/staff/update-role - Change staff member's RBAC role
+  if (req.method === 'POST' && url.pathname === '/api/staff/update-role') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const staffId = String(body.staffId || '').trim();
+        const role = String(body.role || '').toLowerCase().trim();
+
+        if (!staffId || !role) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Staff ID and role are required.' }));
+        }
+
+        const updated = updateStaffRole({ staffId, role });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: `Role updated to ${updated.role} for ${updated.name}.`,
+          staff: updated
+        }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/staff/update-status - Change staff status (active / suspended)
+  if (req.method === 'POST' && url.pathname === '/api/staff/update-status') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const staffId = String(body.staffId || '').trim();
+        const status = String(body.status || '').toLowerCase().trim();
+
+        if (!staffId || !status) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Staff ID and status are required.' }));
+        }
+
+        const updated = updateStaffStatus({ staffId, status });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: `Status set to ${updated.status} for ${updated.name}.`,
+          staff: updated
+        }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/staff/delete - Remove staff member or reject application
+  if (req.method === 'POST' && url.pathname === '/api/staff/delete') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const staffId = String(body.staffId || '').trim();
+
+        if (!staffId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Staff ID is required.' }));
+        }
+
+        const result = deleteStaffMember({ staffId });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: 'Staff member or application removed successfully.',
+          result
+        }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/staff/admin-reset-password - Admin reset password for team member
+  if (req.method === 'POST' && url.pathname === '/api/staff/admin-reset-password') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const staffId = String(body.staffId || '').trim();
+        const newPassword = String(body.newPassword || '').trim();
+
+        if (!staffId || !newPassword) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Staff ID and newPassword are required.' }));
+        }
+
+        const result = adminResetStaffPassword({ staffId, newPassword });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          message: 'Password reset successfully.',
+          result
+        }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
+  // TASK 19: DISASTER RECOVERY & 1-CLICK BACKUP DESK APIS
+  // -------------------------------------------------------------
+
+  // Ephemeral single-use 60-second download tickets for OWASP-compliant zero-token URL downloads
+  const backupDownloadTickets = globalThis.__backupDownloadTickets || (globalThis.__backupDownloadTickets = new Map());
+
+  // POST /api/admin/backup/download-ticket - Issues a 60-second single-use download nonce
+  if (req.method === 'POST' && url.pathname === '/api/admin/backup/download-ticket') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const fileName = String(body.fileName || '').trim();
+        const safePath = getSafeBackupFilePath(fileName);
+        if (!safePath || !fs.existsSync(safePath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Backup file not found or invalid filename.' }));
+        }
+
+        const ticket = crypto.randomBytes(24).toString('hex');
+        const expiresAt = Date.now() + 60 * 1000; // 60 seconds TTL
+        backupDownloadTickets.set(ticket, { fileName: path.basename(safePath), adminId: adminSession.id, expiresAt });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, ticket, expiresAt }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/admin/backup/create - Generate a full disaster recovery archive
+  if (req.method === 'POST' && url.pathname === '/api/admin/backup/create') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', async () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const creatorName = adminSession.name || 'Newsroom Admin';
+        const result = await generateNewsroomBackupZipAsync({ creatorName });
+
+        // If direct email dispatch requested during creation
+        let emailResult = null;
+        if (body.dispatchEmail) {
+          emailResult = await dispatchBackupToGmail({
+            fileName: result.backup.fileName,
+            targetEmail: body.targetEmail,
+            trigger: 'manual_with_create'
+          });
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          backup: result.backup,
+          emailResult
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/admin/backups - List all archives and disk usage metrics
+  if (req.method === 'GET' && url.pathname === '/api/admin/backups') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    try {
+      const list = listAvailableBackups();
+      const settings = getBackupSettings();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({
+        success: true,
+        ...list,
+        settings
+      }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+  }
+
+  // GET /api/admin/backup/download/:filename or /api/admin/backup/download?file=...
+  if (req.method === 'GET' && (url.pathname.startsWith('/api/admin/backup/download/') || url.pathname === '/api/admin/backup/download')) {
+    let fileName = '';
+    if (url.pathname.startsWith('/api/admin/backup/download/')) {
+      fileName = decodeURIComponent(url.pathname.replace('/api/admin/backup/download/', ''));
+    } else {
+      fileName = url.searchParams.get('file') || url.searchParams.get('filename') || '';
+    }
+
+    // 1. Verify single-use download ticket if provided (OWASP recommended, zero token in URL)
+    const ticketParam = url.searchParams.get('ticket');
+    let authorizedByTicket = false;
+    if (ticketParam && backupDownloadTickets.has(ticketParam)) {
+      const ticketData = backupDownloadTickets.get(ticketParam);
+      backupDownloadTickets.delete(ticketParam); // Single use - immediately consume
+      if (Date.now() <= ticketData.expiresAt && (!fileName || ticketData.fileName === fileName)) {
+        fileName = ticketData.fileName;
+        authorizedByTicket = true;
+      }
+    }
+
+    // 2. If not authorized by ticket, fallback to standard admin session check (SEC-029: Header-only, no token in URL)
+    if (!authorizedByTicket) {
+      const adminSession = requireAdminAuth(req, res);
+      if (!adminSession) return;
+    }
+
+    const safePath = getSafeBackupFilePath(fileName);
+    if (!safePath || !fs.existsSync(safePath)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Backup archive not found or invalid filename.' }));
+    }
+
+    const stat = fs.statSync(safePath);
+    res.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Length': stat.size,
+      'Content-Disposition': `attachment; filename="${path.basename(safePath)}"`,
+      'Cache-Control': 'no-store, no-cache, must-revalidate'
+    });
+
+    const readStream = fs.createReadStream(safePath);
+    readStream.pipe(res);
+    return;
+  }
+
+  // POST /api/admin/backup/email-dispatch - Dispatch backup zip to Gmail
+  if (req.method === 'POST' && url.pathname === '/api/admin/backup/email-dispatch') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', async () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const fileName = body.fileName ? String(body.fileName).trim() : null;
+        const targetEmail = body.targetEmail ? String(body.targetEmail).trim() : null;
+
+        const result = await dispatchBackupToGmail({
+          fileName,
+          targetEmail,
+          trigger: 'manual_admin_request'
+        });
+
+        if (result.success) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(result));
+        } else {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(result));
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/admin/backup/delete - Delete a backup file from server disk
+  if (req.method === 'POST' && url.pathname === '/api/admin/backup/delete') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const fileName = String(body.fileName || '').trim();
+        if (!fileName) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Filename is required' }));
+        }
+
+        const result = deleteBackupFile(fileName);
+        if (result.success) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(result));
+        } else {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify(result));
+        }
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/admin/backup/settings
+  if (req.method === 'GET' && url.pathname === '/api/admin/backup/settings') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, settings: getBackupSettings() }));
+  }
+
+  // POST /api/admin/backup/settings
+  if (req.method === 'POST' && url.pathname === '/api/admin/backup/settings') {
+    const adminSession = requireAdminAuth(req, res);
+    if (!adminSession) return;
+
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const result = updateBackupSettings(body);
+        res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(result));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // =========================================================================
+  // TASK 34: SOVEREIGN DEVELOPER EMERGENCY ACCESS & DIAGNOSTICS GATEWAY
+  // =========================================================================
+
+  // GET /api/developer/diagnostics - Comprehensive real-time system and database health
+  if (req.method === 'GET' && url.pathname === '/api/developer/diagnostics') {
+    if (!verifyDeveloperAuthorization(req)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Endpoint not found' }));
+    }
+
+    const dbAudit = auditDatabaseFiles();
+    const secDiag = getSecurityDiagnostics();
+    const backupsInfo = listAvailableBackups();
+    const backupList = Array.isArray(backupsInfo.backups) ? backupsInfo.backups : [];
+    const backupSettings = getBackupSettings();
+    const mem = process.memoryUsage();
+
+    const payload = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      system: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        uptimeSeconds: Math.floor(process.uptime()),
+        uptimePretty: formatProcessUptime(process.uptime()),
+        pid: process.pid,
+        memory: {
+          rssFormatted: (mem.rss / 1024 / 1024).toFixed(1) + ' MB',
+          heapTotalFormatted: (mem.heapTotal / 1024 / 1024).toFixed(1) + ' MB',
+          heapUsedFormatted: (mem.heapUsed / 1024 / 1024).toFixed(1) + ' MB',
+          rssBytes: mem.rss,
+          heapUsedBytes: mem.heapUsed
+        }
+      },
+      security: {
+        activeLoginLocks: secDiag.activeLoginLocks,
+        totalTrackedLoginIps: secDiag.totalTrackedLoginIps,
+        totalTrackedOtpIps: secDiag.totalTrackedOtpIps,
+        status: secDiag.activeLoginLocks > 0 ? 'locked' : 'nominal'
+      },
+      database: {
+        totalFiles: dbAudit.length,
+        allValid: dbAudit.every(d => d.valid),
+        files: dbAudit
+      },
+      backups: {
+        totalBackups: backupList.length,
+        latestBackup: backupList[0] || null,
+        autoEmailEnabled: backupSettings.autoEmailEnabled,
+        deliveryEmail: backupSettings.deliveryEmail,
+        scheduleFrequency: backupSettings.scheduleFrequency
+      }
+    };
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(payload));
+  }
+
+  // POST /api/developer/reset-locks - Emergency clearance of all IP rate limits and login locks
+  if (req.method === 'POST' && url.pathname === '/api/developer/reset-locks') {
+    if (!verifyDeveloperAuthorization(req)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Endpoint not found' }));
+    }
+
+    const result = clearAllSecurityLocks();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      success: true,
+      message: 'All brute-force and IP rate limit locks have been cleared.',
+      result
+    }));
+  }
+
+  // POST /api/developer/verify-database - Deep integrity verification of all server/data/*.json files
+  if (req.method === 'POST' && url.pathname === '/api/developer/verify-database') {
+    if (!verifyDeveloperAuthorization(req)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Endpoint not found' }));
+    }
+
+    const dbAudit = auditDatabaseFiles();
+    const validCount = dbAudit.filter(f => f.valid).length;
+    const corruptCount = dbAudit.filter(f => !f.valid).length;
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      success: true,
+      totalFiles: dbAudit.length,
+      verifiedCount: validCount,
+      corruptCount,
+      files: dbAudit
+    }));
+  }
+
+  // POST /api/developer/emergency-backup - Immediate point-in-time PKZIP snapshot
+  if (req.method === 'POST' && url.pathname === '/api/developer/emergency-backup') {
+    if (!verifyDeveloperAuthorization(req)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'Endpoint not found' }));
+    }
+
+    try {
+      const result = await generateNewsroomBackupZipAsync({ creatorName: 'Developer Emergency Snapshot' });
+      res.writeHead(result.success ? 200 : 500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(result));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: err.message }));
+    }
+  }
+
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Endpoint not found' }));
 });
 
+// Nightly 2:00 AM Automated Backup Evaluator (Strict Indian Standard Time IST)
+async function evaluateAutomatedBackupSchedule() {
+  try {
+    const settings = getBackupSettings();
+    if (settings.scheduleFrequency === 'manual') return;
+
+    // Calculate current time in Asia/Kolkata (IST) to ensure timezone precision across cloud VPS
+    let kolkataHour = 0;
+    let kolkataDateStr = '';
+    let kolkataDay = 'Mon';
+
+    try {
+      const kolkataTimeStr = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kolkata',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false
+      }).format(new Date());
+      kolkataHour = parseInt(kolkataTimeStr.split(':')[0], 10);
+      kolkataDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+      kolkataDay = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' }).format(new Date());
+    } catch (_e) {
+      const now = new Date();
+      kolkataHour = now.getHours();
+      kolkataDateStr = now.toISOString().split('T')[0];
+    }
+
+    // Check if 2:00 AM window in Indian Standard Time (2:00 - 2:30 AM IST)
+    if (kolkataHour === 2) {
+      const lastRunIST = settings.lastBackupDateIST || (settings.lastBackupAt ? settings.lastBackupAt.split('T')[0] : '');
+      if (lastRunIST !== kolkataDateStr) {
+        if (settings.scheduleFrequency === 'weekly' && kolkataDay !== 'Sun') {
+          // If weekly, only execute on Sunday
+          return;
+        }
+
+        console.log(`[Nightly Auto-Backup IST] Triggering automated newsroom backup for ${kolkataDateStr} (2:00 AM IST)...`);
+        const fresh = await generateNewsroomBackupZipAsync({ creatorName: 'Nightly Auto-Cron (IST)' });
+        if (settings.autoEmailEnabled && fresh.success) {
+          dispatchBackupToGmail({
+            fileName: fresh.backup.fileName,
+            targetEmail: settings.deliveryEmail,
+            trigger: 'nightly_cron_ist'
+          }).catch(err => console.error('[Nightly Auto-Backup Email Error]:', err.message));
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Automated Backup Schedule Evaluator Error]:', err.message);
+  }
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`PublicSpark Newsroom Backend Proxy running at http://localhost:${PORT}`);
-  cleanupExpiredAudioFiles(14);
-  const audioCleanupTimer = setInterval(() => cleanupExpiredAudioFiles(14), 24 * 60 * 60 * 1000);
-  if (audioCleanupTimer.unref) audioCleanupTimer.unref();
+  // Initial startup orphan sweep and storage watchdog evaluation
+  purgeOrphanedSatelliteData();
+  runStorageWatchdogAndCleanup();
+
+  // Storage Watchdog runs hourly (checks 80% alert notification & 90% emergency cleanup)
+  const storageWatchdogTimer = setInterval(() => runStorageWatchdogAndCleanup(), 60 * 60 * 1000);
+  if (storageWatchdogTimer.unref) storageWatchdogTimer.unref();
+
+  // Evaluate nightly backup schedule every 5 minutes (guarantees 2:00 AM IST window is never missed)
+  const backupCronInterval = setInterval(evaluateAutomatedBackupSchedule, 5 * 60 * 1000);
+  if (backupCronInterval.unref) backupCronInterval.unref();
+  setTimeout(evaluateAutomatedBackupSchedule, 10000);
+
+  // Proactively pre-warm top 3 published stories audio in background (0ms instant playback for readers)
+  setTimeout(() => {
+    try {
+      const all = getSavedArticles();
+      const topPublished = all.filter(a => a.status === 'published').slice(0, 3);
+      topPublished.forEach(a => autoPreWarmPublishedAudio(a));
+    } catch (e) {}
+  }, 3000);
 });

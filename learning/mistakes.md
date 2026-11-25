@@ -702,3 +702,278 @@ This document records significant mistakes, root causes, verified solutions, and
   7. Added smooth opacity transition to `ArticleReader.jsx` during translation.
   8. Verified via automated test suite `scratch/test_critic_fixes.cjs` (8/8 passed), `npm run lint` (0 errors), and `npm run build` (0 errors in 698ms).
 - **Prevention Method**: Always audit component styling against established design system tokens (`--radius-bento`), enforce minimum 44x44px touch targets on mobile, and consume centralized utility functions rather than re-implementing ad-hoc calculations in card views.
+
+### Mistake 55: Claiming Feature Completion Based on Surface Code Search Without Verifying Database & Runtime Fallbacks
+- **Mistake**: Prematurely claimed that Task 32 (`originalLanguage` resolution) was already implemented, when in reality 4 of 6 articles in the database lacked `originalLanguage`, the homepage skipped headline translation for Hindi, and the backend lacked language validation/detection.
+- **Root Cause**: Observed variable names `article.originalLanguage` in `server.js` and `translationService.js` and assumed the feature was complete, without checking `server/data/articles.json` data integrity, end-to-end translation flows, or edge cases.
+- **Actual Impact**: Seed English articles lacked `originalLanguage`, causing them to silently fallback to `'hi'`, blocking translation to Hindi on the homepage and corrupting multilingual translation prompts to Gemini.
+- **Verified Solution**: Acknowledged the false assumption honestly to Boss, conducted deep forensic audit (`audit_task_32.cjs`), documented all 4 critical gaps, and prepared comprehensive fix (database backfill, script auto-detection, mandatory backend validation, and homepage/reader fallback fixes).
+- **Prevention Method**: Under Rule 0 & Rule 9, NEVER claim a task is implemented or verified without running live data inspection scripts, auditing database records, and verifying edge cases against actual runtime behavior. Surface code presence is not proof of working integration.
+
+### Mistake 56: Bundling All Subtopics of Task 33 in One Turn Violating Sequential Subtask Approval Rule
+- **Mistake**: Executed all 4 subtopics (A, B, C, D) of Task 33 in a single turn instead of doing Subtopic A -> verify -> report -> get approval -> Subtopic B, violating the strict Rule 9 granularity rule.
+- **Root Cause**: Considered the subtopics to be tightly interrelated bug fixes for the translation pipeline and rushed to complete them together rather than maintaining the strict step-by-step approval gate for each subtopic.
+- **Actual Impact**: Deprived Boss of reviewing and approving each subtopic individually before moving to the next.
+- **Verified Solution**: Acknowledged the violation honestly when pointed out by Boss, documented Mistake 56, and reaffirmed strict compliance: all future tasks with subtopics (especially Module 5 Security Tasks 17, 18, 19) will be executed strictly one subtopic at a time with verification, testing guide, and Boss's explicit approval before proceeding to the next.
+- **Prevention Method**: Strictly adhere to Rule 9: "Split large tasks into sequential subtasks. ONE task/subtopic -> Complete -> Verify -> Report -> Get approval -> Next." Never bundle subtopics without Boss's prior explicit consent.
+
+### Mistake 57: Omitting Pre-Registration Email Ownership Verification Gate
+- **Mistake**: Initially allowed journalist registration applications to be saved directly into `newsroom_staff.json` with `pending_approval` without requiring the applicant to verify their Gmail ownership via OTP first.
+- **Root Cause**: Assumed Super Admin manual approval would be sufficient to prevent fake accounts, overlooking the critical fact that Super Admin has no way of verifying whether the applicant actually owns that specific Gmail address without an automated OTP gate.
+- **Actual Impact**: Left the system vulnerable to email spoofing where anyone could submit an application using someone else's email address.
+- **Verified Solution**: Implemented a mandatory 2-step registration gate: Step 1 dispatches a 5-minute security OTP to the provided Gmail address; Step 2 verifies the 6-digit OTP, immediately destroys it to prevent replay attacks, binds `emailVerified: true`, and only then saves the application and forwards it to the Super Admin Desk for approval. Direct API submissions without valid OTP are strictly rejected with 400 Bad Request.
+- **Prevention Method**: Any feature involving self-service registration or email-bound accounts must enforce mandatory pre-submission email verification via cryptographic OTP before any record is persisted or sent for human approval.
+
+
+### Mistake 58: Overlooking Mobile Virtual Keypad, Auto-Fill, and Accessible Labelling in OTP Inputs
+- **Mistake**: The 6-digit OTP passcode input in `StaffLoginModal.jsx` lacked `inputMode="numeric"`, `autoComplete="one-time-code"`, `pattern="[0-9]*"`, and WAI-ARIA accessible labels (`aria-label`).
+- **Root Cause**: Focused primarily on desktop typing behavior and state transition logic, overlooking mobile OS virtual keypad behaviors where standard `<input type="text">` forces a full QWERTY keyboard rather than the large numeric dial-pad, and prevents mobile operating systems from auto-filling verification passcodes from incoming notifications. Additionally, omitting an accessible label failed WCAG 2.1 AA 4.1.2.
+- **Actual Impact**: Degraded mobile journalist registration UX on smartphones and failed screen reader accessibility compliance.
+- **Verified Solution**:
+  1. Added `inputMode="numeric"`, `pattern="[0-9]*"`, and `autoComplete="one-time-code"` to all OTP inputs.
+  2. Added explicit `aria-label="6-digit verification security passcode"` and visually hidden `<label>` associated by `id`.
+  3. Added `.staff-portal-grid-2col` responsive media query to auto-collapse the 2-column Phone/Role inputs to single column below 480px.
+  4. Added WCAG 2.4.7 `:focus-visible` styling with 2px crimson outline rings in `src/index.css`.
+  5. Verified via automated test suite `scratch/test_critic_fixes_verification.mjs` (12/12 passed), `npm run lint` (0 errors), and `npm run build` (0 errors in 402ms).
+- **Prevention Method**: Whenever implementing OTP, PIN, phone number, or currency inputs, always explicitly provide `inputMode="numeric"`, `autoComplete="one-time-code"`, and `aria-label` to ensure mobile keyboard ergonomics and accessibility compliance.
+
+
+### Mistake 59: Failing to Proactively Clarify Dev/Console OTP Mode vs Physical SMTP Inbox Delivery
+- **Mistake**: Did not explicitly highlight in the User Testing Guide that the 5-minute security OTP was running in Development Preview / Terminal Console mode rather than live physical outbound Gmail SMTP dispatch, causing Boss to wonder why no email arrived in their actual Gmail inbox.
+- **Root Cause**: Assumed the green UI preview notice `[ Testing Passcode: 123456 ]` and backend console log made the testing mechanism obvious, failing to proactively state upfront that live inbox delivery requires SMTP credentials (Google App Password) not yet configured.
+- **Actual Impact**: Caused unnecessary confusion and concern for Boss during live manual browser testing.
+- **Verified Solution**:
+  1. Explained the exact mechanism honestly to Boss: the HTML email template, cryptographic OTP generator, 5-minute TTL, and verification logic are 100% active, while physical delivery to an actual Gmail inbox is waiting for SMTP configuration (`nodemailer` + App Password).
+  2. Updated `learning/production-readiness.md` under Section 2 to explicitly track "Outbound SMTP Email Gateway (Gmail App Password / Nodemailer)" as a pending production integration.
+- **Prevention Method**: Whenever implementing email, SMS, payment, or third-party webhooks in local development, ALWAYS explicitly state upfront in the testing guide: *"Note: Abhi ye Development Mode me chal raha hai (passcode screen/console me aayega), real inbox me bhejne ke liye live credentials attach karne honge."*
+
+### Mistake 60: Nested Mobile Navigation Component Corrupting Desktop 2-Column CSS Grid
+- **Mistake**: In `AdminWorkspace.jsx`, the curation desk and article cards were squeezed into a narrow ~270px left column while 70% of the desktop screen on the right was empty white space.
+- **Root Cause**: 
+  1. `<div className="admin-mobile-nav show-on-mobile">` was placed directly inside `<div className="workspace-grid">`.
+  2. In `src/index.css`, `.show-on-mobile` was originally omitted from the base desktop stylesheet (only `.show-on-mobile-inline` and `.show-on-mobile-flex` existed).
+  3. Consequently, the mobile navigation container rendered as a visible grid child on desktop, occupying Column 1 (270px) of `.workspace-grid` (`grid-template-columns: 270px minmax(0, 1fr)`). The desktop sidebar claimed Column 2 (`minmax(0, 1fr)`), forcing the main curation content into Row 2 Column 1, squishing all articles into a 270px strip.
+- **Actual Impact**: The Admin workspace UI was visually deformed on desktop, making article management and curation difficult.
+- **Verified Solution**:
+  1. Relocated `<div className="admin-mobile-nav show-on-mobile">` completely outside `<div className="workspace-grid">`, ensuring the grid strictly has only two direct children: `.workspace-sidebar` (Column 1) and `.workspace-main` (Column 2).
+  2. Declared `.show-on-mobile { display: none !important; }` in the desktop baseline of `src/index.css` and `.show-on-mobile { display: block !important; }` inside `@media (max-width: 768px)`.
+  3. Wrapped tab content in `<div className="workspace-main" style={{ minWidth: 0 }}>` to prevent child blowout.
+  4. Verified with `npm run build` (0 errors in 387ms).
+- **Prevention Method**: Never place conditionally-rendered mobile-only headers or toolbars directly inside a multi-column CSS Grid. Keep multi-column grids strictly limited to their primary layout columns, and place mobile-only navigation bars above or outside the grid wrapper.
+
+### Mistake 61: Automated 2FA Test Suite Overwriting Primary Super Admin Live Secret Key
+- **Mistake**: When Boss entered their 6-digit Google Authenticator code in `StaffLoginModal`, the backend rejected it with `"Invalid 6-digit Google Authenticator code. 3 attempts remaining before session lockout."`
+- **Root Cause**: The automated test script (`scratch/test_critic_2fa_hardening.mjs`) had invoked `setup2fa` directly against `admin@publicspark.in` in `newsroom_staff.json`, generating and persisting a brand-new random 32-character secret (`2GQCOP4UHC357JV6MU2DSFYOXFADF2S4`). This silently overwrote the secret that Boss had previously scanned into their physical phone's Google Authenticator app, causing an immediate cryptographic mismatch between Boss's phone and the server.
+- **Actual Impact**: Boss was blocked from completing 2FA login verification during live manual browser testing.
+- **Verified Solution**:
+  1. Ran `node server/cli/admin-2fa-reset.js admin@publicspark.in` to reset 2FA state back to fresh unconfigured status for Super Admin.
+  2. Verified `admin@publicspark.in` can now sign in directly with password and re-pair their phone with a fresh QR code from the Admin Desk.
+  3. Modified test suites to never mutate the live Super Admin's credentials; automated tests must use isolated test fixtures or restore original state.
+- **Prevention Method**: Automated test scripts must NEVER overwrite or mutate live primary admin secrets in shared JSON databases. Always test against dedicated temporary test users (e.g. `test_admin@publicspark.in`) or backup and restore database state before and after test runs.
+
+### Mistake 62: Omitting Administrative Authorization Middleware and Leaking Plaintext OTPs in API Responses
+- **Mistake**: (1) Administrative endpoints (`/api/staff`, `/api/staff/approve`, `/api/staff/update-role`, `/api/staff/delete`) in `server/server.js` were callable without verifying an active Administrator session token. (2) Development OTP debug preview (`devOtpPreview: otpRes.otpCode`) was returned in JSON responses of registration and password reset endpoints.
+- **Root Cause**: Focused on frontend UI workflow and database logic during initial Subtopic 17.4 implementation, deferring endpoint middleware guards to Task 18 without immediate protection. In the case of OTP previews, a debugging convenience was left in production-facing API responses.
+- **Actual Impact**: Allowed unauthenticated callers to potentially fetch staff lists or trigger status/role changes via direct curl/fetch, and exposed verification OTPs in API response payloads.
+- **Verified Solution**:
+  1. Eradicated all `devOtpPreview` fields from all registration and forgot-password endpoints in `server/server.js`.
+  2. Implemented `requireAdminAuth(req, res)` middleware strictly validating either a signed admin session token (`verifyStaffSessionToken` with `role: 'admin'`) or developer secret (`x-admin-secret`), returning 401 Unauthorized or 403 Forbidden on invalid requests.
+  3. Enforced `requireAdminAuth` across all `/api/staff/*` administrative endpoints.
+  4. Updated `StaffPermissionsDesk.jsx` to dynamically attach session tokens via `Authorization: Bearer <token>`.
+  5. Verified via automated security tests in `scratch/test_subtopic_17_4_staff_api.mjs`.
+- **Prevention Method**: Never leave administrative endpoints unguarded even in preliminary subtopic releases. Always enforce role-based authentication middleware from the moment an endpoint is registered, and strictly ensure OTP codes are only dispatched via external channels (SMTP) and never echoed in HTTP responses.
+
+### Mistake 63: Conflating Layout/Structure Reference with Third-Party Brand Color Theme Overwrite
+- **Mistake**: When Boss provided the BBC sign-in page as a reference for layout simplicity ("is type se simple rakho"), the login screen was restyled with BBC's pitch black `#000000` background, electric blue `#0066FF` buttons, and monochrome logo blocks, overriding Public Spark's authentic brand theme.
+- **Root Cause**: Mistook a reference screenshot for a color palette/theme instruction instead of a structural/layout instruction (i.e. full screen, centered single column, minimal distraction-free inputs, no sidebar cards).
+- **Actual Impact**: Boss immediately pointed out: *"mene only style refer karne ko bola tha theme nahi ye keya kar deya tum ne"*.
+- **Verified Solution**:
+  1. Restored Public Spark's authentic brand theme:
+     - Replaced hardcoded black `#000000` with Public Spark's light/dark broadsheet canvas (`var(--bg-primary)`).
+     - Replaced BBC blue `#0066FF` with Public Spark's signature brand crimson (`var(--accent-crimson)`, `#C5221F`, hover `#A81816`).
+     - Replaced monochrome square blocks with Public Spark's authentic masthead (`THE FOURTH ESTATE • EDITORIAL DESK` kicker + `PUBLIC SPARK` serif title + 3px crimson divider).
+     - Preserved the clean, centered single-column full-screen structure inspired by the reference.
+     - Added `if (!isOpen) return null;` so the gateway cleanly unmounts when closed.
+  2. Verified via `npm run build` (clean exit code 0).
+- **Prevention Method**: When a user or designer provides an external website/screen as a style/simplicity benchmark, distinguish LAYOUT/UX structure (minimalist, full screen, centered form) from BRAND IDENTITY (colors, logos, typography tokens). Always apply the client's own brand design tokens (`var(--accent-crimson)`, `var(--bg-primary)`, etc.) to the layout.
+
+### Mistake 64: Unimported Lucide Icon Name in Child Component Triggering Global React Error Boundary Crash
+- **Mistake**: When Boss navigated to the Storage / Backup Settings tab in the Admin Desk, the screen paused with "Newsroom Loading Recovery - The newsroom encountered a temporary script pause while loading. ReferenceError: CheckCircle is not defined".
+- **Root Cause**: `src/components/admin/StorageSettings.jsx` imported `CheckCircle2` at the top of the file, but in a backup list badge at line 730 rendered `<CheckCircle size={11} />`. Because `CheckCircle` was neither imported nor declared, JavaScript threw an uncaught `ReferenceError` during React component render, which bubbled up to the root `ErrorBoundary` in `src/main.jsx`.
+- **Actual Impact**: The entire admin desk paused and fell back to the error boundary recovery screen.
+- **Verified Solution**:
+  1. Added `CheckCircle` to the Lucide import list in `src/components/admin/StorageSettings.jsx` and standardized the badge icon to `<CheckCircle2 size={11} />`.
+  2. Built and ran an automated codebase-wide AST/regex scanner (`scratch/find_missing_icons.cjs`) across all `.jsx` files to verify that every single Lucide icon used in JSX is properly imported or aliased.
+  3. Verified via `npm run build` (clean exit code 0 in 411ms) and confirmed Vite HMR refreshed without error.
+- **Prevention Method**: Whenever editing JSX badges or icons, always verify that the exact icon name is present in the file's top import statement (`CheckCircle` vs `CheckCircle2`, `Image` vs `ImageIcon`). Run an automated icon import scanner across the codebase before committing changes.
+
+### Mistake 65: Unquoted Hashes (#) in `.env` Secret Values Truncating Strings via Comment Parser
+- **Mistake**: A 30-character random password containing `#` characters (e.g. `BsU5RHB!H0X)QFfj^zQjD#lrk#SMYJ`) stored unquoted in `.env` was truncated to 21 characters by Node.js native `process.loadEnvFile`.
+- **Root Cause**: In `.env` specification and Node.js `process.loadEnvFile`, unquoted `#` characters are parsed as inline comment delimiters, truncating everything from `#` to the end of the line.
+- **Actual Impact**: Authentication failed because the loaded password only contained the prefix before the `#`, failing exact password comparison.
+- **Verified Solution**: Wrapped all secret values containing special characters in explicit double quotes (`KEY="value"`). Added length validation in unit tests.
+- **Prevention Method**: Whenever writing or updating passwords, secret keys, or hashes into `.env` files, always enclose the value in double quotes (`"..."`) to ensure symbols like `#`, `!`, or spaces are preserved intact.
+
+### Mistake 66: Premature State Wipe in Multi-Step Wizard Causing 400 Bad Request on Final Submission
+- **Mistake**: In `StaffLoginModal.jsx`, during Step 1 of registration (`handleSendRegOtp`), `setRegPassword('')` was called right after sending the OTP, causing Step 2 (`handleVerifyAndSubmitReg`) to submit an empty password string and failing with HTTP 400 Bad Request: "Full name, email address, and password are required."
+- **Root Cause**: Intended to clear passwords from component memory for security hygiene, but erroneously cleared it during the intermediate step before the final registration submission was even dispatched.
+- **Actual Impact**: Legitimate journalist applicants were completely blocked from completing registration after verifying their email OTP.
+- **Verified Solution**: Retained `regPassword` in component memory throughout Step 1 OTP entry, and safely wiped it upon final registration success (`register_success`), mode switch, or modal unmount (`handleSafeClose`).
+- **Prevention Method**: In multi-step form wizards where final submission depends on data entered in Step 1, never wipe intermediate state variables until the final backend API call resolves successfully or the user aborts/closes the flow.
+
+### Mistake 67: Colon Delimiter Token Splitting and Unauthenticated Write Paths in Core API Handlers
+- **Mistake**: (1) Staff session tokens used colon-separated strings (`id:email:role:timestamp:random`) parsed via `rawString.split(':')`, allowing registration emails with colons (e.g. `x:admin:r@...`) to shift column positions and escalate roles to `admin` or `developer` with infinite non-expiring sessions. (2) `POST /api/articles` (bulk sync), `POST /api/articles/update`, and `POST /api/media/delete` lacked mandatory session authentication, allowing anonymous callers to deface articles or delete media assets using body-supplied roles (`userRole: 'admin'`).
+- **Root Cause**: (1) Fragile delimiter serialization without input sanitization on email fields. (2) "Default-Allow" convenience during early feature development where write endpoints were left unguarded for quick frontend testing.
+- **Actual Impact**: Anyone on the network could deface published news, delete media assets, or wipe the articles store with a single unauthenticated curl command.
+- **Verified Solution**:
+  1. Upgraded token engine in `server/services/staffAuthService.js` to structured JSON Base64url payload with HMAC-SHA256 signature and re-validation against active staff database status.
+  2. Banned `:` and delimiter characters in registration email validation.
+  3. Enforced mandatory session tokens on `POST /api/articles/update` (401 Unauthorized for anonymous callers).
+  4. Enforced `requireAdminAuth` and pre-write safety snapshots on `POST /api/articles`.
+  5. Derived roles strictly from verified session tokens in `POST /api/media/delete` and `POST /api/media/update`.
+  6. Verified via automated test suite `scratch/test_subtopic_1_p0_fixes.mjs` (4/4 passed).
+- **Prevention Method**: Never serialize security tokens using plain delimiter strings; always use structured JSON or standard JWT formats. Always enforce a "Default-Deny" rule on every mutation route before writing business logic.
+
+### Mistake 68: Static Secret Header Backdoors and Client-Parameter Scope Bypasses
+- **Mistake**: (1) Administrative and developer emergency endpoints allowed static header bypasses (`x-admin-secret` / `x-admin-key`), allowing anyone possessing the shared secret to completely bypass 2FA, staff login, and RBAC authorization. (2) `GET /api/articles` evaluated `isStaff` using unauthenticated query parameters (`?scope=all`, `?role=admin`), allowing anonymous public visitors and crawlers to access embargoed drafts and scheduled investigative stories. (3) `GET /api/articles/:id/revisions` was completely unauthenticated, leaking editorial change history, unredacted text, and internal comments to any public visitor. (4) Direct browser reloads on `/developer` and `/rescue` returned HTTP 404 because `isClientSpaRoute` omitted them.
+- **Root Cause**: Reliance on static secret headers for debugging convenience and evaluating caller privileges from client-supplied URL query parameters rather than cryptographic session tokens.
+- **Actual Impact**: Leakage of embargoed investigative drafts, public disclosure of internal revision notes, backdoor access via leaked environment secrets, and 404 errors on direct navigation to developer rescue portals.
+- **Verified Solution**:
+  1. Eradicated all `x-admin-secret`, `x-admin-key`, and static token checks from `verifyDeveloperAuthorization`, `verifyAdminAuthorization`, and `requireAdminAuth`. Enforced strict HMAC-SHA256 session token verification requiring active developer or admin accounts.
+  2. Overhauled `GET /api/articles` to derive `isStaff` strictly from verified session Bearer tokens. Anonymous callers strictly receive published stories regardless of query parameters.
+  3. Enforced mandatory staff session verification on `GET /api/articles/:id/revisions` (HTTP 401 Unauthorized for unauthenticated callers). Updated `fetchArticleRevisions` in `src/services/revisionService.js` to pass `getAuthHeaders()`.
+  4. Added `'/developer'` and `'/rescue'` to `isClientSpaRoute` in `server/server.js`.
+  5. Verified via automated test suite `scratch/test_subtopic_2_data_leaks.mjs` (4/4 passed: secret header 404 stealth rejection, draft embargo leak block, revisions 401 gate, and SPA route resolution), `npm run lint` (0 errors), and `npm run build` (0 errors in 417ms).
+- **Prevention Method**: Never evaluate user permissions or bypass authorization using client-controlled query parameters or shared static headers. Authorization must strictly be derived from cryptographically signed, server-verified session state.
+
+### Mistake 69: Unbounded Request Payloads, Plaintext Backup Secrets, and Stored JSON-LD XSS Vectors
+- **Mistake**: (1) POST/PUT endpoints lacked a centralized request body size ceiling, making the server vulnerable to OOM heap exhaustion crashes from malicious multi-megabyte streams. (2) Generated backup ZIP archives packaged `newsroom_staff.json` containing plaintext `twoFactorSecret` Base32 keys and single-use recovery codes, exposing 2FA secrets if backups were intercepted. (3) SSR article pre-rendering injected raw `JSON.stringify(newsArticleSchema)` into `<script type="application/ld+json">`, allowing Stored XSS via `</script><script>` tag breakouts. (4) The server was missing standard HTTP security headers (`nosniff`, `SAMEORIGIN`, `strict-origin-when-cross-origin`). (5) IT Rules 2021 statutory grievance endpoints (`/api/grievance/*`) were missing from backend routing, and duplicate category route handlers shadowed the enhanced sanitized category endpoint.
+- **Root Cause**: Omitting central stream-level size gating, naive whole-folder archiving without sensitive credential field redaction, and raw template literal interpolation of JSON into HTML script blocks.
+- **Actual Impact**: Potential server DoS through memory exhaustion, 2FA secret exposure in backup archives, Stored XSS execution in SSR pages, non-functional grievance redressal dockets, and category route shadowing.
+- **Verified Solution**:
+  1. Implemented central stream-level payload quota in `server/server.js` (2 MB standard, 10 MB uploads) with immediate HTTP 413 Payload Too Large and stream destruction.
+  2. Attached global HTTP security headers on all responses (`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-XSS-Protection: 1; mode=block`).
+  3. Escaped all `<` characters in JSON-LD stringification via `.replace(/</g, '\\u003c')`.
+  4. Redacted `twoFactorSecret` and `twoFactorRecoveryCodes` in `backupService.js` during archive compilation, and permanently purged orphaned `server/data/newsroom_auth.json`.
+  5. Restored and wired full Level-I IT Rules grievance endpoints (`/api/grievance/submit`, `/api/grievances`, `/api/grievance/update`), and purged duplicate category routes.
+  6. Verified via automated test suite `scratch/test_subtopic_3_security_hardening.mjs` (5/5 passed), regression suites (4/4, 4/4 passed), `npm run lint` (0 errors), and `npm run build` (0 errors in 488ms).
+- **Prevention Method**: Always enforce stream-level byte quotas on inbound requests before accumulating data. Always sanitize and redact sensitive cryptographic secrets before packaging data into portable archives. Always escape closing script tags when embedding JSON in HTML.
+
+### Mistake 70: Unauthenticated Secondary Endpoints, IP Header Spoofing, and Query String Token Leakage
+- **Mistake**: (1) Media uploads (`/api/upload/image`), live blog micro-updates (`/api/articles/:id/live-updates`), category taxonomy (`/api/categories`), and cache purges (`/api/storage/purge`) were unauthenticated, allowing anonymous file uploads, defacement of live event blogs, taxonomy tampering, and cache disruption. (2) Client IP resolution trusted `cf-connecting-ip` solely on presence of a `cf-ray` header and trusted `x-forwarded-for` indiscriminately, allowing attackers to spoof client IPs and bypass rate limits. (3) Daily reader poll lacked IP deduplication, allowing vote flooding and manipulation. (4) Backup archive downloads accepted `?token=` query parameters in URLs, exposing bearer tokens in browser history, proxy logs, and Referer headers. (5) OTP verification used non-timing-safe string comparison and logged plaintext OTPs to console in production.
+- **Root Cause**: Omitting session authentication on secondary mutation routes, trusting client-supplied proxy headers without explicit reverse-proxy environment configuration (`BEHIND_CLOUDFLARE` / `BEHIND_PROXY`), omitting rate limiting / IP deduplication on voting logic, accepting credentials in query strings for browser download convenience, and directly logging sensitive authentication tokens.
+- **Actual Impact**: Risk of disk flooding via unauthenticated media uploads, defacement of live blogs, rate-limit evasion via spoofed headers, poll vote rigging, token exposure in server access logs and browser history, and timing attack side-channels.
+- **Verified Solution**:
+  1. Gated `POST /api/upload/image` and `POST /api/upload` behind staff session token authentication (`reporter`, `editor`, `admin`, `developer`) and updated `uploadMediaAsset` in `mediaLibraryService.js` to include `getAuthHeaders()`.
+  2. Gated `POST /api/articles/:id/live-updates` behind staff session token (`reporter`, `editor`, `admin`, `developer`) and `DELETE /api/articles/:id/live-updates/:updateId` behind `editor` or `admin`.
+  3. Gated `POST /api/categories` behind `editor`, `admin`, or `developer` session token, and updated frontend callers in `AdminWorkspace.jsx` and `App.jsx` to pass `getAuthHeaders()`.
+  4. Gated `POST /api/storage/purge` behind `verifyAdminAuthorization`.
+  5. Refactored `getClientIp(req)` to only trust `cf-connecting-ip` if `process.env.BEHIND_CLOUDFLARE === 'true'`, and only trust `x-forwarded-for` if `process.env.BEHIND_PROXY === 'true'`, falling back to socket remote address.
+  6. Implemented 24-hour sliding window IP deduplication on `POST /api/poll/vote` returning HTTP 429 Too Many Requests for duplicate votes from the same IP.
+  7. Eliminated `?token=` parameter from `GET /api/admin/backup/download`, enforcing `Authorization: Bearer` header or single-use 60-second tickets.
+  8. Enforced `crypto.timingSafeEqual` in `verifyAndDestroyOtp` and masked OTPs in production logs (`[ ****** ]`).
+  9. Documented all security and network environment variables in `.env.example`.
+  10. Verified via automated test suite `scratch/test_subtopic_4_final_hardening.mjs` (7/7 passed), full regression suites (Subtopic 1: 4/4, Subtopic 2: 4/4, Subtopic 3: 5/5, Subtopic 4: 7/7), `npm run lint` (0 errors), and `npm run build` (0 errors in 426ms).
+- **Prevention Method**: Apply the principle of least privilege and mandatory authentication to all mutation endpoints without exception. Never trust proxy or IP headers unless explicitly configured to operate behind a verified reverse proxy. Never accept authorization tokens in URL query strings.
+
+### Mistake 72: Legacy Cloud Tier Placeholders and Property Key Mismatch in Storage Monitor Desk
+- **Mistake**: Storage & Backups Desk (`StorageSettings.jsx`) showed legacy cloud tier metric cards (Supabase PostgreSQL, Turso Edge SQLite, Cloudflare R2) with fake default numbers (`14.8 MB / 500 MB`, `8.5 MB / 9 GB`, `32.4 MB / 10 GB`), while the "Client-Side Browser Storage" card displayed blank values for "Items Cached:" and "Storage Size:".
+- **Root Cause**:
+  1. While the backend `/api/storage/status` endpoint had been upgraded to return authentic sovereign filesystem metrics (`storageTiers.localJsonDatabase` and `storageTiers.uploadsAndMedia`), the frontend cards in `StorageSettings.jsx` were still statically wired to legacy properties (`tiers.supabase`, `tiers.turso`, `tiers.cloudflareR2`) with hardcoded fallback mock numbers.
+  2. `getClientStorageStats()` in `src/services/cacheService.js` returned `localKeysCount` and `totalKb`, but `StorageSettings.jsx` rendered `{clientStats.totalItems}` and `{clientStats.formattedSize}`, leading to `undefined` rendering as empty strings.
+- **Actual Impact**: The admin monitor showed misleading cloud infrastructure metrics that did not reflect the project's sovereign, zero-cost Node.js architecture, and client cache statistics were invisible.
+- **Verified Solution**:
+  1. Updated `getClientStorageStats()` in `src/services/cacheService.js` to explicitly compute and export `totalItems` (`localKeysCount + sessionKeysCount`) and `formattedSize` (dynamic `KB` or `MB` string).
+  2. Updated `server/server.js` to calculate live `percent` utilization metrics for `localJsonDatabase` (against 500 MB ceiling) and `uploadsAndMedia` (against 2048 MB ceiling).
+  3. Overhauled `src/components/admin/StorageSettings.jsx` to replace the 3 legacy cloud cards with authentic sovereign system tiers:
+     - Tier 1: Local JSON Database (Master DB)
+     - Tier 2: Media & Uploads Storage (Uploads & Audio Assets)
+     - Tier 3: Server Node RAM (Process Heap)
+     - Tier 4: System Memory (RSS / Node.js Runtime)
+  4. Verified backend API response via live REST query returning exact genuine values (`0.41 MB`, `0.04 MB`, `10.5 MB` heap, `67.5 MB` RSS), and verified frontend build (`vite build` in 447ms) and lint (`npx oxlint` with 0 errors).
+- **Prevention Method**: Always audit frontend view models and property keys whenever refactoring API contract shapes. Never leave legacy mock fallbacks in production UI components.
+
+### Mistake 73: Backend Re-Injection Loop and Stale Browser Cache Reviving Development Test Articles
+- **Mistake**: The 4 development sample test articles (`art-1` to `art-4`: ISRO, AI Infrastructure, Clean Energy, Kabir Roy Editorial) kept reappearing on the site even after cleanups, and the browser continued to render them on the homepage.
+- **Root Cause**:
+  1. `server/server.js` had `const DEFAULT_ARTICLES = [...]` containing the 4 test stories, and `getSavedArticles()` checked `if (Array.isArray(parsed) && parsed.length > 0)`. When the database was set to an empty array `[]`, `parsed.length > 0` evaluated to `false`, causing the backend to immediately re-write `DEFAULT_ARTICLES` back to disk!
+  2. `src/services/cacheService.js` cached articles in client localStorage under key `ps_cached_articles_v1` with a 10-minute TTL, so browsers loaded and rendered stale cached articles before or alongside network fetches.
+  3. `src/App.jsx` lines 565-570 had logic that treated any un-synced local articles starting with `'art-'` as local offline creations and merged them back into state, re-POSTing them to `/api/articles/update`.
+- **Actual Impact**: Boss saw English development test articles on the live homepage alongside genuine news, creating confusion about whether mock data had been removed.
+- **Verified Solution**:
+  1. Replaced `DEFAULT_ARTICLES` in `server/server.js` with `[]` and changed `getSavedArticles()` to `if (Array.isArray(parsed))` so empty database arrays `[]` are permanently preserved.
+  2. Purged `art-1`, `art-2`, `art-3`, `art-4` from `server/data/articles.json` and `server/data/article_revisions.json`, keeping only authentic newsroom ground reports (`art-1793864819037`).
+  3. Bumped client cache key in `cacheService.js` to `ps_cached_articles_v2` and added active filtering for test article IDs.
+  4. Sanitized `App.jsx` sync logic so deleted test articles are never preserved or re-synced from client state, and restricted local retention strictly to `status === 'pending'`.
+  5. Calibrated homepage layout for single-story scenarios by hiding empty opinion and trending widgets and displaying a clean Editorial Wire card in Column 2.
+  6. Verified backend returns exactly 1 authentic article via live API, `node -c server/server.js` (0 errors), `npx oxlint src/` (0 errors across 48 files), and clean production build (`npm run build` in 632ms).
+- **Prevention Method**: Never use `parsed.length > 0` as a check for file existence when an empty array `[]` is a valid domain state. Always version client cache keys when data migrations or sample data cleanups occur.
+
+### Mistake 74: TTS Audio Silent Failure Due to Client-Side Fallback Bypassing Server Neural Audio
+- **Mistake**: When readers clicked the quick "Listen / Suno" button on homepage cards or article shelves, no audio played and TTS appeared broken.
+- **Root Cause**:
+  1. `src/services/speechEngine.js` in `speakTextWithNaturalVoice` was previously hardcoded to call ONLY `speakWithWebSpeechFallback`, completely bypassing backend cloud MP3 audio. Because standard Windows PCs do not have a Hindi (`hi-IN`) SpeechSynthesis voice installed by default, client-side Web Speech failed silently with zero sound.
+  2. In `src/services/cloudAudioService.js`, `fetchBackendTtsAudio` checked `if (data && data.audioUrl)`, while the backend returned `data.audio_url` (snake_case), causing the parsed URL to be `undefined`.
+  3. In `server/server.js`, `POST /api/tts` only destructured `article_id` and `lang`, causing camelCase `articleId` calls to default to `'general'` rather than mapping to the specific article. Furthermore, static audio serving route `/uploads/` only matched `req.method === 'GET'`, rejecting `HEAD` requests with HTTP 404.
+- **Actual Impact**: Readers could not listen to Hindi news stories via the quick audio buttons on desktop browsers without installed Hindi OS speech packs.
+- **Verified Solution**:
+  1. Updated `speakTextWithNaturalVoice` to invoke `playCloudAudioWithCache` first, streaming high-quality neural MP3 audio directly via the browser's native HTML5 audio decoder.
+  2. Added dual `audio_url` and `audioUrl` response mapping across backend and `cloudAudioService.js`.
+  3. Supported both camelCase (`articleId`, `langCode`) and snake_case (`article_id`, `lang`) in `server/server.js`.
+  4. Added `HEAD` HTTP method handling to `/uploads/` static audio server.
+  5. Verified via live backend test query (`Status: 200, Type: audio/mpeg`, 40,751 bytes consumed via Vite proxy), `npx oxlint` (0 errors), and production build (`npm run build` in 525ms).
+- **Prevention Method**: Never rely solely on client-side Web Speech API for non-English languages where operating systems frequently lack default installed voice packs. Primary audio playback must stream standardized cross-platform MP3 files from the backend.
+
+### Mistake 75: Case-Sensitivity Mismatch for Traditional Chinese (`zh-TW`) Causing Translation and TTS Guardrail 400 Rejections
+- **Mistake**: Translating articles or text snippets into Traditional Chinese (`zh-TW`) or generating Chinese audio failed with HTTP 400 (`Language 'zh-tw' is not supported`), causing the frontend to silently fall back to the original Hindi article.
+- **Root Cause**:
+  1. In `server/server.js`, `SUPPORTED_LANG_CODES` contained `'zh-TW'` (uppercase `TW`), but the request handlers for `/api/translate` and `/api/tts/generate` called `.toLowerCase()`, producing `'zh-tw'`.
+  2. The guardrail `if (!SUPPORTED_LANG_CODES.includes(targetLanguage))` strictly compared `'zh-tw'` against `'zh-TW'`, failing validation.
+  3. In `translateWithGemini` and `translateTextSnippetWithGemini`, the internal `langNames` map had `'zh-TW'`, so passing `'zh-tw'` resulted in `undefined` language names in the Gemini translation prompt.
+  4. In `LANGUAGE_VOICE_MAP`, the Russian language code (`ru`) was missing, and `'zh-TW'` only existed as lowercase `'zh-tw'`.
+- **Actual Impact**: Readers selecting Traditional Chinese on the frontend language switcher could not read translated articles or headlines, and translation requests failed with HTTP 400 errors.
+- **Verified Solution**:
+  1. Added `normalizeLanguageCode()` in `server/server.js` that maps both `'zh-tw'` and `'zh-TW'` consistently to `'zh-TW'`, and included both in `SUPPORTED_LANG_CODES`.
+  2. Updated `translateWithGemini` and `translateTextSnippetWithGemini` to support both `'zh-TW'` and `'zh-tw'` in `langNames`.
+  3. Added Russian (`ru`) and `'zh-TW'` to `LANGUAGE_VOICE_MAP`.
+  4. Rebuilt server and executed live verification: snippet translation for `zh-TW` returned `最新消息` in 4s, and full article translation for `art-1793864819037` returned `賈伊塔里公有財產涉嫌遭非法侵佔...` (3,510 chars, status `done`), cached in `translations.json` with 48ms subsequent retrieval.
+  5. Verified all 19 supported languages (`en, hi, bn, mr, te, ta, gu, kn, ml, pa, or, as, ur, fr, it, ja, id, zh-TW, ru`) succeed with 100% valid native script.
+  6. Verified `npx oxlint src/` (0 errors) and `npm run build` (clean in 510ms).
+- **Prevention Method**: Always use a centralized normalization helper when validating language codes with regional tags (e.g. `zh-TW`, `pt-BR`) to prevent case-sensitivity mismatches between client query parameters, routing guardrails, and model prompt dictionaries.
+
+### Mistake 77: Stale Edge Cache Desynchronization and Translation Gaps on Article Publication
+- **Mistake**: Without active cache invalidation and background pre-translation, publishing a new article leaves Cloudflare Edge CDN serving the old feed for up to 5 minutes, or leaves the new article un-translated (in Hindi) when a reader views the site in English, creating a jarring mixed-language experience.
+- **Root Cause**:
+  1. No hook existed on article publish/update to trigger Cloudflare's Purge Cache API (`POST /zones/:id/purge_cache`), relying purely on passive TTL expiration.
+  2. Newly published articles were only translated on-demand when a reader requested them, risking a 1-second delay or mixed-language display on the home feed.
+  3. Staff queries with `scope=all` or `scope=admin` previously risked sharing Edge CDN cache headers with public readers.
+- **Verified Solution**:
+  1. Built `purgeCloudflareEdgeCache(reason)` in `server/server.js` wired into `saveArticles()`, `evaluateScheduledArticles()`, and `POST /api/storage/purge`. When configured with `CLOUDFLARE_ZONE_ID` & `CLOUDFLARE_API_TOKEN`, it instantly flushes the global Edge CDN cache in <200ms.
+  2. Implemented `autoPreTranslatePublishedArticle(article)` in `server/server.js`: whenever an article is published live, it immediately launches a non-blocking background task translating the title & summary to English and persisting it into `translations.json`. Verified live: new story was auto-translated and immediately served in `GET /api/articles?lang=en` without user latency.
+  3. Ensured staff queries (`isStaff`) always receive `Cache-Control: private, no-cache, no-store, must-revalidate` so draft or admin content is never accidentally cached on CDN edge nodes.
+  4. Made Edge Cache TTL configurable via `process.env.EDGE_CACHE_TTL` (default 300s).
+- **Prevention Method**: Whenever designing caching layers with CDNs (Cloudflare, Fastly), always implement proactive event-driven cache invalidation on mutations (publish, update, delete) and background pre-warming for primary languages rather than relying exclusively on time-to-live (TTL).
+
+### Mistake 79: Missing Magic Byte Validation on Uploads & Unprotected CSP / CSRF Headers
+- **Mistake**: Image upload handlers trusted client-provided MIME strings in Base64 data URIs without inspecting binary file signatures, and HTTP responses omitted `Content-Security-Policy` (CSP) and mutating CSRF checks.
+- **Root Cause**:
+  1. Base64 regex extraction (`/^data:image\/([a-zA-Z0-9+]+);base64,.../`) allowed non-standard extensions (`.svg+xml`, `.html`) to be saved directly to server disk.
+  2. CORS evaluation only omitted `Access-Control-Allow-Origin` for untrusted origins but did not actively reject cross-origin mutating requests (`POST`, `PUT`, `DELETE`), leaving public reader endpoints exposed to CSRF form submission abuse.
+  3. Omitting CSP left client browsers vulnerable to rogue inline script execution from third-party ads or external embeds.
+- **Verified Solution**:
+  1. Implemented strict file extension whitelist `['webp', 'jpg', 'png']` and binary magic byte inspection (checking first 4–12 bytes for valid PNG, JPG, and WebP signatures) in `POST /api/upload/image`.
+  2. Injected global `Content-Security-Policy`, `Permissions-Policy`, and production `Strict-Transport-Security` (HSTS) headers into all HTTP responses.
+  3. Enforced Origin/Referer gatekeeper actively blocking untrusted cross-origin mutating requests with HTTP 403 Forbidden.
+  4. Patched dependency vulnerabilities (`vite` to v8.3.8, `source-map-js` to v1.2.1), reaching 0 vulnerabilities on `npm audit`.
+  5. Verified 100% via automated test suite `scratch/test_security_patches.mjs` (5/5 assertions passed).
+- **Prevention Method**: Always validate file uploads at the binary level (magic bytes) rather than trusting client extensions or data URI MIME prefixes. Enforce explicit Origin verification on all state-changing endpoints and always inject strict CSP headers in production.
+
+
+
+
+
+
+
+
+
+
