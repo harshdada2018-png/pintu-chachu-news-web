@@ -24,7 +24,7 @@ export default function GrievanceDesk({ onShowToast }) {
   // Resolution form state for active modal docket
   const [resolutionStatus, setResolutionStatus] = useState('under_review');
   const [resolutionNotes, setResolutionNotes] = useState('');
-  const [resolvedBy, setResolvedBy] = useState('Rajesh Sharma (Grievance Officer)');
+  const [resolvedBy, setResolvedBy] = useState('Editorial Grievance Cell');
 
   const fetchGrievances = async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -54,7 +54,7 @@ export default function GrievanceDesk({ onShowToast }) {
     setSelectedGrievance(grv);
     setResolutionStatus(grv.status === 'pending' ? 'under_review' : grv.status);
     setResolutionNotes(grv.resolution_notes || '');
-    setResolvedBy(grv.resolved_by || 'Rajesh Sharma (Grievance Officer)');
+    setResolvedBy(grv.resolved_by || 'Editorial Grievance Cell');
   };
 
   const handleCloseReview = () => {
@@ -200,9 +200,8 @@ export default function GrievanceDesk({ onShowToast }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-medium)', borderRadius: 'var(--radius-sm)', padding: '0.45rem 0.75rem', fontSize: '0.775rem' }}>
-            <span style={{ color: 'var(--text-subtle)' }}>Designated Officer: </span>
-            <strong style={{ color: 'var(--text-main)' }}>Rajesh Sharma</strong>
-            <span style={{ color: 'var(--text-muted)' }}> (Head of Standards)</span>
+            <span style={{ color: 'var(--text-subtle)' }}>Redressal Cell: </span>
+            <strong style={{ color: 'var(--text-main)' }}>Editorial Grievance Desk</strong>
           </div>
 
           <button

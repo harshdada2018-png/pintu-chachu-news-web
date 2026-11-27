@@ -154,7 +154,7 @@ export default function GrievanceModal({
                 Statutory Grievance Redressal
               </h2>
               <span className="grievance-modal-subtitle">
-                IT Rules 2021 India • Designated Officer: Rajesh Sharma
+                IT Rules 2021 India • Level-I Grievance Redressal Cell
               </span>
             </div>
           </div>

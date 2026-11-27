@@ -764,6 +764,7 @@ export function getBackupSettings() {
       maxBackups: settings.backupMaxRetained || MAX_LOCAL_BACKUPS,
       autoEmailEnabled: settings.backupAutoEmailEnabled !== false,
       lastBackupAt: settings.lastBackupAt || null,
+      lastBackupDateIST: settings.lastBackupDateIST || null,
       lastEmailSentAt: settings.lastBackupEmailSentAt || null
     };
   } catch (_e) {
@@ -778,6 +779,7 @@ function defaultBackupSettings() {
     maxBackups: MAX_LOCAL_BACKUPS,
     autoEmailEnabled: true,
     lastBackupAt: null,
+    lastBackupDateIST: null,
     lastEmailSentAt: null
   };
 }

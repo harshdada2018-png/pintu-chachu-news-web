@@ -883,6 +883,102 @@ export default function App() {
     }
   }, [baseArticles, selectedArticle]);
 
+  // Synchronize document <head> SEO tags (lang, robots noindex on private desks, canonical, Open Graph, NewsArticle JSON-LD)
+  useEffect(() => {
+    try {
+      document.documentElement.lang = currentLanguage || 'hi';
+
+      const setMetaTag = (attrName, attrVal, content) => {
+        let el = document.querySelector(`meta[${attrName}="${attrVal}"]`);
+        if (!el) {
+          el = document.createElement('meta');
+          el.setAttribute(attrName, attrVal);
+          document.head.appendChild(el);
+        }
+        el.setAttribute('content', content);
+      };
+
+      const isPrivateWorkspace = isStaffLoginOpen || ['reporter', 'editor', 'admin', 'developer', 'login', 'desk'].includes(activeView);
+      setMetaTag(
+        'name',
+        'robots',
+        isPrivateWorkspace ? 'noindex, nofollow' : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
+      );
+
+      const origin = window.location.origin;
+      const defaultDesc = 'PUBLIC SPARK - Independent Digital Newsroom. Unbiased journalism, verified fact-checks, multi-language coverage across India.';
+      const defaultImg = `${origin}/logo.png`;
+
+      let canonicalUrl = `${origin}/`;
+      let pageDesc = defaultDesc;
+      let ogTitle = 'PUBLIC SPARK - Independent Digital Newsroom';
+      let ogImg = defaultImg;
+
+      let ldScript = document.getElementById('dynamic-news-jsonld');
+
+      if (activeView === 'article' && selectedArticle) {
+        const slugOrId = selectedArticle.slug || selectedArticle.id;
+        canonicalUrl = `${origin}/article/${slugOrId}`;
+        ogTitle = selectedArticle.title || ogTitle;
+        pageDesc = String(selectedArticle.summary || selectedArticle.content || defaultDesc)
+          .replace(/<[^>]+>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 160);
+        const rawImg = String(selectedArticle.image || selectedArticle.featured_image || '');
+        if (rawImg && !rawImg.startsWith('data:')) {
+          ogImg = rawImg.startsWith('http') ? rawImg : `${origin}${rawImg.startsWith('/') ? '' : '/'}${rawImg}`;
+        }
+
+        if (!ldScript) {
+          ldScript = document.createElement('script');
+          ldScript.id = 'dynamic-news-jsonld';
+          ldScript.type = 'application/ld+json';
+          document.head.appendChild(ldScript);
+        }
+        ldScript.textContent = JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'NewsArticle',
+          mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
+          headline: String(selectedArticle.title || '').slice(0, 110),
+          description: pageDesc,
+          image: [ogImg],
+          datePublished: selectedArticle.createdAt || new Date().toISOString(),
+          dateModified: selectedArticle.updatedAt || selectedArticle.createdAt || new Date().toISOString(),
+          author: { '@type': 'Person', name: selectedArticle.author || 'PublicSpark Desk' },
+          publisher: {
+            '@type': 'NewsMediaOrganization',
+            name: 'PUBLIC SPARK',
+            logo: { '@type': 'ImageObject', url: defaultImg }
+          }
+        });
+      } else {
+        if (activeView === 'saved') canonicalUrl = `${origin}/saved`;
+        else if (activeView === 'search') canonicalUrl = `${origin}/search`;
+        if (ldScript) ldScript.remove();
+      }
+
+      let canonicalEl = document.querySelector('link[rel="canonical"]');
+      if (!canonicalEl) {
+        canonicalEl = document.createElement('link');
+        canonicalEl.setAttribute('rel', 'canonical');
+        document.head.appendChild(canonicalEl);
+      }
+      canonicalEl.setAttribute('href', canonicalUrl);
+
+      setMetaTag('name', 'description', pageDesc);
+      setMetaTag('property', 'og:title', ogTitle);
+      setMetaTag('property', 'og:description', pageDesc);
+      setMetaTag('property', 'og:image', ogImg);
+      setMetaTag('property', 'og:url', canonicalUrl);
+      setMetaTag('name', 'twitter:title', ogTitle);
+      setMetaTag('name', 'twitter:description', pageDesc);
+      setMetaTag('name', 'twitter:image', ogImg);
+    } catch (_e) {
+      // Non-blocking SEO head sync
+    }
+  }, [activeView, selectedArticle, currentLanguage, isStaffLoginOpen]);
+
   // 1-Click Quick Audio Reading Trigger for Homepage Cards
   const handleQuickAudioRead = (e, article) => {
     e.stopPropagation();

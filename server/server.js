@@ -2753,9 +2753,9 @@ function validateTranslationIntegrity(originalTitle, originalBody, translatedTit
  * Invokes official Gemini Audio/TTS models to generate high-fidelity WAV speech.
  */
 async function generateGeminiAudio(text, lang = 'hi') {
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const geminiKey = process.env.GEMINI_TTS_API_KEY || process.env.GEMINI_API_KEY;
   if (!geminiKey) {
-    throw new Error('GEMINI_API_KEY is not configured in backend environment.');
+    throw new Error('GEMINI_TTS_API_KEY / GEMINI_API_KEY is not configured in backend environment.');
   }
 
   // Sanitize text: strip image markdown, bracket links, URLs, button text, and disclaimers
@@ -8347,7 +8347,11 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Nightly 2:00 AM Automated Backup Evaluator (Strict Indian Standard Time IST)
+let backupCronInFlight = false;
+let lastBackupDateMemoryCache = '';
+
 async function evaluateAutomatedBackupSchedule() {
+  if (backupCronInFlight) return;
   try {
     const settings = getBackupSettings();
     if (settings.scheduleFrequency === 'manual') return;
@@ -8373,23 +8377,40 @@ async function evaluateAutomatedBackupSchedule() {
       kolkataDateStr = now.toISOString().split('T')[0];
     }
 
-    // Check if 2:00 AM window in Indian Standard Time (2:00 - 2:30 AM IST)
+    // Check if 2:00 AM window in Indian Standard Time (2:00 - 2:59 AM IST)
     if (kolkataHour === 2) {
-      const lastRunIST = settings.lastBackupDateIST || (settings.lastBackupAt ? settings.lastBackupAt.split('T')[0] : '');
-      if (lastRunIST !== kolkataDateStr) {
+      let lastBackupAtIST = '';
+      if (settings.lastBackupAt) {
+        try {
+          lastBackupAtIST = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(settings.lastBackupAt));
+        } catch (_e) {
+          lastBackupAtIST = '';
+        }
+      }
+      const lastRunIST = lastBackupDateMemoryCache || settings.lastBackupDateIST || lastBackupAtIST;
+      const hoursSinceLastEmail = settings.lastEmailSentAt
+        ? (Date.now() - new Date(settings.lastEmailSentAt).getTime()) / (1000 * 60 * 60)
+        : 999;
+
+      if (lastRunIST !== kolkataDateStr && hoursSinceLastEmail >= 20) {
         if (settings.scheduleFrequency === 'weekly' && kolkataDay !== 'Sun') {
-          // If weekly, only execute on Sunday
           return;
         }
 
-        console.log(`[Nightly Auto-Backup IST] Triggering automated newsroom backup for ${kolkataDateStr} (2:00 AM IST)...`);
-        const fresh = await generateNewsroomBackupZipAsync({ creatorName: 'Nightly Auto-Cron (IST)' });
-        if (settings.autoEmailEnabled && fresh.success) {
-          dispatchBackupToGmail({
-            fileName: fresh.backup.fileName,
-            targetEmail: settings.deliveryEmail,
-            trigger: 'nightly_cron_ist'
-          }).catch(err => console.error('[Nightly Auto-Backup Email Error]:', err.message));
+        backupCronInFlight = true;
+        lastBackupDateMemoryCache = kolkataDateStr;
+        try {
+          console.log(`[Nightly Auto-Backup IST] Triggering automated newsroom backup for ${kolkataDateStr} (2:00 AM IST)...`);
+          const fresh = await generateNewsroomBackupZipAsync({ creatorName: 'Nightly Auto-Cron (IST)' });
+          if (settings.autoEmailEnabled && fresh.success) {
+            await dispatchBackupToGmail({
+              fileName: fresh.backup.fileName,
+              targetEmail: settings.deliveryEmail,
+              trigger: 'nightly_cron_ist'
+            }).catch(err => console.error('[Nightly Auto-Backup Email Error]:', err.message));
+          }
+        } finally {
+          backupCronInFlight = false;
         }
       }
     }

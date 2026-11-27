@@ -328,6 +328,17 @@
   - [x] *Subtopic C*: Admin-Only Investigation Desk & 1-Click Draft Conversion (`ConfidentialTipsDesk.jsx`, `AdminWorkspace.jsx`, 360px responsive verification). `Completed`
     - Built `ConfidentialTipsDesk.jsx` and wired into `AdminWorkspace.jsx` strictly for `admin` & `developer` roles (`403` for Editor/Reporter). Verified 5/5 live RBAC tests, `oxlint` (0 errors), and `npm run build` (711ms).
 
+- [/] **Task 44: Cloudflare D1 + Pages Functions Edge Backend, Audio Cache & Email OTP Deployment** `In Progress`
+  - **Done so far**:
+    - `cloudflare/schema.sql` created with 5 tables (`articles`, `categories`, `translations`, `kv_store`, `audio_cache` + `idx_audio_cache_created`). First 4 tables + clean `scratch/d1_seed.sql` executed by Boss in D1 Console.
+    - `functions/api/[[path]].js` created and verified (`node -c` exit code 0) with core Edge routes, separate `GEMINI_API_KEY` (Translation) & `GEMINI_TTS_API_KEY` (TTS), `429` immediate fallback guards, and D1 chunk-safe 14-day `audio_cache` + 7-day immutable browser cache headers.
+    - Boss started adding Cloudflare Secrets (`GEMINI_API_KEY`, `GEMINI_TTS_API_KEY`, `IMGBB_API_KEY` added; `STAFF_AUTH_SECRET` Line 10 ready to save).
+  - **Paused / Next Session Resume**:
+    - Execute `audio_cache` SQL in Cloudflare D1 Console (`publicspark-db`).
+    - Finish saving `STAFF_AUTH_SECRET` (`.env` Line 10), create free Brevo account (`brevo.com`) & add `BREVO_API_KEY` + `SENDER_EMAIL`, bind `DB -> publicspark-db`, enable `nodejs_compat`.
+    - Wire Brevo HTTP Email OTP + remaining Edge routes in `functions/api/[[path]].js`, then commit & push via GitHub Desktop and verify live.
+
+
 
 
 

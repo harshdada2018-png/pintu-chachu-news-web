@@ -968,6 +968,17 @@ This document records significant mistakes, root causes, verified solutions, and
   5. Verified 100% via automated test suite `scratch/test_security_patches.mjs` (5/5 assertions passed).
 - **Prevention Method**: Always validate file uploads at the binary level (magic bytes) rather than trusting client extensions or data URI MIME prefixes. Enforce explicit Origin verification on all state-changing endpoints and always inject strict CSP headers in production.
 
+### Mistake 80: Nightly 2 AM IST Backup Email Spam Caused by Missing `lastBackupDateIST` Field & UTC Date Mismatch
+- **Mistake**: Every 5 minutes between 2:00 AM and 2:59 AM IST (`21 Nov`, `25 Nov`), the local Node.js backend dispatched duplicate `[Public...] Disaster Recovery Archive` emails.
+- **Root Cause**:
+  1. `recordBackupRun()` in `server/services/backupService.js` saved `settings.lastBackupDateIST` in IST (`Asia/Kolkata`), but `getBackupSettings()` omitted returning `lastBackupDateIST` in its returned object.
+  2. `evaluateAutomatedBackupSchedule()` in `server/server.js` fell back to `settings.lastBackupAt.split('T')[0]` (UTC date). At 2:00–2:59 AM IST (`UTC+5:30`), UTC is `20:30–21:29` of the **previous calendar day**, so `lastRunIST !== kolkataDateStr` evaluated to `true` on every 5-minute tick for an entire hour.
+- **Verified Solution**:
+  1. Returned `lastBackupDateIST` explicitly in `getBackupSettings()` and `defaultBackupSettings()` (`server/services/backupService.js`).
+  2. Updated `evaluateAutomatedBackupSchedule()` (`server/server.js`) to convert `lastBackupAt` using `Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' })`, enforce an in-flight lock (`backupCronInFlight`) + in-memory `lastBackupDateMemoryCache`, and require at least 20 hours (`hoursSinceLastEmail >= 20`) since the last email before sending.
+  3. Verified syntax on both files and confirmed `getBackupSettings()` returns `lastBackupDateIST` (`BACKUP_SETTINGS_OK hasLastBackupDateISTKey: true`).
+- **Prevention Method**: Never compare an `Asia/Kolkata` local date string against a `.split('T')[0]` UTC ISO date string in cron deduplication logic; always convert timestamps in the same target timezone and enforce an explicit multi-hour cooldown guard.
+
 
 
 

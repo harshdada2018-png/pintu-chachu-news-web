@@ -567,22 +567,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms', onOp
               </div>
 
               <h2 className="legal-doc-section-heading">
-                1. नामित शिकायत निवारण अधिकारी का विवरण (Designated Grievance Officer)
-              </h2>
-              <p className="legal-doc-paragraph">
-                डिजिटल मीडिया आचार संहिता के तहत हमारे अधिकृत अधिकारी का आधिकारिक विवरण निम्नवत है:
-              </p>
-
-              <div style={{ background: 'var(--bg-secondary)', padding: '1.25rem', borderRadius: '4px', border: '1px solid var(--accent-crimson)', marginTop: '0.75rem', marginBottom: '1.5rem' }}>
-                <p style={{ margin: '0 0 0.4rem 0', fontSize: '1rem', fontWeight: '800', color: 'var(--text-main)' }}>श्री राजेश शर्मा (Rajesh Sharma)</p>
-                <p style={{ margin: '0 0 0.35rem 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}><strong>पदनाम:</strong> प्रमुख - विधिक मानक एवं शिकायत निवारण (Head of Legal Standards & Grievance)</p>
-                <p style={{ margin: '0 0 0.35rem 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}><strong>संस्थान:</strong> पब्लिक स्पार्क डिजिटल मीडिया ब्यूरो (Public Spark Media Bureau)</p>
-                <p style={{ margin: '0 0 0.35rem 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}><strong>कार्यालय पता:</strong> इंस्टीट्यूशनल एरिया, नई दिल्ली - 110001, भारत</p>
-                <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-muted)' }}><strong>आधिकारिक विधिक ईमेल:</strong> <code>publicspark.in@gmail.com</code></p>
-              </div>
-
-              <h2 className="legal-doc-section-heading">
-                2. शिकायत निवारण की समय-सीमा एवं प्रक्रिया (Timelines & Procedure)
+                1. शिकायत निवारण की समय-सीमा एवं प्रक्रिया (Timelines & Procedure)
               </h2>
               <ul style={{ paddingLeft: '1.25rem', color: 'var(--text-muted)', lineHeight: '1.8', marginBottom: '1.25rem' }}>
                 <li><strong>पावती (Acknowledgment):</strong> शिकायत प्राप्त होने के <strong>24 घंटे के भीतर</strong> शिकायतकर्ता को ईमेल द्वारा पावती और विशिष्ट संदर्भ संख्या जारी की जाएगी।</li>
@@ -590,7 +575,7 @@ export default function LegalModal({ isOpen, onClose, initialTab = 'terms', onOp
               </ul>
 
               <h2 className="legal-doc-section-heading">
-                3. त्वरित डिजिटल शिकायत दर्ज करें (File Digital Grievance)
+                2. त्वरित डिजिटल शिकायत दर्ज करें (File Digital Grievance)
               </h2>
               <p className="legal-doc-paragraph">
                 आप किसी भी समाचार के संबंध में नीचे दिए गए बटन पर क्लिक करके सीधे हमारे डिजिटल शिकायत निवारण फॉर्म को भरकर अपनी शिकायत दर्ज कर सकते हैं:
