@@ -56,13 +56,10 @@
 
 ## Section 2: In-Progress Tasks (Jin Par Kaam Chal Raha Hai)
 
-- **Currently In Progress**: None (Ready to begin Task 38).
-- **Just Completed & Verified**: **Task 39: Newsroom Library Architecture: Left-Side Animated Search Drawer & Dynamic Category Shelves Engine** (Subtopics A, B, and D 100% completed & verified under zero-emoji standards; Subtopic C deferred per Boss's directive).
+- **Currently In Progress**: **Task 44 Subtopic D** — Cloudflare Secrets, D1 `audio_cache` SQL, Bindings, `nodejs_compat`, GitHub Push & Live End-to-End Verification (`https://pintu-chachu-news-web.pages.dev`).
+- **Just Completed & Verified**: **Task 44.1** (Pre-Deploy `/critic` SEO `S1`–`S6` & 3-Layer Cloudflare Caching `C1`–`C5` + Bookmark Quota/Purge fix), **Task 44.2** (`/critic` Audio TTS Engine, HTTP 206 Edge Streaming, 24kHz->22kHz MP3 Silence Fix & 360px Player Fixes), **Task 44.3** (Strict `hi`/`en` Audio Gate + `?v=` Cache-Busting, 250 MB D1 Auto-LRU, & Session Replay Map), and **Task 44.4** (1-Call `full_story` Gemini TTS + 1.80s Intro Bell Chime cutting Gemini calls by 50%).
 - **Scheduled Next**:
-  - **Task 38: BBC-Style Institutional Footer Compliance Strip & Custom Newsroom Identity Integration** (`Planned`)
-    - Subtopic A: BBC-Grade Horizontal Legal & Compliance Strip (Terms of Use, Privacy Policy, Cookies, Do Not Sell Info, Accessibility Help, Advertise With Us, Help/FAQs, Content Index, External Linking Safe Harbor Policy).
-    - Subtopic B: Integration of Boss's Old Site Content & Editorial Disclaimers (Exact copy, custom contacts, regional disclaimers).
-    - Subtopic C: Responsive 360px Mobile-to-Desktop Layout & Accessibility Verification.
+  - Complete **Task 44 Subtopic D** live Cloudflare deployment & verification, followed by custom domain (`publicspark.in`) migration checklist if requested.
 
 ---
 
@@ -328,15 +325,39 @@
   - [x] *Subtopic C*: Admin-Only Investigation Desk & 1-Click Draft Conversion (`ConfidentialTipsDesk.jsx`, `AdminWorkspace.jsx`, 360px responsive verification). `Completed`
     - Built `ConfidentialTipsDesk.jsx` and wired into `AdminWorkspace.jsx` strictly for `admin` & `developer` roles (`403` for Editor/Reporter). Verified 5/5 live RBAC tests, `oxlint` (0 errors), and `npm run build` (711ms).
 
-- [/] **Task 44: Cloudflare D1 + Pages Functions Edge Backend, Audio Cache & Email OTP Deployment** `In Progress`
-  - **Done so far**:
-    - `cloudflare/schema.sql` created with 5 tables (`articles`, `categories`, `translations`, `kv_store`, `audio_cache` + `idx_audio_cache_created`). First 4 tables + clean `scratch/d1_seed.sql` executed by Boss in D1 Console.
-    - `functions/api/[[path]].js` created and verified (`node -c` exit code 0) with core Edge routes, separate `GEMINI_API_KEY` (Translation) & `GEMINI_TTS_API_KEY` (TTS), `429` immediate fallback guards, and D1 chunk-safe 14-day `audio_cache` + 7-day immutable browser cache headers.
-    - Boss started adding Cloudflare Secrets (`GEMINI_API_KEY`, `GEMINI_TTS_API_KEY`, `IMGBB_API_KEY` added; `STAFF_AUTH_SECRET` Line 10 ready to save).
-  - **Paused / Next Session Resume**:
-    - Execute `audio_cache` SQL in Cloudflare D1 Console (`publicspark-db`).
-    - Finish saving `STAFF_AUTH_SECRET` (`.env` Line 10), create free Brevo account (`brevo.com`) & add `BREVO_API_KEY` + `SENDER_EMAIL`, bind `DB -> publicspark-db`, enable `nodejs_compat`.
-    - Wire Brevo HTTP Email OTP + remaining Edge routes in `functions/api/[[path]].js`, then commit & push via GitHub Desktop and verify live.
+- [x] **Task 44.1: Pre-Deploy `/critic` SEO (`S1`–`S6`) & 3-Layer Cloudflare Caching (`C1`–`C5`) + Bookmark Quota Fix** `Completed`
+  - Resolved all 11 SEO audit issues (deterministic ISO dates, 15 crawlable `<ArticleLink>` `<a href>` wrappers, HTTP 404 + `noindex`, canonical + 19 `hreflang` + `x-default`, `generateSafeArticleSlug`, 67-char title format, `@graph: [NewsArticle, BreadcrumbList]`) and all 5 caching subtopics (`POST /api/translate` Edge parity + multi-chunk GTX fallback, D1 satellite cache invalidation on edit/delete, public `?scope=all` removal + `Vary: Authorization`, `public/_headers`, 5 MB `localStorage` auto-eviction + `bookmarkStorageService` quota & purge protection).
+
+- [x] **Task 44.2: `/critic` Audio TTS Engine, Streaming, 24kHz->22kHz MP3 Silence Fix & 360px Player Fixes** `Completed`
+  - Fixed root-cause `-91.0 dB` silent MP3 issue in `@breezystack/lamejs` via linear `24kHz -> 22050Hz` mono resampling (`48kbps`, `_v2.mp3` cache keys), verified `mean_volume: -17.2 dB` / `-19.8 dB` via live `ffmpeg`; added `45s` Edge TTS timeout + HTTP `206 Partial Content` streaming (`functions/api/[[path]].js`), direct `speakWithBrowserSpeechOnly` fallback (`60ms` Chromium queue guard + speed sync), loading spinner feedback, and `360px` mobile flex-wrap player layout + `--accent-crimson` mini-player fixes.
+
+- [x] **Task 44.3: Hindi & English Only Audio Gate (`hi`/`en`) + 3-Layer Audio Caching Upgrades** `Completed`
+  - Restricted audio TTS buttons and backend generation strictly to `hi` and `en` to conserve free Gemini TTS quota; added `?v=<created_at>` immutable cache-busting audio URLs, 14-day hit expiry checks, `250 MB -> 200 MB` D1 Auto-LRU eviction, real `audioStats` in `/api/storage/status`, and 30-entry `sessionAudioUrlCache`.
+
+- [x] **Task 44.4: 1-Call Full-Story Gemini TTS + 1.80s Intro Broadcast Bell (`full_story`)** `Completed`
+  - Consolidated 2-call audio (`clip_1_intro` + `clip_2_body`) into a single `full_story` request fired in parallel with `/audio/chime.wav` (`1.80s`), cutting Gemini API TTS calls & D1 cache records by 50%. Temporary `?tts=browser` test mode cleanly removed after verification.
+
+- [x] **Task 44.5: Pre-Push Capacity & Edge Scalability Hardening** `Completed`
+  - [x] *Subtopic A (`Completed`)*: Deduplicated concurrent `/api/ads/active` requests (`5` simultaneous `<PartnerUnit>` calls reduced to `1` fetch + `15s` cache in `src/services/monetizationService.js`) and enabled public `GET /api/articles/:id/live-updates` (`public, max-age=15, s-maxage=20`, draft embargo `404`, plus `POST`/`DELETE /:updateId` `live_updates` parity) in `functions/api/[[path]].js`.
+  - [x] *Subtopic B (`Completed`)*: Eliminated all 3 cache-hit `last_accessed_at` `UPDATE` writes (`POST /api/translate`, `POST /api/tts/generate`, `GET /api/tts/audio/:key`) and removed eager 14-day eviction in `POST /api/tts/generate` in favor of 1-time `INSERT` + FIFO `ORDER BY created_at ASC` cleanup when storage cap hits; replaced slow JS base64 loops with native `fastBase64ToBytes`/`bytesToBase64` (`2.11ms` on `3 MB` payload, `10ms` CPU safe); added `capKvRecordList` (`100` items / `750 KB`) on `confidential_tips` & `grievances`. Verified via `verify_44_5_a.mjs`, `verify_44_5_b.mjs` (`TASK_44_5_SUBTOPIC_B_VERIFIED`), `node -c`, `npx oxlint`, and `npm run build` (`762ms`).
+
+- [x] **Task 44.6: Hybrid Render FFmpeg `WebM (Opus)`, Multi-D1 Audio Shards (`HI`/`EN`) & Editor/Admin 1-by-1 Audio Generator** `Completed`
+  - [x] *Subtopic A (`Completed`)*: Built standalone Docker/Node 20 `render-audio-worker/` microservice (`Dockerfile`, `server.js`, `package.json`, `.dockerignore`, `README.md`) with `/health` (11-min keep-alive) and `/compress-tts` (`RENDER_AUDIO_SECRET` timing-safe auth, Gemini TTS + stateless FFmpeg `libopus 32kbps` WebM pipe). Verified via `npx oxlint` (`0` errors/`0` warnings), live `verify_44_6_a.mjs` (`TASK_44_6_SUBTOPIC_A_VERIFIED`: `144,000` -> `13,220` bytes = `10.89x` compression, `meanDb: -9.2`), and `npm run build` (`664ms`).
+  - [x] *Subtopic B (`Completed`)*: Added `cloudflare/audio_shard_schema.sql`, Edge Multi-D1 `getAudioDb(env, lang)` (`DB_AUDIO_HI` `450 MB` + `DB_AUDIO_EN` `450 MB` = `900 MB` FIFO cap with `env.DB` fallback), Render sequential bridge (`translateOrGetArticleEdge` -> `synthesizeAndCacheAudioEdge`), `GET /api/tts/warm-worker`, `GET /api/tts/article-status/:articleId`, `POST /api/tts/generate-article-audio`, shard-aware `purgeArticleSatelliteCaches`, plus `server/server.js` WebM FFmpeg compression & local route parity. Verified via `node -c` on both files (`0` errors), `verify_44_5_a.mjs`, `verify_44_5_b.mjs`, `verify_44_6_a.mjs`, `verify_44_6_b.mjs` (`TASK_44_6_SUBTOPIC_B_VERIFIED`), and `npm run build` (`948ms`).
+  - [x] *Subtopic C (`Completed` + `/critic` Hardened)*: Built `runSequentialArticleAudioPipeline` (`src/services/cloudAudioService.js`) and shared theme-token responsive `<ArticleAudioGeneratorPanel />` (`src/components/shared/ArticleAudioGeneratorPanel.jsx`) wired into both `EditorWorkspace.jsx` (`Pending` / `Published` audio tabs + `clamp()` mobile padding) and `AdminWorkspace.jsx` (`StoryEditorModal` inline generator + `Audio (HI+EN)` modal). Resolved all 6 `/critic` findings across local/Edge `audioUrl` preview parity, `overrides` + `forceRegenerate` translation refresh, public local `WebM Opus 32kbps` FFmpeg encoding, pure FIFO `/api/storage/purge`, and worker `/health` `secretConfigured` flag. Verified via `npx oxlint` (`0` errors/`0` warnings on `ArticleAudioGeneratorPanel.jsx` & `EditorWorkspace.jsx`), `verify_44_6_a/b/c.mjs`, `verify_critic_fixes.mjs` (`CRITIC_FIXES_VERIFIED`), and `npm run build` (`1904` modules, `849ms`).
+  - [x] *Subtopic D (`Completed`)*: Created complete 3-diagram End-to-End Audio System Architecture HTML + PDF (`docs/AUDIO_SYSTEM_ARCHITECTURE_DIAGRAM.html` & `docs/AUDIO_SYSTEM_ARCHITECTURE_DIAGRAM.pdf`) covering Full Topology, Editor/Admin 1-by-1 Sequential Pipeline, and Zero-Write Cache Hit / Pure FIFO Retention (`450 MB` per shard). Verified `svgCount=3`, `syntaxError=False`, and `384,745 bytes` valid `%PDF-` export.
+  - [ ] *Subtopic C (`Planned`)*: Editor/Admin Desk Manual `[ Generate Audio (HI + EN) ]` Button & 1-by-1 Sequential Progress UI.
+  - [ ] *Subtopic D (`Planned`)*: Complete End-to-End Audio System Architecture Mermaid Diagram PDF.
+
+- [ ] **Task 44: Cloudflare D1 + Pages Functions Edge Backend, Audio Cache & Email OTP Deployment** `Planned` *(Subtopics A–C Complete; Subtopic D queued after Tasks 44.5–44.6)*
+  - **Done (Subtopics A, B, C)**: 5-table `cloudflare/schema.sql`, clean seed, full Edge API router (`functions/api/[[path]].js`), Brevo HTTP Email OTP, 5-day Google Apps Script Drive Backup (`cloudflare/google_drive_backup_script.gs`), and all `44.1`–`44.4` local fixes committed/staged in working tree (`npm run build` clean in `848ms`).
+  - **Remaining (Subtopic D — Next Session Resume)**:
+    1. Execute `audio_cache` table SQL in Cloudflare D1 Console (`publicspark-db`).
+    2. Confirm `DB -> publicspark-db` binding and `nodejs_compat` compatibility flag in Cloudflare Pages Settings.
+    3. Verify Production Secrets (`STAFF_AUTH_SECRET`, `GEMINI_API_KEY`, optional `GEMINI_TTS_API_KEY`, `IMGBB_API_KEY`, `BREVO_API_KEY`, `SENDER_EMAIL`, `CRON_BACKUP_SECRET`).
+    4. Commit & push all verified local working-tree changes via GitHub Desktop.
+    5. Setup `cloudflare/google_drive_backup_script.gs` on `script.google.com` + Drive API service.
+    6. Verify live production endpoints on `https://pintu-chachu-news-web.pages.dev` (+ optional `publicspark.in` domain migration later).
 
 
 

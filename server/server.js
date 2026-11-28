@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import lamejs from '@breezystack/lamejs';
+import { compressBufferToWebmOpus } from '../render-audio-worker/server.js';
 import {
   initStaffStore,
   getStaffList,
@@ -145,49 +146,77 @@ function escapeXml(str = '') {
     .replace(/'/g, '&apos;');
 }
 
-function toIsoDate(dateVal, fallbackIso) {
-  if (!dateVal) return fallbackIso || new Date().toISOString();
+function resolveStableArticleIso(art, fallbackIso = '2026-01-01T00:00:00.000Z') {
+  const candidates = [art?.createdAt, art?.created_at, art?.publishDateISO, art?.publishedAt, art?.published_at];
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== 'string') continue;
+    if (raw.includes('-') || raw.includes('T') || raw.includes(':')) {
+      const ms = Date.parse(raw);
+      if (!isNaN(ms)) return new Date(ms).toISOString();
+    }
+  }
+  const idStr = String(art?.id || '');
+  const epochMatch = idStr.match(/(1[5-9]\d{11})/);
+  if (epochMatch) {
+    const baseMs = Number(epochMatch[1]);
+    const suffixMatch = idStr.match(/-(\d{1,3})$/);
+    const offsetHours = suffixMatch ? Number(suffixMatch[1]) : 0;
+    return new Date(Math.min(baseMs, Date.now()) - offsetHours * 3600 * 1000).toISOString();
+  }
+  return fallbackIso;
+}
+
+function toIsoDate(dateVal, fallbackIso = '2026-01-01T00:00:00.000Z') {
+  if (!dateVal) return fallbackIso;
   const parsed = Date.parse(dateVal);
-  if (!isNaN(parsed) && typeof dateVal === 'string' && (dateVal.includes('-') || dateVal.includes(':') || dateVal.includes(','))) {
+  if (!isNaN(parsed) && typeof dateVal === 'string' && (dateVal.includes('-') || dateVal.includes('T') || dateVal.includes(':'))) {
     return new Date(parsed).toISOString();
   }
-  const str = String(dateVal).trim().toLowerCase();
-  const now = Date.now();
-  if (str.includes('now') || str.includes('moment')) {
-    return new Date(now).toISOString();
-  }
-  const hoursMatch = str.match(/(\d+)\s*hour/);
-  if (hoursMatch) {
-    return new Date(now - parseInt(hoursMatch[1], 10) * 3600 * 1000).toISOString();
-  }
-  const daysMatch = str.match(/(\d+)\s*day/);
-  if (daysMatch) {
-    return new Date(now - parseInt(daysMatch[1], 10) * 86400 * 1000).toISOString();
-  }
-  const minsMatch = str.match(/(\d+)\s*min/);
-  if (minsMatch) {
-    return new Date(now - parseInt(minsMatch[1], 10) * 60 * 1000).toISOString();
-  }
-  if (!isNaN(parsed)) {
+  if (!isNaN(parsed) && typeof dateVal === 'number') {
     return new Date(parsed).toISOString();
   }
-  return fallbackIso || new Date().toISOString();
+  return fallbackIso;
+}
+
+function resolveSiteBaseUrl(rawHost = 'localhost:5000') {
+  const safeHost = String(rawHost || 'localhost:5000').replace(/[^a-zA-Z0-9.\-:]/g, '') || 'localhost:5000';
+  const isLocal = safeHost.includes('localhost') || safeHost.includes('127.0.0.1');
+  return `${isLocal ? 'http' : 'https'}://${safeHost}`;
+}
+
+function formatSeoDocumentTitle(rawTitle) {
+  const clean = String(rawTitle || 'PUBLIC SPARK News').replace(/\s+/g, ' ').trim();
+  if (clean.length <= 52) return `${clean} - PUBLIC SPARK`;
+  return `${clean.slice(0, 49).trimEnd()}... - PUBLIC SPARK`;
+}
+
+function generateSafeArticleSlug(title, id) {
+  const ascii = String(title || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 55)
+    .replace(/-+$/g, '');
+  const idTail = String(id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-8) || String(Date.now()).slice(-8);
+  return ascii ? `${ascii}-${idTail}` : `news-${idTail}`;
 }
 
 function renderArticleHtml(article, host, baseHtml) {
-  const protocol = host.includes('localhost') ? 'http' : 'https';
-  const siteUrl = `${protocol}://${host}`;
+  const siteUrl = resolveSiteBaseUrl(host);
   const canonicalUrl = `${siteUrl}/article/${article.slug || article.id}`;
   const cleanTitle = escapeHtml(article.title || 'PUBLIC SPARK News');
   const cleanDescription = escapeHtml((article.summary || article.content || '').slice(0, 220)).replace(/\s+/g, ' ').trim();
   
-  let imageUrl = article.featured_image || `${siteUrl}/logo.png`;
+  let imageUrl = (article.image || article.featured_image || `${siteUrl}/logo.png`);
+  if (String(imageUrl).startsWith('data:')) imageUrl = `${siteUrl}/logo.png`;
   if (imageUrl.startsWith('/')) {
     imageUrl = `${siteUrl}${imageUrl}`;
   }
 
-  const publishedIso = toIsoDate(article.published_at || article.created_at, new Date().toISOString());
-  const modifiedIso = toIsoDate(article.updated_at, publishedIso);
+  const publishedIso = resolveStableArticleIso(article);
+  const modifiedIso = toIsoDate(article.updatedAt || article.updated_at, publishedIso);
   const authorName = escapeHtml(article.author?.name || 'PUBLIC SPARK News Desk');
   const lang = article.originalLanguage || 'hi';
 
@@ -213,8 +242,8 @@ function renderArticleHtml(article, host, baseHtml) {
       "logo": {
         "@type": "ImageObject",
         "url": `${siteUrl}/logo.png`,
-        "width": 600,
-        "height": 60
+        "width": 492,
+        "height": 210
       }
     },
     "description": cleanDescription,
@@ -222,9 +251,24 @@ function renderArticleHtml(article, host, baseHtml) {
     "articleSection": article.category || "General News"
   };
 
+  const seoHeadTitle = escapeHtml(formatSeoDocumentTitle(article.title));
+  const breadcrumbSchema = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Home", "item": `${siteUrl}/` },
+      { "@type": "ListItem", "position": 2, "name": String(article.category || "News"), "item": `${siteUrl}/` },
+      { "@type": "ListItem", "position": 3, "name": String(article.title || "Story").slice(0, 110), "item": canonicalUrl }
+    ]
+  };
+  const combinedGraphSchema = {
+    "@context": "https://schema.org",
+    "@graph": [newsArticleSchema, breadcrumbSchema]
+  };
+
   const metaTags = `
     <!-- Dynamic Server-Side Injected News SEO & Open Graph Meta -->
-    <title>${cleanTitle} - PUBLIC SPARK</title>
+    <title>${seoHeadTitle}</title>
     <meta name="description" content="${cleanDescription}" />
     <link rel="canonical" href="${canonicalUrl}" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
@@ -253,7 +297,7 @@ function renderArticleHtml(article, host, baseHtml) {
 
     <!-- Google News & Discover Schema.org JSON-LD -->
     <script type="application/ld+json">
-${JSON.stringify(newsArticleSchema, null, 2).replace(/</g, '\\u003c')}
+${JSON.stringify(combinedGraphSchema, null, 2).replace(/</g, '\\u003c')}
     </script>
   `;
 
@@ -272,7 +316,12 @@ ${JSON.stringify(newsArticleSchema, null, 2).replace(/</g, '\\u003c')}
       </article>
   `;
 
-  let renderedHtml = baseHtml.replace(/<title>.*?<\/title>/i, '');
+  let renderedHtml = baseHtml
+    .replace(/<title>.*?<\/title>/is, '')
+    .replace(/<meta\s+name=["'](?:description|robots|twitter:[^"']+)["'][^>]*>\s*/gi, '')
+    .replace(/<meta\s+property=["'](?:og:[^"']+|article:[^"']+)["'][^>]*>\s*/gi, '')
+    .replace(/<link\s+rel=["']canonical["'][^>]*>\s*/gi, '')
+    .replace(/<script\s+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>\s*/gi, '');
   renderedHtml = renderedHtml.replace('</head>', `${metaTags}\n  </head>`);
 
   if (renderedHtml.includes('<div id="root">')) {
@@ -282,10 +331,11 @@ ${JSON.stringify(newsArticleSchema, null, 2).replace(/</g, '\\u003c')}
   return renderedHtml;
 }
 
-function generateGoogleNewsSitemap(articles, host) {
-  const protocol = host.includes('localhost') ? 'http' : 'https';
-  const siteUrl = `${protocol}://${host}`;
-  const now = new Date().toISOString();
+function generateGoogleNewsSitemap(articles, host, onlyRecent48h = false) {
+  const siteUrl = resolveSiteBaseUrl(host);
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  const cutoffMs = nowMs - 48 * 60 * 60 * 1000;
 
   let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
@@ -301,15 +351,16 @@ function generateGoogleNewsSitemap(articles, host) {
 
   for (const art of articles) {
     if (art.status && art.status !== 'published') continue;
-    const articleUrl = `${siteUrl}/article/${art.slug || art.id}`;
-    const pubDate = toIsoDate(art.published_at || art.created_at, now);
-    const lastMod = toIsoDate(art.updated_at, pubDate);
+    const pubDate = resolveStableArticleIso(art);
+    if (onlyRecent48h && new Date(pubDate).getTime() < cutoffMs) continue;
+    const articleUrl = `${siteUrl}/article/${encodeURIComponent(art.slug || art.id)}`;
+    const lastMod = toIsoDate(art.updatedAt || art.updated_at, pubDate);
     const lang = art.originalLanguage || 'hi';
     const cleanTitle = escapeXml(art.title || 'News Article');
 
     // Never output massive Base64 data URIs into Google Image sitemap
     let imageXml = '';
-    const rawImg = art.featured_image;
+    const rawImg = art.image || art.featured_image;
     if (rawImg && !rawImg.startsWith('data:')) {
       const fullImgUrl = rawImg.startsWith('/') ? `${siteUrl}${rawImg}` : rawImg;
       imageXml = `    <image:image>
@@ -341,13 +392,15 @@ ${imageXml}  </url>
 }
 
 function generateRobotsTxt(host) {
-  const protocol = host.includes('localhost') ? 'http' : 'https';
-  const siteUrl = `${protocol}://${host}`;
+  const siteUrl = resolveSiteBaseUrl(host);
   return `User-agent: *
 Allow: /
 Disallow: /admin
+Disallow: /desk
+Disallow: /developer
 Disallow: /editor
 Disallow: /reporter
+Disallow: /login
 Disallow: /api/
 
 User-agent: Googlebot
@@ -369,15 +422,14 @@ Sitemap: ${siteUrl}/rss.xml
 }
 
 function generateRss2Feed(articles, host = 'localhost:5000') {
-  const protocol = host.includes('localhost') || host.includes('127.0.0.1') ? 'http' : 'https';
-  const siteUrl = `${protocol}://${host}`;
+  const siteUrl = resolveSiteBaseUrl(host);
   const published = articles.filter(a => a.status === 'published' || !a.status).slice(0, 30);
 
   let itemsXml = '';
   for (const art of published) {
     const slugOrId = art.slug || art.id;
     const link = `${siteUrl}/article/${encodeURIComponent(slugOrId)}`;
-    const pubDate = new Date(art.createdAt || Date.now()).toUTCString();
+    const pubDate = new Date(resolveStableArticleIso(art)).toUTCString();
     const desc = escapeXml((art.summary || art.content || '').replace(/<[^>]+>/g, '').slice(0, 480));
     const title = escapeXml(art.title || 'Untitled');
     const category = escapeXml(art.category || 'News');
@@ -938,28 +990,35 @@ function autoPreWarmPublishedAudio(article) {
     try {
       const sanitizedArticleId = article.id.replace(/[^a-zA-Z0-9-_]/g, '_');
       const targetLang = (article.originalLanguage || 'hi').toLowerCase();
-      const audioFileNameMp3 = `audio_${sanitizedArticleId}_${targetLang}_clip_1_intro.mp3`;
+      if (!['hi', 'en'].includes(targetLang)) return;
+      const audioFileNameMp3 = `audio_${sanitizedArticleId}_${targetLang}_full_story_v2.mp3`;
       const audioFilePathMp3 = path.join(UPLOADS_DIR, audioFileNameMp3);
 
       if (fs.existsSync(audioFilePathMp3) && fs.statSync(audioFilePathMp3).size > 500) {
         return; // Already cached
       }
 
-      console.log(`[Auto Audio Pre-Warm] Generating Gemini audio for "${article.title.slice(0, 50)}..." (${targetLang})`);
+      console.log(`[Auto Audio Pre-Warm] Generating 1-Call Gemini audio for "${article.title.slice(0, 50)}..." (${targetLang})`);
       const cleanTitle = (article.title || '').trim();
       const cleanHighlights = Array.isArray(article.highlights) && article.highlights.length > 0
         ? article.highlights.filter(h => h && typeof h === 'string').join('. ')
         : (article.summary || '');
-      const textToRead = cleanHighlights ? `${cleanTitle}. ${cleanHighlights}` : cleanTitle;
+      const cleanBody = (article.content || '').trim();
+      let textToRead = [cleanTitle, cleanHighlights, cleanBody].filter(Boolean).join('. ');
 
       if (!textToRead) return;
+      if (textToRead.length > 3200) {
+        const cutSlice = textToRead.slice(0, 3200);
+        const lastBoundary = Math.max(cutSlice.lastIndexOf('।'), cutSlice.lastIndexOf('. '), cutSlice.lastIndexOf('\n'));
+        textToRead = (lastBoundary > 2000 ? cutSlice.slice(0, lastBoundary + 1) : cutSlice).trim();
+      }
 
       const rawAudioBuffer = await generateGeminiAudio(textToRead, targetLang);
-      const finalAudioBuffer = compressAudioBufferToMp3(rawAudioBuffer, 32);
+      const finalAudioBuffer = compressAudioBufferToMp3(rawAudioBuffer, 48);
       fs.writeFileSync(audioFilePathMp3, finalAudioBuffer);
       incrementDailyUsage('Gemini_TTS');
 
-      saveAudioRecord(sanitizedArticleId, targetLang, 'clip_1_intro', {
+      saveAudioRecord(sanitizedArticleId, targetLang, 'full_story', {
         audio_url: `/uploads/${audioFileNameMp3}`,
         size_bytes: finalAudioBuffer.length,
         status: 'done'
@@ -2761,7 +2820,7 @@ async function generateGeminiAudio(text, lang = 'hi') {
   // Sanitize text: strip image markdown, bracket links, URLs, button text, and disclaimers
   const cleanText = text
     .replace(/!\[.*?\]\(.*?\)/g, '')
-    .replace(/\[.*?\]\(.*?\)/g, '$1')
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
     .replace(/https?:\/\/\S+/g, '')
     .replace(/Full investigative briefing[^\n.]*/gi, '')
     .replace(/[#*`_~]/g, '')
@@ -2795,6 +2854,7 @@ async function generateGeminiAudio(text, lang = 'hi') {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(45000),
         body: JSON.stringify(payload)
       });
 
@@ -2819,13 +2879,28 @@ async function generateGeminiAudio(text, lang = 'hi') {
   throw lastError || new Error('All Gemini TTS models failed to generate speech');
 }
 
+function resampleMonoInt16(pcm, srcRate, dstRate) {
+  if (!pcm || pcm.length < 2 || srcRate === dstRate) return pcm;
+  const outLen = Math.max(1, Math.round((pcm.length * dstRate) / srcRate));
+  const out = new Int16Array(outLen);
+  const ratio = srcRate / dstRate;
+  for (let i = 0; i < outLen; i++) {
+    const pos = i * ratio;
+    const idx = Math.floor(pos);
+    const frac = pos - idx;
+    const s0 = pcm[idx] ?? 0;
+    const s1 = pcm[Math.min(idx + 1, pcm.length - 1)] ?? s0;
+    out[i] = Math.round(s0 + (s1 - s0) * frac);
+  }
+  return out;
+}
+
 /**
  * Pure JavaScript MP3 Compression Engine
- * Compresses uncompressed 24kHz 16-bit PCM/WAV from Gemini down to 32kbps mono MP3.
- * Dedicated 32,000 bits/sec for a single speech channel (equivalent to 64kbps stereo).
- * Preserves 100% vocal tone and pronunciation while cutting file size by over 92%.
+ * Converts 24kHz 16-bit PCM/WAV from Gemini safely to 22050Hz 48kbps mono MP3
+ * (@breezystack/lamejs corrupts 24000Hz MPEG-2 frames into -91dB silence).
  */
-function compressAudioBufferToMp3(audioBuffer, kbps = 32) {
+function compressAudioBufferToMp3(audioBuffer, kbps = 48) {
   if (!audioBuffer || audioBuffer.length < 100) return audioBuffer;
 
   let channels = 1;
@@ -2857,19 +2932,37 @@ function compressAudioBufferToMp3(audioBuffer, kbps = 32) {
     dataLength = audioBuffer.length - dataOffset;
   }
 
-  const sampleCount = Math.floor(dataLength / 2);
-  if (sampleCount <= 0) return audioBuffer;
+  const totalSamples = Math.floor(dataLength / (2 * channels));
+  if (totalSamples <= 0) return audioBuffer;
 
-  const samples = new Int16Array(audioBuffer.buffer, audioBuffer.byteOffset + dataOffset, sampleCount);
-  const encoder = new lamejs.Mp3Encoder(channels, sampleRate, kbps);
+  // Safely copy/downmix to aligned mono Int16Array regardless of Buffer byteOffset
+  const monoSamples = new Int16Array(totalSamples);
+  for (let i = 0; i < totalSamples; i++) {
+    const bytePos = dataOffset + i * 2 * channels;
+    if (channels === 1) {
+      monoSamples[i] = audioBuffer.readInt16LE(bytePos);
+    } else {
+      let sum = 0;
+      for (let ch = 0; ch < channels; ch++) {
+        sum += audioBuffer.readInt16LE(bytePos + ch * 2);
+      }
+      monoSamples[i] = Math.round(sum / channels);
+    }
+  }
+
+  // @breezystack/lamejs requires MPEG-1 / supported standard rates; 24000Hz produces silent frames
+  const supportedRates = [8000, 11025, 12000, 16000, 22050, 44100, 48000];
+  const targetSampleRate = supportedRates.includes(sampleRate) ? sampleRate : 22050;
+  const encodedSamples = resampleMonoInt16(monoSamples, sampleRate, targetSampleRate);
+  const targetKbps = Math.max(48, Number(kbps) || 48);
+
+  const encoder = new lamejs.Mp3Encoder(1, targetSampleRate, targetKbps);
   const mp3Chunks = [];
   const sampleBlockSize = 1152;
 
-  for (let i = 0; i < samples.length; i += sampleBlockSize) {
-    const chunk = samples.subarray(i, i + sampleBlockSize);
-    const mp3buf = channels === 1
-      ? encoder.encodeBuffer(chunk)
-      : encoder.encodeBuffer(chunk, chunk);
+  for (let i = 0; i < encodedSamples.length; i += sampleBlockSize) {
+    const chunk = encodedSamples.subarray(i, i + sampleBlockSize);
+    const mp3buf = encoder.encodeBuffer(chunk);
     if (mp3buf && mp3buf.length > 0) {
       mp3Chunks.push(Buffer.from(mp3buf));
     }
@@ -2904,7 +2997,7 @@ function cleanupExpiredAudioFiles(maxAgeDays = 14, options = {}) {
 
     // Gate 1: Age-Based Expiration
     for (const file of files) {
-      if (file.startsWith('audio_') && (file.endsWith('.mp3') || file.endsWith('.wav'))) {
+      if (file.startsWith('audio_') && (file.endsWith('.webm') || file.endsWith('.mp3') || file.endsWith('.wav'))) {
         const filePath = path.join(UPLOADS_DIR, file);
         try {
           const stats = fs.statSync(filePath);
@@ -3353,7 +3446,8 @@ const server = http.createServer(async (req, res) => {
   // 1. DYNAMIC GOOGLE NEWS XML SITEMAP
   if (req.method === 'GET' && (url.pathname === '/sitemap.xml' || url.pathname === '/news-sitemap.xml' || url.pathname === '/sitemap-news.xml')) {
     const articles = getSavedArticles();
-    const sitemapXml = generateGoogleNewsSitemap(articles, req.headers.host || 'localhost:5000');
+    const isNews48hOnly = url.pathname === '/news-sitemap.xml' || url.pathname === '/sitemap-news.xml';
+    const sitemapXml = generateGoogleNewsSitemap(articles, req.headers.host || 'localhost:5000', isNews48hOnly);
     res.writeHead(200, {
       'Content-Type': 'application/xml; charset=utf-8',
       'Cache-Control': 'public, max-age=1800'
@@ -3399,8 +3493,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 3. SERVER-SIDE DYNAMIC ARTICLE PRE-RENDERING GATEWAY & CLIENT SPA ROUTING
-  const isClientSpaRoute = ['/', '/login', '/staff', '/reporter', '/editor', '/admin', '/developer', '/rescue', '/search'].includes(url.pathname);
-  if (req.method === 'GET' && (url.pathname.startsWith('/article/') || url.pathname.startsWith('/news/') || (url.pathname === '/' && url.searchParams.has('article')) || isClientSpaRoute)) {
+  const isClientSpaRoute = ['/', '/login', '/staff', '/reporter', '/editor', '/admin', '/developer', '/rescue', '/search', '/saved', '/desk'].includes(url.pathname);
+  const isArticleRoute = url.pathname.startsWith('/article/') || url.pathname.startsWith('/news/') || (url.pathname === '/' && url.searchParams.has('article'));
+  if (req.method === 'GET' && (isArticleRoute || isClientSpaRoute)) {
     let articleIdOrSlug = '';
     if (url.pathname.startsWith('/article/')) {
       articleIdOrSlug = decodeURIComponent(url.pathname.replace(/^\/article\//, '').split('/')[0]);
@@ -3426,6 +3521,17 @@ const server = http.createServer(async (req, res) => {
           'Cache-Control': 'public, max-age=300, stale-while-revalidate=86400'
         });
         return res.end(renderedHtml);
+      } else if (isArticleRoute) {
+        const notFoundHtml = baseHtml
+          .replace(/<title>.*?<\/title>/i, '<title>Story Not Found (404) - PUBLIC SPARK</title>')
+          .replace(/<meta\s+name="robots"[^>]*>/i, '')
+          .replace('</head>', '    <meta name="robots" content="noindex, nofollow" />\n  </head>');
+        res.writeHead(404, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+          'X-Robots-Tag': 'noindex, nofollow'
+        });
+        return res.end(notFoundHtml);
       } else {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(baseHtml);
@@ -3577,6 +3683,22 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === 'GET' && url.pathname.startsWith('/audio/')) {
+    const safeAudioFile = path.resolve(path.join(PUBLIC_DIR, 'audio'), path.basename(url.pathname));
+    const publicAudioRoot = path.resolve(path.join(PUBLIC_DIR, 'audio'));
+    if (safeAudioFile.startsWith(publicAudioRoot + path.sep) && fs.existsSync(safeAudioFile)) {
+      const ext = path.extname(safeAudioFile).toLowerCase();
+      const mime = ext === '.mp3' ? 'audio/mpeg' : ext === '.webm' ? 'audio/webm' : 'audio/wav';
+      const stats = fs.statSync(safeAudioFile);
+      res.writeHead(200, {
+        'Content-Type': mime,
+        'Content-Length': stats.size,
+        'Cache-Control': 'public, max-age=86400'
+      });
+      return fs.createReadStream(safeAudioFile).pipe(res);
+    }
+  }
+
   // Serve uploaded media files (WebP images, WAV/MP3 audio) from server/data/uploads/ (Zero-Card Setup)
   if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname.startsWith('/uploads/')) {
     const safePath = path.join(DATA_DIR, path.normalize(url.pathname));
@@ -3587,6 +3709,7 @@ const server = http.createServer(async (req, res) => {
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
         '.png': 'image/png',
+        '.webm': 'audio/webm',
         '.mp3': 'audio/mpeg',
         '.wav': 'audio/wav'
       };
@@ -3667,6 +3790,226 @@ const server = http.createServer(async (req, res) => {
   }
 
   // -------------------------------------------------------------
+  // STAFF SEQUENTIAL AUDIO GENERATOR & WORKER STATUS ENDPOINTS (Task 44.6)
+  // -------------------------------------------------------------
+  if (req.method === 'GET' && url.pathname === '/api/tts/warm-worker') {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
+    }
+    const baseUrl = String(process.env.RENDER_AUDIO_URL || '').trim().replace(/\/+$/, '');
+    if (!baseUrl) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, renderConfigured: false, ffmpegReady: true, mode: 'local_node' }));
+    }
+    try {
+      const hRes = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(65000) });
+      const hData = await hRes.json().catch(() => ({}));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: hRes.ok, renderConfigured: true, ffmpegReady: Boolean(hData.ffmpegReady), status: hData }));
+    } catch (err) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, renderConfigured: true, ffmpegReady: false, error: err.message }));
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/api/tts/article-status/')) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Unauthorized' }));
+    }
+    const rawArtId = decodeURIComponent(url.pathname.slice('/api/tts/article-status/'.length)).replace(/[^a-zA-Z0-9-_]/g, '_');
+    const trStore = getTranslationsStore();
+    const checkLangStatus = (langCode) => {
+      const webmName = `audio_${rawArtId}_${langCode}_full_story_v3.webm`;
+      const webmPath = path.join(UPLOADS_DIR, webmName);
+      const mp3Name = `audio_${rawArtId}_${langCode}_full_story_v2.mp3`;
+      const mp3Path = path.join(UPLOADS_DIR, mp3Name);
+      if (fs.existsSync(webmPath) && fs.statSync(webmPath).size > 300) {
+        return { cached: true, sizeBytes: fs.statSync(webmPath).size, mimeType: 'audio/webm', shard: 'LOCAL_DISK', audioUrl: `/uploads/${webmName}` };
+      }
+      if (fs.existsSync(mp3Path) && fs.statSync(mp3Path).size > 500) {
+        return { cached: true, sizeBytes: fs.statSync(mp3Path).size, mimeType: 'audio/mpeg', shard: 'LOCAL_DISK', audioUrl: `/uploads/${mp3Name}` };
+      }
+      return { cached: false, shard: 'LOCAL_DISK' };
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      success: true,
+      articleId: rawArtId,
+      renderConfigured: Boolean(process.env.RENDER_AUDIO_URL && process.env.RENDER_AUDIO_SECRET),
+      hi: checkLangStatus('hi'),
+      en: checkLangStatus('en'),
+      translations: {
+        hiCached: trStore[`${rawArtId}:hi`]?.status === 'done',
+        enCached: trStore[`${rawArtId}:en`]?.status === 'done'
+      }
+    }));
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/tts/generate-article-audio') {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
+    const session = token ? verifyStaffSessionToken(token) : null;
+    if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+      res.writeHead(session ? 403 : 401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Forbidden: Editor or Admin access required.' }));
+    }
+    let bodyText = '';
+    req.on('data', chunk => { bodyText += chunk; });
+    req.on('end', async () => {
+      try {
+        const body = JSON.parse(bodyText || '{}');
+        const articleId = String(body.articleId || body.article_id || '').trim();
+        const step = String(body.step || 'audio').toLowerCase();
+        const targetLang = normalizeLanguageCode(body.lang || 'hi');
+        const forceRegenerate = Boolean(body.forceRegenerate);
+
+        if (!articleId || !['hi', 'en'].includes(targetLang)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Valid articleId and lang (hi/en) are required.' }));
+        }
+
+        const targetArticle = getSavedArticles().find(a => String(a.id) === articleId || String(a.slug) === articleId);
+        if (!targetArticle) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Article not found.' }));
+        }
+
+        const overrides = (body.overrides && typeof body.overrides === 'object') ? body.overrides : {};
+        const origLang = normalizeLanguageCode(overrides.originalLanguage || targetArticle.originalLanguage || 'hi');
+        const rawTitle = overrides.title || targetArticle.title || '';
+        const rawBody = overrides.body || targetArticle.content || '';
+        const rawSummary = overrides.summary || targetArticle.summary || '';
+        const rawHighlights = Array.isArray(targetArticle.highlights) && targetArticle.highlights.length > 0
+          ? [...targetArticle.highlights]
+          : (rawSummary ? [rawSummary] : []);
+
+        let storyData = { title: rawTitle, summary: rawSummary, highlights: rawHighlights, body: rawBody, isCached: true };
+        if (targetLang !== origLang) {
+          const store = getTranslationsStore();
+          const trKey = `${targetArticle.id}:${targetLang}`;
+          const contentHash = computeContentHash(`${rawTitle}:::${rawBody}`);
+          const existing = store[trKey];
+          const allowCacheHit = !(step === 'translate' && forceRegenerate);
+          if (allowCacheHit && existing && existing.status === 'done' && existing.content_hash === contentHash) {
+            storyData = {
+              title: existing.title,
+              summary: existing.summary || '',
+              highlights: Array.isArray(existing.highlights) ? existing.highlights : rawHighlights,
+              body: existing.body,
+              isCached: true
+            };
+          } else {
+            const translated = await translateWithGemini(rawTitle, rawBody, rawHighlights, targetLang, origLang, rawSummary);
+            if (!validateTranslationIntegrity(rawTitle, rawBody, translated.title, translated.body)) {
+              throw new Error('Translation integrity validation failed.');
+            }
+            saveTranslationRecord(targetArticle.id, targetLang, {
+              title: translated.title,
+              summary: translated.summary || rawSummary,
+              sub_title: targetArticle.sub_title || '',
+              highlights: translated.highlights || rawHighlights,
+              body: translated.body || rawBody,
+              status: 'done',
+              content_hash: contentHash
+            });
+            storyData = { ...translated, isCached: false };
+          }
+        }
+
+        if (step === 'translate') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: true,
+            step: 'translate',
+            articleId: targetArticle.id,
+            lang: targetLang,
+            isCached: storyData.isCached,
+            title: storyData.title
+          }));
+        }
+
+        const sanitizedId = String(targetArticle.id).replace(/[^a-zA-Z0-9-_]/g, '_');
+        const webmName = `audio_${sanitizedId}_${targetLang}_full_story_v3.webm`;
+        const webmPath = path.join(UPLOADS_DIR, webmName);
+        if (!forceRegenerate && fs.existsSync(webmPath) && fs.statSync(webmPath).size > 300) {
+          const sizeBytes = fs.statSync(webmPath).size;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            success: true,
+            step: 'audio',
+            article_id: sanitizedId,
+            lang: targetLang,
+            clip_type: 'full_story',
+            audio_url: `/uploads/${webmName}`,
+            audioUrl: `/uploads/${webmName}`,
+            size_bytes: sizeBytes,
+            mime_type: 'audio/webm',
+            shard: 'LOCAL_DISK',
+            isCached: true
+          }));
+        }
+
+        const hlStr = Array.isArray(storyData.highlights) ? storyData.highlights.filter(Boolean).join('. ') : '';
+        let speechText = [storyData.title, hlStr, storyData.body].filter(Boolean).join('. ').trim();
+        if (speechText.length > 3200) {
+          const cutSlice = speechText.slice(0, 3200);
+          const lastBoundary = Math.max(cutSlice.lastIndexOf('।'), cutSlice.lastIndexOf('. '), cutSlice.lastIndexOf('\n'));
+          speechText = (lastBoundary > 2000 ? cutSlice.slice(0, lastBoundary + 1) : cutSlice).trim();
+        }
+
+        const rawAudioBuffer = await generateGeminiAudio(speechText, targetLang);
+        let finalBuf = null;
+        let finalName = webmName;
+        let finalMime = 'audio/webm';
+        try {
+          finalBuf = await compressBufferToWebmOpus(rawAudioBuffer, 'audio/l16;rate=24000', 32);
+        } catch (_ffErr) {
+          finalBuf = compressAudioBufferToMp3(rawAudioBuffer, 48);
+          finalName = `audio_${sanitizedId}_${targetLang}_full_story_v2.mp3`;
+          finalMime = 'audio/mpeg';
+        }
+        const finalPath = path.join(UPLOADS_DIR, finalName);
+        fs.writeFileSync(finalPath, finalBuf);
+        incrementDailyUsage('Gemini_TTS');
+        saveAudioRecord(sanitizedId, targetLang, 'full_story', {
+          audio_url: `/uploads/${finalName}`,
+          size_bytes: finalBuf.length,
+          status: 'done'
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({
+          success: true,
+          step: 'audio',
+          article_id: sanitizedId,
+          lang: targetLang,
+          clip_type: 'full_story',
+          audio_url: `/uploads/${finalName}`,
+          audioUrl: `/uploads/${finalName}`,
+          size_bytes: finalBuf.length,
+          mime_type: finalMime,
+          compressedByRender: false,
+          shard: 'LOCAL_DISK',
+          isCached: false
+        }));
+      } catch (err) {
+        const isQuota = String(err.message || '').includes('429');
+        res.writeHead(isQuota ? 429 : 500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, quotaExhausted: isQuota, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  // -------------------------------------------------------------
   // AUDIO / TTS ENDPOINT (2-Stage Gemini Server-Side Audio Generation)
   // -------------------------------------------------------------
   if (req.method === 'POST' && (url.pathname === '/api/tts/generate' || url.pathname === '/api/tts')) {
@@ -3677,22 +4020,16 @@ const server = http.createServer(async (req, res) => {
         const body = JSON.parse(bodyText || '{}');
         const article_id = body.article_id || body.articleId || 'general';
         const targetLang = normalizeLanguageCode(body.lang || body.langCode || 'hi');
-        const clip_type = body.clip_type || body.clipType || 'clip_1_intro';
+        const clip_type = body.clip_type || body.clipType || 'full_story';
         const title = body.title || '';
         const highlights = body.highlights || [];
         const articleBody = body.body || '';
         const text = body.text || '';
 
-        // Guardrail 1: Assamese voice is explicitly not supported -> auto-hide
-        if (targetLang === 'as') {
+        // Guardrail 1 & 2: Restrict TTS generation strictly to Hindi ('hi') and English ('en')
+        if (!['hi', 'en'].includes(targetLang)) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: 'Assamese voice is not supported currently.', hidden: true }));
-        }
-
-        // Guardrail 2: 19 Supported Languages check
-        if (!SUPPORTED_LANG_CODES.includes(targetLang)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ error: `Language '${targetLang}' not supported for TTS.` }));
+          return res.end(JSON.stringify({ error: 'Audio TTS is currently enabled only for Hindi and English.', hidden: true }));
         }
 
         // Guardrail 3: Published articles only (reject drafts)
@@ -3705,9 +4042,14 @@ const server = http.createServer(async (req, res) => {
           }
         }
 
-        const validClipType = clip_type === 'clip_2_body' ? 'clip_2_body' : 'clip_1_intro';
+        const rawClip = body.clip_type || body.clipType || 'full_story';
+        const validClipType = rawClip === 'clip_2_body' ? 'clip_2_body' : (rawClip === 'clip_1_intro' ? 'clip_1_intro' : 'full_story');
         const sanitizedArticleId = (article_id || 'general').replace(/[^a-zA-Z0-9-_]/g, '_');
-        const audioFileNameMp3 = `audio_${sanitizedArticleId}_${targetLang}_${validClipType}.mp3`;
+        const audioFileNameWebm = `audio_${sanitizedArticleId}_${targetLang}_${validClipType}_v3.webm`;
+        const audioFilePathWebm = path.join(UPLOADS_DIR, audioFileNameWebm);
+        const publicAudioUrlWebm = `/uploads/${audioFileNameWebm}`;
+
+        const audioFileNameMp3 = `audio_${sanitizedArticleId}_${targetLang}_${validClipType}_v2.mp3`;
         const audioFilePathMp3 = path.join(UPLOADS_DIR, audioFileNameMp3);
         const publicAudioUrlMp3 = `/uploads/${audioFileNameMp3}`;
 
@@ -3715,7 +4057,23 @@ const server = http.createServer(async (req, res) => {
         const audioFilePathWav = path.join(UPLOADS_DIR, audioFileNameWav);
 
         // Check if already generated on disk / in store (0ms latency, zero quota used)
-        if (fs.existsSync(audioFilePathMp3)) {
+        if (fs.existsSync(audioFilePathWebm) && fs.statSync(audioFilePathWebm).size > 300) {
+          const stats = fs.statSync(audioFilePathWebm);
+          console.log(`[TTS Audio Cache HIT - WebM Opus] Serving cached audio for (${sanitizedArticleId}, ${targetLang}, ${validClipType})`);
+          touchAudioAccess(sanitizedArticleId, targetLang, validClipType, audioFilePathWebm);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({
+            article_id: sanitizedArticleId,
+            articleId: sanitizedArticleId,
+            lang: targetLang,
+            clip_type: validClipType,
+            audio_url: publicAudioUrlWebm,
+            audioUrl: publicAudioUrlWebm,
+            size_bytes: stats.size,
+            status: 'done',
+            isCached: true
+          }));
+        } else if (fs.existsSync(audioFilePathMp3)) {
           const stats = fs.statSync(audioFilePathMp3);
           if (stats.size > 500) {
             console.log(`[TTS Audio Cache HIT - MP3] Serving cached audio for (${sanitizedArticleId}, ${targetLang}, ${validClipType})`);
@@ -3776,10 +4134,13 @@ const server = http.createServer(async (req, res) => {
         // Construct clean text to read:
         // Exclude captions, credits, tags, and fixed disclaimers
         let textToRead = '';
-        if (validClipType === 'clip_1_intro') {
-          const cleanTitle = (title || text || '').trim();
-          const cleanHighlights = Array.isArray(highlights) ? highlights.filter(h => h && typeof h === 'string').join('. ') : '';
-          textToRead = cleanHighlights ? `${cleanTitle}. ${cleanHighlights}` : cleanTitle;
+        const cleanTitle = (title || '').trim();
+        const cleanHighlights = Array.isArray(highlights) ? highlights.filter(h => h && typeof h === 'string').join('. ') : '';
+        if (validClipType === 'full_story') {
+          textToRead = [cleanTitle, cleanHighlights, (articleBody || text || '').trim()].filter(Boolean).join('. ');
+        } else if (validClipType === 'clip_1_intro') {
+          const fallbackTitle = cleanTitle || (text || '').trim();
+          textToRead = cleanHighlights ? `${fallbackTitle}. ${cleanHighlights}` : fallbackTitle;
         } else {
           textToRead = (articleBody || text || '').trim();
         }
@@ -3788,21 +4149,36 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({ error: 'No readable text content provided for audio generation.' }));
         }
+        if (textToRead.length > 3200) {
+          const cutSlice = textToRead.slice(0, 3200);
+          const lastBoundary = Math.max(cutSlice.lastIndexOf('।'), cutSlice.lastIndexOf('. '), cutSlice.lastIndexOf('\n'));
+          textToRead = (lastBoundary > 2000 ? cutSlice.slice(0, lastBoundary + 1) : cutSlice).trim();
+        }
 
-        // Launch in-flight promise with automated 64kbps MP3 compression
+        // Launch in-flight promise with Render-parity WebM Opus compression (MP3 fallback)
         const audioPromise = (async () => {
           const rawAudioBuffer = await generateGeminiAudio(textToRead, targetLang);
           let finalAudioBuffer = rawAudioBuffer;
-          let targetPath = audioFilePathMp3;
-          let targetUrl = publicAudioUrlMp3;
+          let targetPath = audioFilePathWebm;
+          let targetUrl = publicAudioUrlWebm;
+          let finalMime = 'audio/webm';
 
           try {
-            finalAudioBuffer = compressAudioBufferToMp3(rawAudioBuffer, 32);
-            console.log(`[TTS MP3 Compression Success] ${validClipType} (${rawAudioBuffer.length} raw bytes -> ${finalAudioBuffer.length} MP3 bytes, 32kbps mono)`);
-          } catch (compressErr) {
-            console.warn(`[TTS Compression Warning] Failed to compress MP3, falling back to raw WAV:`, compressErr.message);
-            targetPath = audioFilePathWav;
-            targetUrl = `/uploads/${audioFileNameWav}`;
+            finalAudioBuffer = await compressBufferToWebmOpus(rawAudioBuffer, 'audio/l16;rate=24000', 32);
+            console.log(`[TTS WebM Opus Compression Success] ${validClipType} (${rawAudioBuffer.length} raw bytes -> ${finalAudioBuffer.length} WebM bytes, 32kbps mono)`);
+          } catch (webmErr) {
+            try {
+              targetPath = audioFilePathMp3;
+              targetUrl = publicAudioUrlMp3;
+              finalMime = 'audio/mpeg';
+              finalAudioBuffer = compressAudioBufferToMp3(rawAudioBuffer, 48);
+              console.log(`[TTS MP3 Fallback Compression Success] ${validClipType} (${rawAudioBuffer.length} raw bytes -> ${finalAudioBuffer.length} MP3 bytes):`, webmErr.message);
+            } catch (compressErr) {
+              console.warn(`[TTS Compression Warning] Failed to compress WebM/MP3, falling back to raw WAV:`, compressErr.message);
+              targetPath = audioFilePathWav;
+              targetUrl = `/uploads/${audioFileNameWav}`;
+              finalMime = 'audio/wav';
+            }
           }
 
           fs.writeFileSync(targetPath, finalAudioBuffer);
@@ -3821,6 +4197,7 @@ const server = http.createServer(async (req, res) => {
             clip_type: validClipType,
             audio_url: targetUrl,
             audioUrl: targetUrl,
+            mime_type: finalMime,
             size_bytes: finalAudioBuffer.length,
             status: 'done',
             isCached: false
@@ -6009,6 +6386,13 @@ const server = http.createServer(async (req, res) => {
 
         const currentArticles = getSavedArticles();
         const existingIdx = currentArticles.findIndex(a => String(a.id) === String(body.id));
+        const nowIsoStamp = new Date().toISOString();
+        const existingArt = existingIdx >= 0 ? currentArticles[existingIdx] : null;
+        body.createdAt = existingArt?.createdAt || body.createdAt || body.publishDateISO || nowIsoStamp;
+        body.created_at = existingArt?.created_at || body.created_at || body.createdAt;
+        body.updatedAt = nowIsoStamp;
+        body.updated_at = nowIsoStamp;
+        body.slug = existingArt?.slug || (body.slug && String(body.slug).trim()) || generateSafeArticleSlug(body.title, body.id);
 
         // Subtopic 18.1: Cross-Reporter Ownership Guard
         if (existingIdx >= 0 && userRole === 'reporter') {

@@ -1,0 +1,14 @@
+{
+  "name": "publicspark-render-audio-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Stateless Render FFmpeg libopus WebM compressor microservice for PublicSpark Newsroom",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
+

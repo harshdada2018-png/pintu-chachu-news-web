@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, Filter, Clock, Eye, ArrowLeft, Newspaper } from 'lucide-react';
 import { DEFAULT_NEWSROOM_CATEGORIES } from '../../services/taxonomyService';
 import { t, translateCategoryName } from '../../services/uiTranslations';
+import ArticleLink from '../common/ArticleLink';
 
 export default function SearchPage({ articles, categories, onSelectArticle, onBack, currentLanguage = 'hi' }) {
   const [query, setQuery] = useState('');
@@ -92,7 +93,7 @@ export default function SearchPage({ articles, categories, onSelectArticle, onBa
               <div>
                 <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
                 <h3 className="story-card-title" style={{ fontSize: '1.25rem', margin: '0.2rem 0 0.4rem 0' }}>
-                  {art.title}
+                  <ArticleLink article={art} onSelect={onSelectArticle}>{art.title}</ArticleLink>
                 </h3>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
                   {art.summary}

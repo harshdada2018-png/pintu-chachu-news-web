@@ -156,3 +156,28 @@ export function formatPublishedTime(timeStr, targetLang = 'hi') {
   return clean;
 }
 
+/**
+ * Resolve an immutable, deterministic ISO-8601 timestamp for SEO JSON-LD & RSS feeds.
+ * Never returns a mutable wall-clock `new Date()` for existing stories without timestamps.
+ */
+export function resolveStableArticleIso(art, fallbackIso = '2026-01-01T00:00:00.000Z') {
+  const candidates = [art?.createdAt, art?.created_at, art?.publishDateISO, art?.publishedAt, art?.published_at];
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== 'string') continue;
+    if (raw.includes('-') || raw.includes('T') || raw.includes(':')) {
+      const ms = Date.parse(raw);
+      if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+    }
+  }
+  const idStr = String(art?.id || '');
+  const epochMatch = idStr.match(/(1[5-9]\d{11})/);
+  if (epochMatch) {
+    const baseMs = Number(epochMatch[1]);
+    const suffixMatch = idStr.match(/-(\d{1,3})$/);
+    const offsetHours = suffixMatch ? Number(suffixMatch[1]) : 0;
+    const ms = Math.min(baseMs, Date.now()) - offsetHours * 3600 * 1000;
+    if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+  }
+  return fallbackIso;
+}
+

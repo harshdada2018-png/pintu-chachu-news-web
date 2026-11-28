@@ -4,6 +4,8 @@
  * request batching, smart paragraph chunking, and memory caching.
  */
 
+import { safeSetCacheItem, touchEphemeralCacheKey, enforceTranslationCacheBudget } from './cacheService.js';
+
 export const SUPPORTED_LANGUAGES = [
   { code: 'en', name: 'English', native: 'English' },
   { code: 'hi', name: 'Hindi', native: 'हिंदी' },
@@ -124,6 +126,7 @@ export async function translateText(text, targetLang, sourceLang = 'hi') {
     if (localCached && (localCached.includes('QUERY LENGTH') || localCached.includes('MAX ALLOWED QUERY') || localCached.includes('MYMEMORY'))) {
       localStorage.removeItem(cacheKey);
     } else if (localCached && localCached !== cleanText) {
+      touchEphemeralCacheKey(cacheKey);
       translationMemoryCache.set(cacheKey, localCached);
       return localCached;
     }
@@ -135,7 +138,9 @@ export async function translateText(text, targetLang, sourceLang = 'hi') {
     if (result && result !== cleanText && !result.includes('QUERY LENGTH') && !result.includes('MYMEMORY')) {
       translationMemoryCache.set(cacheKey, result);
       try {
-        if (result.length < 50000) localStorage.setItem(cacheKey, result);
+        if (result.length < 50000 && safeSetCacheItem(cacheKey, result)) {
+          enforceTranslationCacheBudget(cacheKey);
+        }
       } catch (e) {}
       return result;
     }
@@ -175,7 +180,9 @@ export async function translateText(text, targetLang, sourceLang = 'hi') {
   if (fullResult && fullResult !== cleanText && !fullResult.includes('QUERY LENGTH')) {
     translationMemoryCache.set(cacheKey, fullResult);
     try {
-      if (fullResult.length < 50000) localStorage.setItem(cacheKey, fullResult);
+      if (fullResult.length < 50000 && safeSetCacheItem(cacheKey, fullResult)) {
+        enforceTranslationCacheBudget(cacheKey);
+      }
     } catch (e) {}
     return fullResult;
   }
@@ -218,6 +225,7 @@ export function getCachedArticleObject(articleId, targetLang) {
         }
       }
 
+      touchEphemeralCacheKey(key);
       return parsed;
     }
   } catch (e) {}
@@ -244,13 +252,18 @@ export function purgeCorruptedTranslationCache() {
 }
 
 /**
- * Helper to cache a translated article object to LocalStorage.
+ * Helper to cache a translated article object to LocalStorage with quota eviction guard.
  */
 export function cacheArticleObject(articleId, targetLang, translatedArticle) {
   if (!articleId || !targetLang || !translatedArticle) return;
   if (translatedArticle.content && (translatedArticle.content.includes('QUERY LENGTH') || translatedArticle.content.includes('[object Object]'))) return;
   try {
-    localStorage.setItem(`ps_art_obj_${articleId}_${targetLang}`, JSON.stringify(translatedArticle));
+    const key = `ps_art_obj_${articleId}_${targetLang}`;
+    const payload = JSON.stringify({ ...translatedArticle, _cachedAt: Date.now() });
+    if (payload.length > 500000) return;
+    if (safeSetCacheItem(key, payload)) {
+      enforceTranslationCacheBudget(key);
+    }
   } catch (e) {}
 }
 

@@ -4,9 +4,15 @@
  * Zero external cloud dependencies, zero quota leakage, and 100% device privacy.
  */
 
+import { safeSetCacheItem } from './cacheService.js';
+
 export const OFFLINE_STORIES_KEY = 'ps_offline_saved_stories_v1';
 export const LEGACY_BOOKMARK_PREFIX = 'ps_bookmark_';
 export const MAX_OFFLINE_STORIES = 50;
+
+function hasValidArticleId(id) {
+  return id !== undefined && id !== null && String(id).trim() !== '';
+}
 
 /**
  * Safe localStorage detection
@@ -44,7 +50,7 @@ function notifyBookmarksChanged(action, articleId) {
  * Sanitize and serialize an article into a self-contained offline reading payload
  */
 export function serializeArticleForOffline(article) {
-  if (!article || !article.id) return null;
+  if (!article || !hasValidArticleId(article.id)) return null;
 
   return {
     id: String(article.id),
@@ -109,15 +115,11 @@ export function getOfflineArticles() {
  * @returns {boolean}
  */
 export function isArticleOffline(articleId) {
-  if (!articleId || !isStorageAvailable()) return false;
+  if (!hasValidArticleId(articleId) || !isStorageAvailable()) return false;
 
   const strId = String(articleId);
 
-  // Fast-path 1: Legacy key check
-  const legacyFlag = window.localStorage.getItem(`${LEGACY_BOOKMARK_PREFIX}${strId}`);
-  if (legacyFlag === 'true') return true;
-
-  // Fast-path 2: Index inspection
+  // Authoritative check: verify snapshot actually exists in OFFLINE_STORIES_KEY
   const offlineArticles = getOfflineArticles();
   return offlineArticles.some(a => String(a.id) === strId);
 }
@@ -143,18 +145,37 @@ export function saveArticleOffline(article) {
     const filtered = current.filter(a => String(a.id) !== serialized.id);
 
     // Prepend new snapshot at top
-    filtered.unshift(serialized);
+    let candidate = serialized;
+    const withNew = [candidate, ...filtered].slice(0, MAX_OFFLINE_STORIES);
 
-    // Enforce storage cap (prune oldest beyond MAX_OFFLINE_STORIES)
-    const capped = filtered.slice(0, MAX_OFFLINE_STORIES);
+    let saved = safeSetCacheItem(OFFLINE_STORIES_KEY, JSON.stringify(withNew), {
+      preserveKey: OFFLINE_STORIES_KEY,
+      includeFeedOnRetry: true
+    });
 
-    window.localStorage.setItem(OFFLINE_STORIES_KEY, JSON.stringify(capped));
+    // If quota still fails due to oversized inline base64 featured_image, strip data: URI and retry
+    if (!saved && candidate.featured_image && candidate.featured_image.startsWith('data:image/')) {
+      candidate = { ...candidate, featured_image: '' };
+      const compactWithNew = [candidate, ...filtered].slice(0, MAX_OFFLINE_STORIES);
+      saved = safeSetCacheItem(OFFLINE_STORIES_KEY, JSON.stringify(compactWithNew), {
+        preserveKey: OFFLINE_STORIES_KEY,
+        includeFeedOnRetry: true
+      });
+    }
+
+    if (!saved) {
+      return { success: false, count: current.length, error: 'Browser storage quota exceeded' };
+    }
+
     // Synchronize legacy flag for backwards compatibility
-    window.localStorage.setItem(`${LEGACY_BOOKMARK_PREFIX}${serialized.id}`, 'true');
+    safeSetCacheItem(`${LEGACY_BOOKMARK_PREFIX}${candidate.id}`, 'true', {
+      preserveKey: OFFLINE_STORIES_KEY,
+      includeFeedOnRetry: true
+    });
 
-    notifyBookmarksChanged('saved', serialized.id);
+    notifyBookmarksChanged('saved', candidate.id);
 
-    return { success: true, count: capped.length, article: serialized };
+    return { success: true, count: withNew.length, article: candidate };
   } catch (err) {
     console.error('[BookmarkStorage] Failed to save article offline:', err);
     return { success: false, count: 0, error: err.message };
@@ -167,7 +188,7 @@ export function saveArticleOffline(article) {
  * @returns {{ success: boolean, count: number }}
  */
 export function removeArticleOffline(articleId) {
-  if (!articleId || !isStorageAvailable()) {
+  if (!hasValidArticleId(articleId) || !isStorageAvailable()) {
     return { success: false, count: 0 };
   }
 
@@ -177,7 +198,10 @@ export function removeArticleOffline(articleId) {
     const current = getOfflineArticles();
     const filtered = current.filter(a => String(a.id) !== strId);
 
-    window.localStorage.setItem(OFFLINE_STORIES_KEY, JSON.stringify(filtered));
+    safeSetCacheItem(OFFLINE_STORIES_KEY, JSON.stringify(filtered), {
+      preserveKey: OFFLINE_STORIES_KEY,
+      includeFeedOnRetry: false
+    });
     window.localStorage.setItem(`${LEGACY_BOOKMARK_PREFIX}${strId}`, 'false');
 
     notifyBookmarksChanged('removed', strId);
@@ -192,10 +216,10 @@ export function removeArticleOffline(articleId) {
 /**
  * Toggle an article's offline saved status
  * @param {Object} article 
- * @returns {{ isSaved: boolean, count: number }}
+ * @returns {{ isSaved: boolean, count: number, error?: string }}
  */
 export function toggleArticleOffline(article) {
-  if (!article || !article.id) return { isSaved: false, count: 0 };
+  if (!article || !hasValidArticleId(article.id)) return { isSaved: false, count: 0, error: 'Invalid article' };
 
   const strId = String(article.id);
   const currentlySaved = isArticleOffline(strId);
@@ -205,7 +229,7 @@ export function toggleArticleOffline(article) {
     return { isSaved: false, count: res.count };
   } else {
     const res = saveArticleOffline(article);
-    return { isSaved: res.success, count: res.count };
+    return { isSaved: res.success, count: res.count, error: res.error };
   }
 }
 

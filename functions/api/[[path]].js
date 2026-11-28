@@ -22,15 +22,28 @@ function jsonResponse(data, status = 200, extraHeaders = {}) {
 
 function publicCacheHeaders(request, maxAge = 120, sMaxAge = 300) {
   if (request.headers.get('Authorization')) {
-    return { 'Cache-Control': 'private, no-store' };
+    return { 'Cache-Control': 'private, no-store', 'Vary': 'Authorization' };
   }
-  return { 'Cache-Control': `public, max-age=${maxAge}, s-maxage=${sMaxAge}` };
+  return { 'Cache-Control': `public, max-age=${maxAge}, s-maxage=${sMaxAge}`, 'Vary': 'Authorization' };
 }
 
 function normalizeLang(lang) {
   const raw = String(lang || 'hi').trim();
   if (raw.toLowerCase() === 'zh-tw') return 'zh-TW';
   return raw.toLowerCase();
+}
+
+function generateSafeArticleSlug(title, id) {
+  const ascii = String(title || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 55)
+    .replace(/-+$/g, '');
+  const idTail = String(id || '').replace(/[^a-zA-Z0-9]/g, '').slice(-8) || String(Date.now()).slice(-8);
+  return ascii ? `${ascii}-${idTail}` : `news-${idTail}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -49,6 +62,89 @@ async function setKv(db, key, value) {
   await db.prepare(
     'INSERT INTO kv_store (store_key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(store_key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at'
   ).bind(key, JSON.stringify(value), now).run();
+}
+
+async function enforceEdgeAudioQuota(db, maxBytes = 250 * 1024 * 1024, targetBytes = 200 * 1024 * 1024) {
+  try {
+    const res = await db.prepare(
+      "SELECT cache_key, size_bytes, created_at FROM audio_cache WHERE cache_key NOT LIKE '%::%' ORDER BY created_at ASC"
+    ).all();
+    const rows = res?.results || [];
+    let totalBytes = 0;
+    for (const r of rows) totalBytes += Number(r.size_bytes) || 0;
+    if (totalBytes <= maxBytes) return;
+
+    for (const r of rows) {
+      if (totalBytes <= targetBytes) break;
+      await db.prepare('DELETE FROM audio_cache WHERE cache_key = ? OR cache_key LIKE ?')
+        .bind(r.cache_key, `${r.cache_key}::%`).run().catch(() => {});
+      totalBytes -= Number(r.size_bytes) || 0;
+    }
+  } catch (_err) {
+    // Non-blocking quota check
+  }
+}
+
+/**
+ * Bound array datasets stored as single kv_store JSON rows well under D1's 1 MB row cap.
+ */
+function capKvRecordList(list, { maxItems = 100, maxJsonBytes = 750000, removableStatuses = ['dismissed', 'resolved', 'verified_published', 'closed'] } = {}) {
+  const arr = Array.isArray(list) ? list.slice() : [];
+  if (arr.length > maxItems) {
+    for (let i = arr.length - 1; i >= 0 && arr.length > maxItems; i--) {
+      if (removableStatuses.includes(String(arr[i]?.status || '').toLowerCase())) {
+        arr.splice(i, 1);
+      }
+    }
+    if (arr.length > maxItems) arr.length = maxItems;
+  }
+  while (arr.length > 1 && JSON.stringify(arr).length > maxJsonBytes) {
+    arr.pop();
+  }
+  return arr;
+}
+
+function getAudioDb(env, lang) {
+  const baseLang = normalizeLang(lang).split(/[-_]/)[0];
+  if (baseLang === 'hi' && env?.DB_AUDIO_HI) return { audioDb: env.DB_AUDIO_HI, shard: 'DB_AUDIO_HI', dedicated: true };
+  if (baseLang === 'en' && env?.DB_AUDIO_EN) return { audioDb: env.DB_AUDIO_EN, shard: 'DB_AUDIO_EN', dedicated: true };
+  return { audioDb: env?.DB, shard: 'DB', dedicated: false };
+}
+
+function getAudioDbCapBytes(dedicated) {
+  return dedicated
+    ? { maxBytes: 450 * 1024 * 1024, targetBytes: 400 * 1024 * 1024, limitMb: 500, capMb: 450 }
+    : { maxBytes: 250 * 1024 * 1024, targetBytes: 200 * 1024 * 1024, limitMb: 500, capMb: 250 };
+}
+
+function getAudioShardTargets(env) {
+  const seen = new Set();
+  const list = [];
+  const add = (dbObj, shard) => {
+    if (dbObj && !seen.has(dbObj)) {
+      seen.add(dbObj);
+      list.push({ db: dbObj, shard, dedicated: dbObj !== env?.DB });
+    }
+  };
+  add(env?.DB_AUDIO_HI, 'DB_AUDIO_HI');
+  add(env?.DB_AUDIO_EN, 'DB_AUDIO_EN');
+  add(env?.DB, 'DB');
+  return list;
+}
+
+function parseAudioLangFromCacheKey(cacheKey) {
+  const m = String(cacheKey || '').match(/_(hi|en)_(?:full_story|clip_1_intro|clip_2_body)$/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
+async function purgeArticleSatelliteCaches(db, articleId, env = null) {
+  const rawId = String(articleId || '');
+  const sanitizedId = rawId.replace(/[^a-zA-Z0-9-_]/g, '_');
+  await db.prepare('DELETE FROM translations WHERE article_id = ?').bind(rawId).run().catch(() => {});
+  const targets = env ? getAudioShardTargets(env) : [{ db }];
+  for (const t of targets) {
+    await t.db.prepare('DELETE FROM audio_cache WHERE article_id = ? OR article_id = ?').bind(rawId, sanitizedId).run().catch(() => {});
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -210,22 +306,64 @@ async function hashPasswordEdge(plainPassword) {
 // ---------------------------------------------------------------------------
 // Translation Helpers (Gemini + Google GTX Fallback + Anti-Poison Guard)
 // ---------------------------------------------------------------------------
-async function translateGoogleGtx(text, targetLang, sourceLang = 'auto') {
-  const raw = String(text || '');
-  if (!raw.trim()) return '';
-  const tl = normalizeLang(targetLang);
-  const sl = sourceLang && sourceLang !== 'auto' ? normalizeLang(sourceLang) : 'auto';
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&dt=t&q=${encodeURIComponent(raw.slice(0, 1800))}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+function isPoisonedEdgeTranslation(origTitle, transTitle, origBody, transBody, targetLang) {
+  const combined = `${transTitle || ''} ${transBody || ''}`;
+  if (!transTitle && !transBody) return true;
+  if (combined.includes('QUERY LENGTH') || combined.includes('MAX ALLOWED QUERY') || combined.includes('MYMEMORY') || combined.includes('[object Object]')) {
+    return true;
+  }
+  if (origTitle && transTitle && origTitle.trim() === transTitle.trim() && targetLang !== 'hi') {
+    return true;
+  }
+  if (targetLang === 'en' && transBody && transBody.length > 50) {
+    const devChars = (transBody.match(/[\u0900-\u097F]/g) || []).length;
+    if (devChars > transBody.length * 0.4) return true;
+  }
+  return false;
+}
+
+async function translateGoogleGtxSingle(chunk, tl, sl) {
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sl)}&tl=${encodeURIComponent(tl)}&dt=t&q=${encodeURIComponent(chunk)}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(7000) });
   if (!res.ok) throw new Error(`GTX HTTP ${res.status}`);
   const data = await res.json();
   if (Array.isArray(data) && Array.isArray(data[0])) {
     return data[0].map(seg => (Array.isArray(seg) ? seg[0] : '')).join('');
   }
-  return raw;
+  return chunk;
 }
 
-async function callGeminiEdge(prompt, apiKey, isJson = false) {
+async function translateGoogleGtx(text, targetLang, sourceLang = 'auto') {
+  const raw = String(text || '');
+  if (!raw.trim()) return '';
+  const tl = normalizeLang(targetLang);
+  const sl = sourceLang && sourceLang !== 'auto' ? normalizeLang(sourceLang) : 'auto';
+  if (raw.length <= 1600) return translateGoogleGtxSingle(raw, tl, sl);
+
+  const paragraphs = raw.split(/\n+/);
+  const chunks = [];
+  let cur = '';
+  for (const p of paragraphs) {
+    if (p.length > 1500) {
+      if (cur) { chunks.push(cur); cur = ''; }
+      for (let i = 0; i < p.length; i += 1500) chunks.push(p.slice(i, i + 1500));
+    } else if ((cur + '\n' + p).length > 1500) {
+      if (cur) chunks.push(cur);
+      cur = p;
+    } else {
+      cur = cur ? `${cur}\n${p}` : p;
+    }
+  }
+  if (cur) chunks.push(cur);
+
+  const out = [];
+  for (const ch of chunks) {
+    out.push(await translateGoogleGtxSingle(ch, tl, sl));
+  }
+  return out.join('\n\n');
+}
+
+async function callGeminiEdge(prompt, apiKey, isJson = false, timeoutMs = 8000) {
   if (!apiKey) throw new Error('GEMINI_API_KEY missing');
   const models = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash'];
   let lastErr = null;
@@ -239,7 +377,7 @@ async function callGeminiEdge(prompt, apiKey, isJson = false) {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(timeoutMs),
         body: JSON.stringify(payload)
       });
       if (res.status === 429) throw new Error('Gemini 429 quota/rate limit');
@@ -256,15 +394,44 @@ async function callGeminiEdge(prompt, apiKey, isJson = false) {
   throw lastErr || new Error('All Gemini models failed');
 }
 
+function fastBase64ToBytes(base64Data) {
+  const clean = String(base64Data || '').trim();
+  if (!clean) return new Uint8Array(0);
+  if (typeof Uint8Array.fromBase64 === 'function') {
+    return Uint8Array.fromBase64(clean);
+  }
+  if (typeof Buffer !== 'undefined') {
+    return new Uint8Array(Buffer.from(clean, 'base64'));
+  }
+  const binStr = atob(clean);
+  const bytes = new Uint8Array(binStr.length);
+  for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+  return bytes;
+}
+
+function bytesToBase64(bytes) {
+  if (!bytes || bytes.length === 0) return '';
+  if (typeof bytes.toBase64 === 'function') {
+    return bytes.toBase64();
+  }
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('base64');
+  }
+  let outBin = '';
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    outBin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(outBin);
+}
+
 function pcmBase64ToWavBytes(base64Data, mimeType = '') {
   const lower = String(mimeType || '').toLowerCase();
-  const binStr = atob(base64Data);
-  const pcmLen = binStr.length;
-  if (lower.includes('wav') || lower.includes('mp3') || lower.includes('mpeg') || lower.includes('ogg')) {
-    const rawBytes = new Uint8Array(pcmLen);
-    for (let i = 0; i < pcmLen; i++) rawBytes[i] = binStr.charCodeAt(i);
-    return { bytes: rawBytes, mime: mimeType || 'audio/wav' };
+  const decodedBytes = fastBase64ToBytes(base64Data);
+  if (lower.includes('wav') || lower.includes('mp3') || lower.includes('mpeg') || lower.includes('ogg') || lower.includes('webm') || lower.includes('opus')) {
+    return { bytes: decodedBytes, mime: mimeType || 'audio/wav' };
   }
+  const pcmLen = decodedBytes.length;
   const rateMatch = lower.match(/rate=(\d+)/);
   const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000;
   const wav = new Uint8Array(44 + pcmLen);
@@ -283,17 +450,8 @@ function pcmBase64ToWavBytes(base64Data, mimeType = '') {
   view.setUint16(34, 16, true);
   writeStr(36, 'data');
   view.setUint32(40, pcmLen, true);
-  for (let i = 0; i < pcmLen; i++) wav[44 + i] = binStr.charCodeAt(i);
+  wav.set(decodedBytes, 44);
   return { bytes: wav, mime: 'audio/wav' };
-}
-
-function bytesToBase64(bytes) {
-  let outBin = '';
-  const chunk = 8192;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    outBin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(outBin);
 }
 
 async function callGeminiTtsEdge(text, apiKey) {
@@ -315,7 +473,7 @@ async function callGeminiTtsEdge(text, apiKey) {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(45000),
         body: JSON.stringify({
           contents: [{ parts: [{ text: cleanText }] }],
           generationConfig: { responseModalities: ['AUDIO'] }
@@ -342,6 +500,231 @@ async function callGeminiTtsEdge(text, apiKey) {
     }
   }
   throw lastErr || new Error('All Gemini TTS models failed');
+}
+
+function trimTtsSpeechText(text, maxChars = 3200) {
+  let clean = String(text || '').trim();
+  if (clean.length > maxChars) {
+    const cutSlice = clean.slice(0, maxChars);
+    const lastBoundary = Math.max(cutSlice.lastIndexOf('।'), cutSlice.lastIndexOf('. '), cutSlice.lastIndexOf('\n'));
+    clean = (lastBoundary > Math.floor(maxChars * 0.6) ? cutSlice.slice(0, lastBoundary + 1) : cutSlice).trim();
+  }
+  return clean;
+}
+
+async function callRenderAudioWorker(text, env, bitrateKbps = 32) {
+  const baseUrl = String(env?.RENDER_AUDIO_URL || '').trim().replace(/\/+$/, '');
+  const secret = String(env?.RENDER_AUDIO_SECRET || '').trim();
+  if (!baseUrl || !secret) return null;
+
+  const res = await fetch(`${baseUrl}/compress-tts`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-render-secret': secret
+    },
+    signal: AbortSignal.timeout(95000),
+    body: JSON.stringify({ text, bitrateKbps })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.success || !data?.audioBase64) {
+    const err = new Error(data?.error || `Render audio worker HTTP ${res.status}`);
+    if (res.status === 429 || data?.quotaExhausted) err.isQuota = true;
+    throw err;
+  }
+  return {
+    audioBase64: data.audioBase64,
+    mime: data.mimeType || 'audio/webm',
+    sizeBytes: Number(data.compressedBytes || 0),
+    model: `${data.model || 'gemini-tts'}+render-opus`,
+    compressedByRender: true
+  };
+}
+
+async function translateOrGetArticleEdge(db, env, articleId, targetLang, overrides = {}, forceRegenerate = false) {
+  const target = normalizeLang(targetLang || 'hi');
+  const artRow = await db.prepare('SELECT data_json FROM articles WHERE id = ? OR slug = ?').bind(String(articleId), String(articleId)).first();
+  const art = artRow ? JSON.parse(artRow.data_json) : null;
+  const canonicalId = String(art?.id || articleId);
+  const src = normalizeLang(overrides.originalLanguage || overrides.source_lang || art?.originalLanguage || 'hi');
+  const rawTitle = overrides.title || art?.title || '';
+  const rawSummary = overrides.summary || art?.summary || '';
+  const rawBody = overrides.body || art?.content || '';
+  const rawHighlights = (Array.isArray(overrides.highlights) && overrides.highlights.length > 0)
+    ? overrides.highlights
+    : ((art && Array.isArray(art.highlights) && art.highlights.length > 0) ? art.highlights : []);
+
+  if (target === src) {
+    return {
+      article: art,
+      canonicalId,
+      title: rawTitle,
+      summary: rawSummary,
+      highlights: rawHighlights,
+      body: rawBody,
+      isCached: true
+    };
+  }
+
+  const key = `${canonicalId}:${target}`;
+  const cached = await db.prepare('SELECT title, summary, highlights_json, body FROM translations WHERE cache_key = ? AND status = ?').bind(key, 'done').first();
+  if (!forceRegenerate && cached && cached.body && !isPoisonedEdgeTranslation(rawTitle, cached.title, rawBody, cached.body, target)) {
+    let parsedHl = rawHighlights;
+    try {
+      const h = JSON.parse(cached.highlights_json || '[]');
+      if (Array.isArray(h) && h.length > 0) parsedHl = h;
+    } catch (_e) {}
+    return {
+      article: art,
+      canonicalId,
+      title: cached.title,
+      summary: cached.summary || '',
+      highlights: parsedHl,
+      body: cached.body,
+      isCached: true
+    };
+  }
+
+  let tTitle = '';
+  let tSummary = '';
+  let tHighlights = rawHighlights;
+  let tBody = '';
+
+  try {
+    const prompt = `Translate this complete news story accurately from ${src} to ${target}. Return strictly valid JSON with keys {"title", "summary", "highlights", "body"}. Preserve markdown formatting in body:\n${JSON.stringify({ title: rawTitle, summary: rawSummary, highlights: rawHighlights, body: rawBody })}`;
+    const rawAi = await callGeminiEdge(prompt, env.GEMINI_API_KEY, true, 14000);
+    const parsed = JSON.parse(rawAi.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim());
+    tTitle = parsed.title || '';
+    tSummary = parsed.summary || '';
+    if (Array.isArray(parsed.highlights) && parsed.highlights.length > 0) tHighlights = parsed.highlights;
+    tBody = parsed.body || '';
+  } catch (_geminiErr) {
+    const [gTitle, gSummary, gBody, gHl] = await Promise.all([
+      translateGoogleGtx(rawTitle, target, src).catch(() => rawTitle),
+      rawSummary ? translateGoogleGtx(rawSummary, target, src).catch(() => rawSummary) : Promise.resolve(''),
+      translateGoogleGtx(rawBody, target, src).catch(() => rawBody),
+      rawHighlights.length > 0
+        ? Promise.all(rawHighlights.map(h => translateGoogleGtx(h, target, src).catch(() => h)))
+        : Promise.resolve([])
+    ]);
+    tTitle = gTitle;
+    tSummary = gSummary;
+    tBody = gBody;
+    if (Array.isArray(gHl) && gHl.length > 0) tHighlights = gHl;
+  }
+
+  const nowIso = new Date().toISOString();
+  if (!isPoisonedEdgeTranslation(rawTitle, tTitle, rawBody, tBody, target)) {
+    await db.prepare(
+      'INSERT INTO translations (cache_key, article_id, lang, title, summary, highlights_json, body, status, created_at, last_accessed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(cache_key) DO UPDATE SET title=excluded.title, summary=excluded.summary, highlights_json=excluded.highlights_json, body=excluded.body, last_accessed_at=excluded.last_accessed_at'
+    ).bind(key, canonicalId, target, tTitle, tSummary, JSON.stringify(tHighlights), tBody, 'done', nowIso, nowIso).run();
+  }
+
+  return {
+    article: art,
+    canonicalId,
+    title: tTitle || rawTitle,
+    summary: tSummary || rawSummary,
+    highlights: tHighlights,
+    body: tBody || rawBody,
+    isCached: false
+  };
+}
+
+async function synthesizeAndCacheAudioEdge({ env, articleId, lang, clipType = 'full_story', speechText, forceRegenerate = false }) {
+  const targetLang = normalizeLang(lang || 'hi');
+  const rawArticleId = String(articleId || 'general').replace(/[^a-zA-Z0-9-_]/g, '_');
+  const cacheKey = `${rawArticleId}_${targetLang}_${clipType}`;
+  const nowIso = new Date().toISOString();
+  const { audioDb, shard, dedicated } = getAudioDb(env, targetLang);
+  const caps = getAudioDbCapBytes(dedicated);
+
+  if (!forceRegenerate) {
+    const cached = await audioDb.prepare('SELECT size_bytes, mime_type, created_at FROM audio_cache WHERE cache_key = ?').bind(cacheKey).first().catch(() => null);
+    if (cached && cached.created_at) {
+      const cachedUrl = `/api/tts/audio/${encodeURIComponent(cacheKey)}?v=${encodeURIComponent(cached.created_at)}`;
+      return {
+        article_id: rawArticleId,
+        lang: targetLang,
+        clip_type: clipType,
+        audio_url: cachedUrl,
+        audioUrl: cachedUrl,
+        size_bytes: cached.size_bytes || 0,
+        mime_type: cached.mime_type || 'audio/wav',
+        shard,
+        status: 'done',
+        isCached: true
+      };
+    }
+  }
+
+  const trimmedSpeech = trimTtsSpeechText(speechText, 3200);
+  if (!trimmedSpeech) throw new Error('No readable text for TTS');
+
+  let audioPayload = null;
+  if (env?.RENDER_AUDIO_URL && env?.RENDER_AUDIO_SECRET) {
+    try {
+      audioPayload = await callRenderAudioWorker(trimmedSpeech, env, 32);
+    } catch (renderErr) {
+      if (renderErr?.isQuota) throw renderErr;
+    }
+  }
+
+  if (!audioPayload) {
+    const ttsKey = env.GEMINI_TTS_API_KEY || env.GEMINI_API_KEY;
+    if (!ttsKey) {
+      const e = new Error('GEMINI_TTS_API_KEY not configured');
+      e.isQuota = true;
+      throw e;
+    }
+    const edgeAudio = await callGeminiTtsEdge(trimmedSpeech, ttsKey);
+    audioPayload = {
+      audioBase64: edgeAudio.wavBase64,
+      mime: edgeAudio.mime,
+      sizeBytes: edgeAudio.sizeBytes,
+      model: edgeAudio.model,
+      dataUrl: edgeAudio.dataUrl,
+      compressedByRender: false
+    };
+  }
+
+  let finalAudioUrl = audioPayload.dataUrl || `data:${audioPayload.mime};base64,${audioPayload.audioBase64}`;
+  await audioDb.prepare('DELETE FROM audio_cache WHERE cache_key = ? OR cache_key LIKE ?').bind(cacheKey, `${cacheKey}::%`).run().catch(() => {});
+
+  const chunkSize = 800000;
+  let allSaved = true;
+  for (let idx = 0, offset = 0; offset < audioPayload.audioBase64.length; idx++, offset += chunkSize) {
+    const partKey = idx === 0 ? cacheKey : `${cacheKey}::${String(idx).padStart(3, '0')}`;
+    const partB64 = audioPayload.audioBase64.slice(offset, offset + chunkSize);
+    const ok = await audioDb.prepare(
+      'INSERT INTO audio_cache (cache_key, article_id, lang, clip_type, mime_type, audio_base64, size_bytes, created_at, last_accessed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(partKey, rawArticleId, targetLang, clipType, audioPayload.mime, partB64, idx === 0 ? audioPayload.sizeBytes : 0, nowIso, nowIso).run().then(() => true).catch(() => false);
+    if (!ok) {
+      allSaved = false;
+      await audioDb.prepare('DELETE FROM audio_cache WHERE cache_key = ? OR cache_key LIKE ?').bind(cacheKey, `${cacheKey}::%`).run().catch(() => {});
+      break;
+    }
+  }
+
+  if (allSaved) {
+    await enforceEdgeAudioQuota(audioDb, caps.maxBytes, caps.targetBytes);
+    finalAudioUrl = `/api/tts/audio/${encodeURIComponent(cacheKey)}?v=${encodeURIComponent(nowIso)}`;
+  }
+
+  return {
+    article_id: rawArticleId,
+    lang: targetLang,
+    clip_type: clipType,
+    audio_url: finalAudioUrl,
+    audioUrl: finalAudioUrl,
+    size_bytes: audioPayload.sizeBytes,
+    mime_type: audioPayload.mime,
+    compressedByRender: audioPayload.compressedByRender,
+    shard,
+    model: audioPayload.model,
+    status: 'done',
+    isCached: false
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -402,7 +785,8 @@ export async function onRequest(context) {
       }
 
       return jsonResponse(articles, 200, {
-        'Cache-Control': isStaff ? 'private, no-store' : 'public, max-age=60, s-maxage=120'
+        'Cache-Control': (isStaff || scope === 'all') ? 'private, no-store' : 'public, max-age=60, s-maxage=120',
+        'Vary': 'Authorization'
       });
     }
 
@@ -415,14 +799,17 @@ export async function onRequest(context) {
       const body = await request.json();
       const nowIso = new Date().toISOString();
       const id = String(body.id || `art-${Date.now()}`);
+      const existingArt = await db.prepare('SELECT title, summary, content, slug, createdAt FROM articles WHERE id = ?').bind(id).first().catch(() => null);
+      const slug = existingArt?.slug || String(body.slug || '').trim() || generateSafeArticleSlug(body.title, id);
       const status = session.role === 'reporter' ? 'draft' : (body.status || 'published');
       const article = {
         ...body,
         id,
+        slug,
         status,
         author: body.author || session.name || 'PublicSpark Desk',
         authorEmail: body.authorEmail || session.email,
-        createdAt: body.createdAt || nowIso,
+        createdAt: existingArt?.createdAt || body.createdAt || nowIso,
         updatedAt: nowIso
       };
       await db.prepare(
@@ -436,6 +823,13 @@ export async function onRequest(context) {
         article.live_status || 'active', article.scheduledPublishTime || '', JSON.stringify(article),
         article.createdAt, article.updatedAt
       ).run();
+      if (existingArt && (
+        existingArt.title !== article.title ||
+        existingArt.summary !== article.summary ||
+        existingArt.content !== article.content
+      )) {
+        await purgeArticleSatelliteCaches(db, article.id, env);
+      }
       return jsonResponse({ success: true, article });
     }
 
@@ -447,7 +841,7 @@ export async function onRequest(context) {
       }
       const { id } = await request.json();
       await db.prepare('DELETE FROM articles WHERE id = ?').bind(String(id)).run();
-      await db.prepare('DELETE FROM translations WHERE article_id = ?').bind(String(id)).run();
+      await purgeArticleSatelliteCaches(db, id, env);
       return jsonResponse({ success: true, deletedId: id });
     }
 
@@ -598,36 +992,15 @@ export async function onRequest(context) {
       }
 
       if (articleId) {
-        const key = `${articleId}:${target}`;
-        const cached = await db.prepare('SELECT title, summary, highlights_json, body FROM translations WHERE cache_key = ? AND status = ?').bind(key, 'done').first();
-        if (cached && cached.body) {
-          return jsonResponse({
-            title: cached.title,
-            summary: cached.summary,
-            highlights: JSON.parse(cached.highlights_json || '[]'),
-            body: cached.body,
-            isCached: true,
-            status: 'done'
-          });
-        }
-
-        const artRow = await db.prepare('SELECT data_json FROM articles WHERE id = ? OR slug = ?').bind(String(articleId), String(articleId)).first();
-        const art = artRow ? JSON.parse(artRow.data_json) : {};
-        const rawTitle = art.title || body.title || '';
-        const rawBody = art.content || body.body || '';
-        const rawHighlights = Array.isArray(art.highlights) ? art.highlights : (body.highlights || []);
-
-        const [tTitle, tBody] = await Promise.all([
-          translateGoogleGtx(rawTitle, target, src).catch(() => rawTitle),
-          translateGoogleGtx(rawBody, target, src).catch(() => rawBody)
-        ]);
-        const nowIso = new Date().toISOString();
-        if (tTitle && tTitle.trim() !== rawTitle.trim()) {
-          await db.prepare(
-            'INSERT INTO translations (cache_key, article_id, lang, title, summary, highlights_json, body, status, created_at, last_accessed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(cache_key) DO UPDATE SET title=excluded.title, body=excluded.body, last_accessed_at=excluded.last_accessed_at'
-          ).bind(key, String(articleId), target, tTitle, '', JSON.stringify(rawHighlights), tBody, 'done', nowIso, nowIso).run();
-        }
-        return jsonResponse({ title: tTitle, highlights: rawHighlights, body: tBody, isCached: false, status: 'done' });
+        const resTr = await translateOrGetArticleEdge(db, env, articleId, target, body);
+        return jsonResponse({
+          title: resTr.title,
+          summary: resTr.summary,
+          highlights: resTr.highlights,
+          body: resTr.body,
+          isCached: resTr.isCached,
+          status: 'done'
+        });
       }
 
       const translatedText = await translateGoogleGtx(body.text || '', target, src).catch(() => body.text);
@@ -664,7 +1037,7 @@ export async function onRequest(context) {
       };
       const tips = await getKv(db, 'confidential_tips', []);
       tips.unshift(tip);
-      await setKv(db, 'confidential_tips', tips);
+      await setKv(db, 'confidential_tips', capKvRecordList(tips, { maxItems: 100, maxJsonBytes: 750000 }));
       return jsonResponse({ success: true, trackingId, status: tip.status, submittedAt: nowIso }, 201);
     }
 
@@ -1022,9 +1395,18 @@ export async function onRequest(context) {
     if (request.method === 'POST' && path === '/api/grievance/submit') {
       const body = await request.json();
       const list = await getKv(db, 'grievances', []);
-      const entry = { ...body, id: `grv_${Date.now()}`, status: 'pending', createdAt: new Date().toISOString() };
+      const entry = {
+        ...body,
+        name: String(body.name || '').trim().slice(0, 150),
+        email: String(body.email || '').trim().slice(0, 150),
+        subject: String(body.subject || '').trim().slice(0, 250),
+        details: String(body.details || body.description || '').trim().slice(0, 6000),
+        id: `grv_${Date.now()}`,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
       list.unshift(entry);
-      await setKv(db, 'grievances', list);
+      await setKv(db, 'grievances', capKvRecordList(list, { maxItems: 100, maxJsonBytes: 750000 }));
       return jsonResponse({ success: true, grievance: entry }, 201);
     }
 
@@ -1051,36 +1433,94 @@ export async function onRequest(context) {
       return jsonResponse({ success: true });
     }
 
-    // 14. Storage Status
+    // 14. Storage Status (Multi-D1 Audio Shards + Master DB)
     if (request.method === 'GET' && path === '/api/storage/status') {
+      const hiShard = getAudioDb(env, 'hi');
+      const enShard = getAudioDb(env, 'en');
+      const readShardStats = async (shardDb) => shardDb.prepare(
+        "SELECT COUNT(*) as c, COALESCE(SUM(size_bytes), 0) as b FROM audio_cache WHERE cache_key NOT LIKE '%::%'"
+      ).first().catch(() => ({ c: 0, b: 0 }));
+
+      const hiRaw = await readShardStats(hiShard.audioDb);
+      const enRaw = (enShard.audioDb === hiShard.audioDb) ? { c: 0, b: 0 } : await readShardStats(enShard.audioDb);
+
+      const hiMb = Number((Number(hiRaw?.b || 0) / (1024 * 1024)).toFixed(2));
+      const enMb = Number((Number(enRaw?.b || 0) / (1024 * 1024)).toFixed(2));
+      const totalAudioMb = Number((hiMb + enMb).toFixed(2));
+      const sharedAudioMb = (!hiShard.dedicated ? hiMb : 0) + (!enShard.dedicated && enShard.audioDb !== hiShard.audioDb ? enMb : 0);
+      const d1UsedMb = Number((0.25 + sharedAudioMb).toFixed(2));
+      const d1Percent = Number(Math.min(100, (d1UsedMb / 500) * 100).toFixed(2));
+      const audioLimitMb = (hiShard.dedicated ? 450 : 250) + (enShard.dedicated ? 450 : 0);
+
       return jsonResponse({
         success: true,
-        alertState: 'normal',
+        alertState: (d1Percent >= 80 || (hiShard.dedicated && hiMb >= 360) || (enShard.dedicated && enMb >= 360)) ? 'warning' : 'normal',
+        renderWorkerConfigured: Boolean(env.RENDER_AUDIO_URL && env.RENDER_AUDIO_SECRET),
+        audioStats: {
+          cachedClips: Number(hiRaw?.c || 0) + Number(enRaw?.c || 0),
+          audioMb: totalAudioMb,
+          autoLruCapMb: audioLimitMb,
+          shards: {
+            hi: { shard: hiShard.shard, dedicated: hiShard.dedicated, cachedClips: Number(hiRaw?.c || 0), usedMb: hiMb, capMb: hiShard.dedicated ? 450 : 250 },
+            en: { shard: enShard.shard, dedicated: enShard.dedicated, cachedClips: Number(enRaw?.c || 0), usedMb: enMb, capMb: enShard.dedicated ? 450 : 250 }
+          }
+        },
         storageTiers: {
-          cloudflareD1: { name: 'Cloudflare D1 SQL (Master DB)', usedMb: 0.25, limitMb: 500, percent: 0.05, status: 'healthy' },
+          cloudflareD1: { name: 'Cloudflare D1 SQL (Master DB)', usedMb: d1UsedMb, limitMb: 500, percent: d1Percent, status: d1Percent >= 80 ? 'warning' : 'healthy' },
           imgbbCdn: { name: 'ImgBB Cloud Image CDN', isCloudActive: !!env.IMGBB_API_KEY, usedMb: 0, limitMb: 2048, percent: 0, status: 'healthy' }
         }
       });
     }
 
-    // 15. Gemini TTS Endpoint with D1 14-Day Rolling Cache (Chunk-Safe) + 7-Day Browser Cache
+    // 15. Gemini + Render FFmpeg TTS Endpoint with Multi-D1 Shards & HTTP 206 Streaming
     if (request.method === 'GET' && path.startsWith('/api/tts/audio/')) {
       const cacheKey = decodeURIComponent(path.slice('/api/tts/audio/'.length));
-      const rows = await db.prepare('SELECT cache_key, mime_type, audio_base64 FROM audio_cache WHERE cache_key = ? OR cache_key LIKE ? ORDER BY cache_key ASC')
+      const langHint = normalizeLang(url.searchParams.get('lang') || parseAudioLangFromCacheKey(cacheKey) || 'hi');
+      const { audioDb } = getAudioDb(env, langHint);
+      let rows = await audioDb.prepare('SELECT cache_key, mime_type, audio_base64 FROM audio_cache WHERE cache_key = ? OR cache_key LIKE ? ORDER BY cache_key ASC')
         .bind(cacheKey, `${cacheKey}::%`).all().catch(() => ({ results: [] }));
+      if ((!rows?.results || rows.results.length === 0) && audioDb !== db) {
+        rows = await db.prepare('SELECT cache_key, mime_type, audio_base64 FROM audio_cache WHERE cache_key = ? OR cache_key LIKE ? ORDER BY cache_key ASC')
+          .bind(cacheKey, `${cacheKey}::%`).all().catch(() => ({ results: [] }));
+      }
       const list = rows?.results || [];
       if (list.length === 0 || !list[0].audio_base64) {
         return jsonResponse({ error: 'Cached audio not found' }, 404);
       }
-      await db.prepare('UPDATE audio_cache SET last_accessed_at = ? WHERE cache_key = ?').bind(new Date().toISOString(), cacheKey).run().catch(() => {});
       const fullBase64 = list.map(r => r.audio_base64).join('');
-      const bin = atob(fullBase64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const bytes = fastBase64ToBytes(fullBase64);
+      const contentType = list[0].mime_type || 'audio/wav';
+      const rangeHeader = request.headers.get('Range');
+
+      if (rangeHeader && rangeHeader.startsWith('bytes=')) {
+        const parts = rangeHeader.replace(/^bytes=/, '').split('-');
+        const start = parts[0] ? parseInt(parts[0], 10) : 0;
+        const end = parts[1] ? Math.min(bytes.length - 1, parseInt(parts[1], 10)) : bytes.length - 1;
+        if (isNaN(start) || isNaN(end) || start > end || start >= bytes.length) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${bytes.length}`, ...CORS_HEADERS }
+          });
+        }
+        const sliced = bytes.subarray(start, end + 1);
+        return new Response(sliced, {
+          status: 206,
+          headers: {
+            'Content-Type': contentType,
+            'Content-Range': `bytes ${start}-${end}/${bytes.length}`,
+            'Content-Length': String(sliced.length),
+            'Cache-Control': 'public, max-age=604800, immutable',
+            'Accept-Ranges': 'bytes',
+            ...CORS_HEADERS
+          }
+        });
+      }
+
       return new Response(bytes, {
         status: 200,
         headers: {
-          'Content-Type': list[0].mime_type || 'audio/wav',
+          'Content-Type': contentType,
+          'Content-Length': String(bytes.length),
           'Cache-Control': 'public, max-age=604800, immutable',
           'Accept-Ranges': 'bytes',
           ...CORS_HEADERS
@@ -1088,83 +1528,165 @@ export async function onRequest(context) {
       });
     }
 
-    if (request.method === 'POST' && (path === '/api/tts/generate' || path === '/api/tts')) {
+    if (request.method === 'GET' && path === '/api/tts/warm-worker') {
+      const session = await getAuthSession(request, env);
+      if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+        return jsonResponse({ success: false, error: 'Unauthorized' }, 401);
+      }
+      const baseUrl = String(env.RENDER_AUDIO_URL || '').trim().replace(/\/+$/, '');
+      if (!baseUrl) {
+        return jsonResponse({ success: true, renderConfigured: false, ffmpegReady: false, mode: 'edge_direct' });
+      }
+      try {
+        const hRes = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(65000) });
+        const hData = await hRes.json().catch(() => ({}));
+        return jsonResponse({
+          success: hRes.ok,
+          renderConfigured: true,
+          ffmpegReady: Boolean(hData.ffmpegReady),
+          status: hData
+        });
+      } catch (err) {
+        return jsonResponse({ success: false, renderConfigured: true, ffmpegReady: false, error: err.message });
+      }
+    }
+
+    if (request.method === 'GET' && path.startsWith('/api/tts/article-status/')) {
+      const session = await getAuthSession(request, env);
+      if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+        return jsonResponse({ success: false, error: 'Unauthorized' }, 401);
+      }
+      const rawArtId = decodeURIComponent(path.slice('/api/tts/article-status/'.length)).replace(/[^a-zA-Z0-9-_]/g, '_');
+      const hiShard = getAudioDb(env, 'hi');
+      const enShard = getAudioDb(env, 'en');
+
+      const [hiRow, enRow, trHi, trEn] = await Promise.all([
+        hiShard.audioDb.prepare('SELECT size_bytes, mime_type, created_at FROM audio_cache WHERE cache_key = ?').bind(`${rawArtId}_hi_full_story`).first().catch(() => null),
+        enShard.audioDb.prepare('SELECT size_bytes, mime_type, created_at FROM audio_cache WHERE cache_key = ?').bind(`${rawArtId}_en_full_story`).first().catch(() => null),
+        db.prepare('SELECT status FROM translations WHERE cache_key = ?').bind(`${rawArtId}:hi`).first().catch(() => null),
+        db.prepare('SELECT status FROM translations WHERE cache_key = ?').bind(`${rawArtId}:en`).first().catch(() => null)
+      ]);
+
+      return jsonResponse({
+        success: true,
+        articleId: rawArtId,
+        renderConfigured: Boolean(env.RENDER_AUDIO_URL && env.RENDER_AUDIO_SECRET),
+        hi: hiRow ? {
+          cached: true,
+          sizeBytes: hiRow.size_bytes || 0,
+          mimeType: hiRow.mime_type || 'audio/wav',
+          createdAt: hiRow.created_at,
+          shard: hiShard.shard,
+          audioUrl: `/api/tts/audio/${encodeURIComponent(`${rawArtId}_hi_full_story`)}?v=${encodeURIComponent(hiRow.created_at || '')}`
+        } : { cached: false, shard: hiShard.shard },
+        en: enRow ? {
+          cached: true,
+          sizeBytes: enRow.size_bytes || 0,
+          mimeType: enRow.mime_type || 'audio/wav',
+          createdAt: enRow.created_at,
+          shard: enShard.shard,
+          audioUrl: `/api/tts/audio/${encodeURIComponent(`${rawArtId}_en_full_story`)}?v=${encodeURIComponent(enRow.created_at || '')}`
+        } : { cached: false, shard: enShard.shard },
+        translations: { hiCached: trHi?.status === 'done', enCached: trEn?.status === 'done' }
+      });
+    }
+
+    if (request.method === 'POST' && path === '/api/tts/generate-article-audio') {
+      const session = await getAuthSession(request, env);
+      if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+        return jsonResponse({ success: false, error: 'Forbidden: Editor or Admin access required.' }, session ? 403 : 401);
+      }
       const body = await request.json().catch(() => ({}));
-      const targetLang = normalizeLang(body.lang || body.langCode || 'hi');
-      if (targetLang === 'as') {
-        return jsonResponse({ error: 'Assamese voice is not supported currently.', hidden: true }, 400);
+      const articleId = String(body.articleId || body.article_id || '').trim();
+      const step = String(body.step || 'audio').toLowerCase();
+      const targetLang = normalizeLang(body.lang || 'hi');
+      const forceRegenerate = Boolean(body.forceRegenerate);
+      const overrides = (body.overrides && typeof body.overrides === 'object') ? body.overrides : {};
+
+      if (!articleId) return jsonResponse({ success: false, error: 'articleId is required.' }, 400);
+      if (!['hi', 'en'].includes(targetLang)) {
+        return jsonResponse({ success: false, error: 'Only Hindi (hi) and English (en) audio generation is enabled.' }, 400);
       }
 
-      const rawArticleId = String(body.article_id || body.articleId || 'general').replace(/[^a-zA-Z0-9-_]/g, '_');
-      const clipType = body.clip_type === 'clip_2_body' ? 'clip_2_body' : 'clip_1_intro';
-      const cacheKey = `${rawArticleId}_${targetLang}_${clipType}`;
-      const nowIso = new Date().toISOString();
+      const artRow = await db.prepare('SELECT data_json FROM articles WHERE id = ? OR slug = ?').bind(articleId, articleId).first();
+      if (!artRow) return jsonResponse({ success: false, error: 'Article not found.' }, 404);
+      const art = JSON.parse(artRow.data_json);
+      const canonicalId = String(art.id || articleId);
 
-      // Check D1 14-day audio_cache first (0 Gemini quota used)
-      const cached = await db.prepare('SELECT size_bytes, created_at FROM audio_cache WHERE cache_key = ?').bind(cacheKey).first().catch(() => null);
-      if (cached) {
-        await db.prepare('UPDATE audio_cache SET last_accessed_at = ? WHERE cache_key = ?').bind(nowIso, cacheKey).run().catch(() => {});
-        const cachedUrl = `/api/tts/audio/${encodeURIComponent(cacheKey)}`;
+      if (step === 'translate') {
+        const trResult = await translateOrGetArticleEdge(db, env, canonicalId, targetLang, overrides, forceRegenerate);
         return jsonResponse({
-          article_id: rawArticleId,
+          success: true,
+          step: 'translate',
+          articleId: canonicalId,
           lang: targetLang,
-          clip_type: clipType,
-          audio_url: cachedUrl,
-          audioUrl: cachedUrl,
-          size_bytes: cached.size_bytes || 0,
-          status: 'done',
-          isCached: true
+          isCached: trResult.isCached,
+          title: trResult.title
         });
       }
 
-      const ttsKey = env.GEMINI_TTS_API_KEY || env.GEMINI_API_KEY;
-      if (!ttsKey) {
-        return jsonResponse({ status: 'quota_exhausted', fallback: 'browser', error: 'GEMINI_TTS_API_KEY not configured' });
+      const storyContent = await translateOrGetArticleEdge(db, env, canonicalId, targetLang, overrides, false);
+      const hl = Array.isArray(storyContent.highlights) && storyContent.highlights.length > 0
+        ? storyContent.highlights.filter(Boolean).join('. ')
+        : (storyContent.summary || '');
+      const speechText = [storyContent.title, hl, storyContent.body].filter(Boolean).join('. ').trim();
+
+      try {
+        const audioRes = await synthesizeAndCacheAudioEdge({
+          env,
+          articleId: canonicalId,
+          lang: targetLang,
+          clipType: 'full_story',
+          speechText,
+          forceRegenerate
+        });
+        return jsonResponse({
+          success: true,
+          step: 'audio',
+          ...audioRes
+        });
+      } catch (ttsErr) {
+        return jsonResponse({
+          success: false,
+          step: 'audio',
+          quotaExhausted: Boolean(ttsErr.isQuota || String(ttsErr.message || '').includes('429')),
+          error: ttsErr.message || 'Audio synthesis failed'
+        }, ttsErr.isQuota ? 429 : 500);
       }
+    }
+
+    if (request.method === 'POST' && (path === '/api/tts/generate' || path === '/api/tts')) {
+      const body = await request.json().catch(() => ({}));
+      const targetLang = normalizeLang(body.lang || body.langCode || 'hi');
+      if (!['hi', 'en'].includes(targetLang)) {
+        return jsonResponse({ error: 'Audio TTS is currently enabled only for Hindi and English.', hidden: true }, 400);
+      }
+
+      const rawArticleId = String(body.article_id || body.articleId || 'general').replace(/[^a-zA-Z0-9-_]/g, '_');
+      const rawClip = body.clip_type || body.clipType || 'full_story';
+      const clipType = rawClip === 'clip_2_body' ? 'clip_2_body' : (rawClip === 'clip_1_intro' ? 'clip_1_intro' : 'full_story');
 
       let speechText = String(body.text || '').trim();
       if (!speechText) {
-        if (clipType === 'clip_1_intro') {
-          const hl = Array.isArray(body.highlights) ? body.highlights.filter(Boolean).join('. ') : '';
+        const hl = Array.isArray(body.highlights) ? body.highlights.filter(Boolean).join('. ') : '';
+        if (clipType === 'full_story') {
+          speechText = [body.title, hl, body.body].filter(Boolean).join('. ').trim();
+        } else if (clipType === 'clip_1_intro') {
           speechText = [body.title, hl].filter(Boolean).join('. ');
         } else {
-          speechText = String(body.body || '').slice(0, 4500);
+          speechText = String(body.body || '').trim();
         }
       }
 
       try {
-        const { wavBase64, mime, sizeBytes, dataUrl, model } = await callGeminiTtsEdge(speechText, ttsKey);
-        let finalAudioUrl = dataUrl;
-
-        // 14-day rolling cleanup + D1 chunk-safe cache write (all clips cached, respecting ~800KB per-row cap)
-        const cutoffIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-        await db.prepare('DELETE FROM audio_cache WHERE created_at < ?').bind(cutoffIso).run().catch(() => {});
-
-        const chunkSize = 800000;
-        let allSaved = true;
-        for (let idx = 0, offset = 0; offset < wavBase64.length; idx++, offset += chunkSize) {
-          const partKey = idx === 0 ? cacheKey : `${cacheKey}::${String(idx).padStart(3, '0')}`;
-          const partB64 = wavBase64.slice(offset, offset + chunkSize);
-          const ok = await db.prepare(
-            'INSERT INTO audio_cache (cache_key, article_id, lang, clip_type, mime_type, audio_base64, size_bytes, created_at, last_accessed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(cache_key) DO UPDATE SET audio_base64=excluded.audio_base64, size_bytes=excluded.size_bytes, last_accessed_at=excluded.last_accessed_at'
-          ).bind(partKey, rawArticleId, targetLang, clipType, mime, partB64, idx === 0 ? sizeBytes : 0, nowIso, nowIso).run().then(() => true).catch(() => false);
-          if (!ok) { allSaved = false; break; }
-        }
-        if (allSaved) {
-          finalAudioUrl = `/api/tts/audio/${encodeURIComponent(cacheKey)}`;
-        }
-
-        return jsonResponse({
-          article_id: rawArticleId,
+        const result = await synthesizeAndCacheAudioEdge({
+          env,
+          articleId: rawArticleId,
           lang: targetLang,
-          clip_type: clipType,
-          audio_url: finalAudioUrl,
-          audioUrl: finalAudioUrl,
-          size_bytes: sizeBytes,
-          model,
-          status: 'done',
-          isCached: false
+          clipType,
+          speechText
         });
+        return jsonResponse(result);
       } catch (ttsErr) {
         return jsonResponse({
           status: 'quota_exhausted',
@@ -1255,27 +1777,66 @@ export async function onRequest(context) {
       return jsonResponse((rows.results || []).map(r => JSON.parse(r.data_json)));
     }
 
-    if (path.startsWith('/api/articles/') && path.endsWith('/live-updates')) {
+    const liveUpdatesMatch = path.match(/^\/api\/articles\/([^/]+)\/live-updates(?:\/([^/]+))?$/);
+    if (liveUpdatesMatch) {
+      const artId = decodeURIComponent(liveUpdatesMatch[1]);
+      const pathUpdateId = liveUpdatesMatch[2] ? decodeURIComponent(liveUpdatesMatch[2]) : null;
+
+      if (request.method === 'GET' && !pathUpdateId) {
+        const session = await getAuthSession(request, env);
+        const isStaff = session && ['reporter', 'editor', 'admin', 'developer'].includes(session.role);
+        const row = await db.prepare('SELECT data_json, status FROM articles WHERE id = ? OR slug = ?').bind(artId, artId).first();
+        if (!row) return jsonResponse({ success: false, error: 'Article not found' }, 404);
+        const art = JSON.parse(row.data_json);
+        const isPublished = art.status === 'published' || !art.status ||
+          (art.status === 'scheduled' && art.scheduledPublishTime && new Date(art.scheduledPublishTime).getTime() <= Date.now());
+        if (!isPublished && !isStaff) {
+          return jsonResponse({ success: false, error: 'Article not found' }, 404);
+        }
+        const updates = Array.isArray(art.live_updates)
+          ? art.live_updates
+          : (Array.isArray(art.liveUpdates) ? art.liveUpdates : []);
+        return jsonResponse({
+          success: true,
+          articleId: art.id,
+          format: art.format || 'standard',
+          live_status: art.live_status || 'active',
+          live_updates: updates
+        }, 200, isStaff ? { 'Cache-Control': 'private, no-store', 'Vary': 'Authorization' } : publicCacheHeaders(request, 15, 20));
+      }
+
       const session = await getAuthSession(request, env);
-      if (!session || !['editor', 'admin', 'developer'].includes(session.role)) {
+      if (!session || !['reporter', 'editor', 'admin', 'developer'].includes(session.role)) {
         return jsonResponse({ success: false, error: 'Unauthorized' }, 401);
       }
-      const artId = decodeURIComponent(path.slice('/api/articles/'.length, -'/live-updates'.length));
+      if (request.method === 'DELETE' && !['editor', 'admin', 'developer'].includes(session.role)) {
+        return jsonResponse({ success: false, error: 'Forbidden' }, 403);
+      }
       const row = await db.prepare('SELECT data_json FROM articles WHERE id = ?').bind(artId).first();
       if (!row) return jsonResponse({ success: false, error: 'Article not found' }, 404);
       const art = JSON.parse(row.data_json);
-      const body = await request.json();
-      const updates = Array.isArray(art.liveUpdates) ? art.liveUpdates : [];
+      const body = await request.json().catch(() => ({}));
+      const updates = Array.isArray(art.live_updates)
+        ? art.live_updates
+        : (Array.isArray(art.liveUpdates) ? art.liveUpdates : []);
+
+      let newUpdate = null;
       if (request.method === 'POST') {
-        updates.unshift({ id: `lu_${Date.now()}`, ...body, timestamp: new Date().toISOString() });
+        newUpdate = { id: `lu_${Date.now()}`, ...body, timestamp: body.timestamp || new Date().toISOString() };
+        updates.unshift(newUpdate);
       } else if (request.method === 'DELETE') {
-        const filtered = updates.filter(u => u.id !== body.updateId);
+        const targetUpdateId = pathUpdateId || body.updateId;
+        const filtered = updates.filter(u => String(u.id) !== String(targetUpdateId));
+        art.live_updates = filtered;
         art.liveUpdates = filtered;
       }
-      if (request.method === 'POST') art.liveUpdates = updates;
+      if (request.method === 'POST') {
+        art.live_updates = updates;
+        art.liveUpdates = updates;
+      }
       art.updatedAt = new Date().toISOString();
       await db.prepare('UPDATE articles SET data_json = ?, updatedAt = ? WHERE id = ?').bind(JSON.stringify(art), art.updatedAt, artId).run();
-      return jsonResponse({ success: true, liveUpdates: art.liveUpdates });
+      return jsonResponse({ success: true, update: newUpdate, live_updates: art.live_updates, liveUpdates: art.live_updates });
     }
 
     if (path.startsWith('/api/articles/') && path.endsWith('/revisions')) {
@@ -1298,9 +1859,25 @@ export async function onRequest(context) {
       if (!session || !['admin', 'developer'].includes(session.role)) {
         return jsonResponse({ success: false, error: 'Forbidden' }, session ? 403 : 401);
       }
-      const cutoffIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-      const aud = await db.prepare('DELETE FROM audio_cache WHERE created_at < ?').bind(cutoffIso).run().catch(() => ({ meta: { changes: 0 } }));
-      return jsonResponse({ success: true, purgedAudioRows: aud?.meta?.changes || 0, message: 'Expired D1 audio cache purged cleanly.' });
+      let purgedAudioRows = 0;
+      for (const t of getAudioShardTargets(env)) {
+        const beforeRow = await t.db.prepare("SELECT COUNT(*) as c FROM audio_cache WHERE cache_key NOT LIKE '%::%'").first().catch(() => ({ c: 0 }));
+        const caps = getAudioDbCapBytes(t.dedicated);
+        await enforceEdgeAudioQuota(t.db, caps.maxBytes, caps.targetBytes);
+        const afterRow = await t.db.prepare("SELECT COUNT(*) as c FROM audio_cache WHERE cache_key NOT LIKE '%::%'").first().catch(() => ({ c: 0 }));
+        purgedAudioRows += Math.max(0, Number(beforeRow?.c || 0) - Number(afterRow?.c || 0));
+      }
+      return jsonResponse({
+        success: true,
+        purgedAudioRows,
+        purged: {
+          inMemoryTranslations: 0,
+          orphanedTranslations: 0,
+          orphanedRevisions: 0,
+          audioFilesPurged: purgedAudioRows
+        },
+        message: 'FIFO D1 audio quota enforcement completed across shards.'
+      });
     }
 
     if (request.method === 'GET' && (path === '/api/admin/backups' || path === '/api/admin/backup/settings')) {
@@ -1391,12 +1968,25 @@ export async function onRequest(context) {
         const artCount = await db.prepare('SELECT COUNT(*) as c FROM articles').first();
         const catCount = await db.prepare('SELECT COUNT(*) as c FROM categories').first();
         const trCount = await db.prepare('SELECT COUNT(*) as c FROM translations').first();
-        const audCount = await db.prepare('SELECT COUNT(*) as c FROM audio_cache').first().catch(() => ({ c: 0 }));
+        let audTotal = 0;
+        for (const t of getAudioShardTargets(env)) {
+          const c = await t.db.prepare('SELECT COUNT(*) as c FROM audio_cache').first().catch(() => ({ c: 0 }));
+          audTotal += (c?.c || 0);
+        }
         return jsonResponse({
           success: true,
           runtime: 'Cloudflare Pages Functions + D1',
-          bindings: { db: !!env.DB, geminiTranslate: !!env.GEMINI_API_KEY, geminiTts: !!(env.GEMINI_TTS_API_KEY || env.GEMINI_API_KEY), imgbb: !!env.IMGBB_API_KEY, brevo: !!env.BREVO_API_KEY },
-          counts: { articles: artCount?.c || 0, categories: catCount?.c || 0, translations: trCount?.c || 0, audioCache: audCount?.c || 0 }
+          bindings: {
+            db: !!env.DB,
+            dbAudioHi: !!env.DB_AUDIO_HI,
+            dbAudioEn: !!env.DB_AUDIO_EN,
+            renderAudioWorker: !!(env.RENDER_AUDIO_URL && env.RENDER_AUDIO_SECRET),
+            geminiTranslate: !!env.GEMINI_API_KEY,
+            geminiTts: !!(env.GEMINI_TTS_API_KEY || env.GEMINI_API_KEY),
+            imgbb: !!env.IMGBB_API_KEY,
+            brevo: !!env.BREVO_API_KEY
+          },
+          counts: { articles: artCount?.c || 0, categories: catCount?.c || 0, translations: trCount?.c || 0, audioCache: audTotal }
         });
       }
       if (path === '/api/developer/reset-locks') {

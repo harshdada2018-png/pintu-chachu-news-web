@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PublicSpark - End-to-End Audio System Architecture (Mermaid)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      securityLevel: 'loose',
+      themeVariables: {
+        fontFamily: 'Plus Jakarta Sans, sans-serif',
+        fontSize: '13px',
+        primaryColor: '#F0FDF4',
+        primaryBorderColor: '#16A34A',
+        primaryTextColor: '#14532D',
+        lineColor: '#334155',
+        secondaryColor: '#EFF6FF',
+        secondaryBorderColor: '#1D4ED8',
+        secondaryTextColor: '#1E3A8A',
+        tertiaryColor: '#FEF3C7',
+        tertiaryBorderColor: '#D97706',
+        tertiaryTextColor: '#78350F',
+        actorBorder: '#0E2A47',
+        actorBkg: '#EFF6FF',
+        actorTextColor: '#0F172A',
+        signalColor: '#1E293B',
+        signalTextColor: '#0F172A'
+      }
+    });
+  </script>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 10mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: #FFFFFF;
+      color: #0F172A;
+      padding: 1.25rem;
+      line-height: 1.45;
+    }
+
+    .header-banner {
+      background: #0E2A47;
+      color: #FFFFFF;
+      padding: 1.25rem 1.5rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      border-left: 6px solid #16A34A;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.85rem;
+    }
+
+    .header-title h1 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.25rem;
+    }
+
+    .header-title p {
+      font-size: 0.84rem;
+      color: #CBD5E1;
+    }
+
+    .badge-bar {
+      display: flex;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 0.28rem 0.65rem;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-green { background: #DCFCE7; color: #166534; }
+    .badge-blue { background: #DBEAFE; color: #1E40AF; }
+    .badge-amber { background: #FEF3C7; color: #92400E; }
+
+    .legend-bar {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      background: #F8FAFC;
+      border: 1px solid #CBD5E1;
+      padding: 0.7rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 1.15rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .legend-color {
+      width: 13px;
+      height: 13px;
+      border-radius: 3px;
+      border: 1.5px solid transparent;
+    }
+
+    .lc-blue { background: #DBEAFE; border-color: #1D4ED8; }
+    .lc-amber { background: #FEF3C7; border-color: #D97706; }
+    .lc-green { background: #DCFCE7; border-color: #16A34A; }
+    .lc-red { background: #FEE2E2; border-color: #DC2626; }
+
+    .diagram-card {
+      background: #FFFFFF;
+      border: 1.5px solid #CBD5E1;
+      border-radius: 8px;
+      padding: 1.1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      page-break-inside: avoid;
+    }
+
+    .diagram-heading {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #0F172A;
+      margin-bottom: 0.4rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      border-bottom: 1px solid #E2E8F0;
+      padding-bottom: 0.5rem;
+    }
+
+    .diagram-heading .tag {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #475569;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .diagram-note {
+      font-size: 0.78rem;
+      color: #475569;
+      margin-bottom: 0.6rem;
+    }
+
+    .mermaid {
+      text-align: center;
+      margin-top: 0.5rem;
+      overflow-x: auto;
+    }
+
+    .mermaid svg {
+      max-width: 100% !important;
+      height: auto !important;
+    }
+
+    .spec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+      page-break-inside: avoid;
+    }
+
+    .spec-card {
+      background: #F8FAFC;
+      border: 1px solid #CBD5E1;
+      border-radius: 6px;
+      padding: 0.85rem 1rem;
+    }
+
+    .spec-card h3 {
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: #0E2A47;
+      margin-bottom: 0.35rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .spec-card ul {
+      padding-left: 1rem;
+      font-size: 0.75rem;
+      color: #334155;
+    }
+
+    .spec-card li {
+      margin-bottom: 0.25rem;
+    }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      background: #E2E8F0;
+      padding: 0.08rem 0.28rem;
+      border-radius: 3px;
+      color: #0F172A;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header-banner">
+    <div class="header-title">
+      <h1>PublicSpark - End-to-End Audio System Architecture</h1>
+      <p>Hybrid Cloudflare Pages Edge + Multi-D1 Audio Shards (HI / EN) + Render FFmpeg 32 kbps WebM Worker + 1-by-1 Staff Generator</p>
+    </div>
+    <div class="badge-bar">
+      <span class="badge badge-green">32 kbps WebM Opus (10.89x Smaller)</span>
+      <span class="badge badge-blue">900 MB Audio Shards (HI + EN)</span>
+      <span class="badge badge-amber">0 D1 Writes on Cache Hit + FIFO</span>
+    </div>
+  </header>
+
+  <div class="legend-bar">
+    <div class="legend-item"><span class="legend-color lc-blue"></span> Frontend React Clients &amp; Staff Desks</div>
+    <div class="legend-item"><span class="legend-color lc-amber"></span> Cloudflare Edge &amp; Render FFmpeg Compression</div>
+    <div class="legend-item"><span class="legend-color lc-green"></span> Multi-D1 Persistent Shards &amp; Cache Hits</div>
+    <div class="legend-item"><span class="legend-color lc-red"></span> FIFO Eviction &amp; Quota Fallback Guards</div>
+  </div>
+
+  <!-- DIAGRAM 1: MASTER SYSTEM TOPOLOGY -->
+  <section class="diagram-card">
+    <div class="diagram-heading">
+      <span>1. Complete Audio Topology (Frontend, Edge Router, Render Worker, &amp; Multi-D1 Shards)</span>
+      <span class="tag">Subtopics A + B + C</span>
+    </div>
+    <p class="diagram-note">
+      Unified path showing public playback, staff manual 1-by-1 audio pre-generation, Render FFmpeg WebM compression, 11-minute keep-alive, and Multi-D1 sharding with automatic fallback.
+    </p>
+    <div class="mermaid">
+flowchart TD
+  subgraph FE["Frontend Browser Layer (React + cloudAudioService.js)"]
+    READER["Public Reader (Home Cards / ArticleReader / TextToSpeech)<br/>1-Call full_story + /audio/chime.wav"]
+    STAFF["Editor / Admin Desk (EditorWorkspace + AdminWorkspace)<br/>ArticleAudioGeneratorPanel.jsx"]
+  end
+
+  subgraph EDGE["Cloudflare Pages Functions (functions/api/[[path]].js)"]
+    PUB_EP["POST /api/tts/generate<br/>GET /api/tts/audio/:key (HTTP 206 Range)"]
+    STAFF_EP["GET /api/tts/warm-worker<br/>GET /api/tts/article-status/:id<br/>POST /api/tts/generate-article-audio"]
+    ROUTER["getAudioDb(env, lang) Shard Router"]
+    FIFO["enforceEdgeAudioQuota(audioDb)<br/>ORDER BY created_at ASC (FIFO)"]
+  end
+
+  subgraph RENDER["Render Docker Microservice (render-audio-worker/server.js)"]
+    PING["11-Min External Ping (~131 req/day)<br/>GET /health -> ffmpegReady + secretConfigured"]
+    WORKER["POST /compress-tts (x-render-secret auth)<br/>3200-char trim -> Gemini TTS -> FFmpeg libopus 32k mono WebM"]
+  end
+
+  subgraph D1["Cloudflare D1 Multi-Database Storage"]
+    DB_MAIN[("Master DB (500 MB)<br/>articles, translations, kv_store<br/>Fallback audio_cache (250 MB cap)")]
+    DB_HI[("DB_AUDIO_HI (500 MB Shard)<br/>audio_cache (.webm 800KB chunks)<br/>450 MB Max / 400 MB Target")]
+    DB_EN[("DB_AUDIO_EN (500 MB Shard)<br/>audio_cache (.webm 800KB chunks)<br/>450 MB Max / 400 MB Target")]
+  end
+
+  subgraph FALLBACK["Quota &amp; Offline Resilience"]
+    LOCAL["Local Node (server/server.js)<br/>FFmpeg _v3.webm in /uploads/"]
+    EDGE_WAV["Edge Direct callGeminiTtsEdge (WAV)"]
+    SPEECH["Browser Web Speech API (window.speechSynthesis)"]
+  end
+
+  READER --> PUB_EP
+  STAFF --> STAFF_EP
+  PUB_EP --> ROUTER
+  STAFF_EP -->|"Step 1: Warm"| PING
+  STAFF_EP -->|"Translate + Cache Text"| DB_MAIN
+  STAFF_EP -->|"Synthesize &amp; Compress"| WORKER
+  PUB_EP -->|"Cache Miss Synthesis"| WORKER
+
+  ROUTER -->|"lang == hi"| DB_HI
+  ROUTER -->|"lang == en"| DB_EN
+  ROUTER -->|"No shard binding"| DB_MAIN
+
+  WORKER -->|"1-Time INSERT (800KB chunks)"| ROUTER
+  ROUTER -->|"After INSERT check size"| FIFO
+  FIFO -->|"If total > 450 MB: delete oldest"| DB_HI
+  FIFO -->|"If total > 450 MB: delete oldest"| DB_EN
+
+  WORKER -.->|"Render off / no secret"| EDGE_WAV
+  WORKER -.->|"429 Quota Exhausted"| SPEECH
+  STAFF -.->|"Local Dev Mode"| LOCAL
+    </div>
+  </section>
+
+  <!-- DIAGRAM 2: SEQUENTIAL 1-BY-1 EDITOR / ADMIN PIPELINE -->
+  <section class="diagram-card">
+    <div class="diagram-heading">
+      <span>2. Editor &amp; Admin 1-by-1 Sequential Audio Pipeline</span>
+      <span class="tag">runSequentialArticleAudioPipeline()</span>
+    </div>
+    <p class="diagram-note">
+      Triggered manually via [ Generate Audio (HI + EN) ] or [ Force Regenerate Both ]. Runs strictly one step at a time with 404 draft sync recovery and instant quota circuit-breaking.
+    </p>
+    <div class="mermaid">
+sequenceDiagram
+  autonumber
+  actor Staff as Editor / Admin UI
+  participant UI as ArticleAudioGeneratorPanel
+  participant Edge as Edge API ([[path]].js)
+  participant Render as Render FFmpeg Worker
+  participant DBMain as Master D1 (DB)
+  participant DBHI as Shard DB_AUDIO_HI
+  participant DBEN as Shard DB_AUDIO_EN
+
+  Staff->>UI: Click Generate Audio (HI + EN)
+  UI->>Edge: Step 1 - GET /api/tts/warm-worker
+  Edge->>Render: GET /health (65s timeout)
+  Render-->>Edge: ok:true, ffmpegReady:true, secretConfigured:true
+  Edge-->>UI: Worker Awake Badge
+
+  UI->>Edge: Step 2 - POST /api/tts/generate-article-audio (step:translate, lang:hi, overrides)
+  alt Article is unsaved pending draft (404)
+    Edge-->>UI: 404 Article not found
+    UI->>Edge: POST /api/articles/update (status: draft)
+    UI->>Edge: Retry step:translate (lang:hi)
+  end
+  Edge->>DBMain: Read/Translate + INSERT OR UPDATE translations (article_id:hi)
+  Edge-->>UI: HI Text Cached
+
+  UI->>Edge: Step 3 - POST /api/tts/generate-article-audio (step:audio, lang:hi)
+  Edge->>Render: POST /compress-tts (x-render-secret, clean HI text)
+  Render-->>Edge: 32 kbps Mono WebM Base64 (~10.89x smaller)
+  Edge->>DBHI: 1-Time Chunked INSERT audio_cache + Check 450 MB FIFO Quota
+  Edge-->>UI: HI Ready (/api/tts/audio/..._hi_full_story)
+
+  UI->>Edge: Step 4 - POST /api/tts/generate-article-audio (step:translate, lang:en, overrides)
+  Edge->>DBMain: Translate + Cache in translations (article_id:en)
+  Edge-->>UI: EN Text Cached
+
+  UI->>Edge: Step 5 - POST /api/tts/generate-article-audio (step:audio, lang:en)
+  Edge->>Render: POST /compress-tts (x-render-secret, clean EN text)
+  Render-->>Edge: 32 kbps Mono WebM Base64
+  Edge->>DBEN: 1-Time Chunked INSERT audio_cache + Check 450 MB FIFO Quota
+  Edge-->>UI: EN Ready (/api/tts/audio/..._en_full_story)
+
+  UI->>Edge: GET /api/tts/article-status/:articleId
+  Edge-->>UI: HI + EN READY IN D1 + Dynamic audioUrl (Preview Enabled)
+    </div>
+  </section>
+
+  <!-- DIAGRAM 3: CACHE HIT, FIFO EVICTION & READER PLAYBACK -->
+  <section class="diagram-card">
+    <div class="diagram-heading">
+      <span>3. Zero-Write Cache Hit, CPU-Safe Streaming &amp; Pure FIFO Retention</span>
+      <span class="tag">Tasks 44.5 B + 44.6 B</span>
+    </div>
+    <p class="diagram-note">
+      Reader playback avoids D1 UPDATE writes completely, streams via native C++ Base64 decoding (&lt; 3 ms CPU), and deletes oldest cached audio only when a shard exceeds 450 MB.
+    </p>
+    <div class="mermaid">
+flowchart LR
+  PLAY["Reader Clicks Listen<br/>Play /audio/chime.wav immediately"] --> CHECK["POST /api/tts/generate<br/>Check Memory -> SessionStorage -> D1 Shard"]
+  CHECK -->|"Audio Exists in Shard"| HIT["ZERO D1 WRITES (No UPDATE)<br/>Return /api/tts/audio/:key?v=created_at"]
+  CHECK -->|"Not in Shard (Miss)"| GEN["Render FFmpeg WebM (32 kbps)<br/>or Edge Gemini WAV fallback"]
+  GEN -->|"800 KB chunks"| SAVE["1-Time INSERT into DB_AUDIO_HI or DB_AUDIO_EN"]
+  SAVE --> CAP{"Shard Size &gt; 450 MB<br/>(or 250 MB if shared DB)?"}
+  CAP -->|"No (Normal)"| KEEP["Retain All Audio Indefinitely"]
+  CAP -->|"Yes (Cap Hit)"| EVICT["DELETE Oldest Rows First<br/>ORDER BY created_at ASC until &lt;= 400 MB"]
+  HIT --> STREAM["GET /api/tts/audio/:key<br/>Uint8Array.fromBase64 (&lt;3ms CPU)<br/>HTTP 206 Byte-Range + 7-Day Immutable Cache"]
+  GEN -->|"Gemini 429 Quota Error"| BROWSER["status: quota_exhausted<br/>Web Speech API speaks article"]
+    </div>
+  </section>
+
+  <!-- SUMMARY SPEC CARDS -->
+  <section class="spec-grid">
+    <div class="spec-card">
+      <h3>Render Audio Worker</h3>
+      <ul>
+        <li>Path: <code>render-audio-worker/server.js</code></li>
+        <li>Codec: FFmpeg <code>libopus</code> mono <code>32 kbps</code> WebM</li>
+        <li>Measured compression: <code>144 KB -&gt; 13.2 KB (10.89x)</code></li>
+        <li>Auth: Timing-safe <code>x-render-secret</code> header</li>
+        <li>Keep-Alive: <code>GET /health</code> every 11 min (~131 req/day)</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h3>Multi-D1 Shard Capacity</h3>
+      <ul>
+        <li><code>DB_AUDIO_HI</code>: 500 MB D1 (FIFO cap <code>450 MB</code> -&gt; <code>400 MB</code>)</li>
+        <li><code>DB_AUDIO_EN</code>: 500 MB D1 (FIFO cap <code>450 MB</code> -&gt; <code>400 MB</code>)</li>
+        <li>Combined Audio Capacity: <code>900 MB</code> (~3,000+ min WebM)</li>
+        <li>Fallback: Master <code>env.DB</code> (<code>250 MB</code> audio cap)</li>
+        <li>Cache Hits: <code>0</code> D1 writes (no <code>last_accessed_at</code> updates)</li>
+      </ul>
+    </div>
+    <div class="spec-card">
+      <h3>Security &amp; Purge Guards</h3>
+      <ul>
+        <li>Staff Endpoints: <code>editor | admin | developer</code> Bearer token</li>
+        <li>CPU Budget Guard: Native Base64 decode &lt; <code>3 ms</code> (10 ms cap)</li>
+        <li>Cascade Cleanup: Article edit/delete clears all shards</li>
+        <li><code>POST /api/storage/purge</code>: Pure FIFO quota trim across shards</li>
+        <li>Local Parity: <code>server.js</code> writes <code>_v3.webm</code> to <code>/uploads/</code></li>
+      </ul>
+    </div>
+  </section>
+
+</body>
+</html>
+

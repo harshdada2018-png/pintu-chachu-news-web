@@ -228,8 +228,9 @@ export function getSlotDimensionGuard(slotKey, isMobile = false) {
 const STORAGE_KEY = 'ps_monetization_settings_v1';
 const EVENT_NAME = 'ps-monetization-changed';
 
-// In-memory cache for active ad decisions from server
+// In-memory cache & in-flight deduplication map for active ad decisions from server
 let activeAdsCache = new Map();
+const inFlightAdsRequests = new Map();
 
 /**
  * Get current settings from memory/localStorage, with fallback to default
@@ -380,70 +381,80 @@ export async function getActiveAdsServer({ category = '', articleId = '' } = {})
   const cacheKey = `${category || ''}_${articleId || ''}`;
   const cached = activeAdsCache.get(cacheKey);
   const now = Date.now();
-  if (cached && (now - cached.timestamp < 3000)) {
+  if (cached && (now - cached.timestamp < 15000)) {
     return cached.data;
   }
 
-  try {
-    const params = new URLSearchParams();
-    if (category) params.set('category', category);
-    if (articleId) params.set('articleId', articleId);
-    const qs = params.toString();
-    const url = `/api/ads/active${qs ? `?${qs}` : ''}`;
-
-    const res = await fetch(url);
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success && data.slots) {
-        activeAdsCache.set(cacheKey, { timestamp: now, data });
-        return data;
-      }
-    }
-  } catch (err) {
-    console.warn('[MonetizationService] Active ads fetch failed, using local evaluator fallback:', err);
+  if (inFlightAdsRequests.has(cacheKey)) {
+    return inFlightAdsRequests.get(cacheKey);
   }
 
-  // Resilient fallback: evaluate locally if network or server proxy is temporarily down
-  const localConfig = getAdSettings();
-  const fallbackSlots = {};
-  Object.keys(DEFAULT_ADS_CONFIG.slots).forEach(slotKey => {
-    const slot = localConfig.slots?.[slotKey];
-    const ev = evaluateAdSlot(slot, { category, articleId });
-    if (!ev.shouldRender) {
-      fallbackSlots[slotKey] = { action: 'none', reason: ev.reason };
-    } else if (ev.effectiveType === 'sponsor') {
-      fallbackSlots[slotKey] = {
-        action: slot.sponsorBannerUrl ? 'sponsor' : 'placeholder',
-        type: 'sponsor',
-        bannerUrl: slot.sponsorBannerUrl || '',
-        targetUrl: slot.sponsorTargetUrl || '#',
-        sponsorName: slot.sponsorName || 'Featured Partner',
-        desktopDimensions: slot.desktopDimensions,
-        mobileDimensions: slot.mobileDimensions,
-        reason: 'local_fallback_active'
-      };
-    } else if (ev.effectiveType === 'adsense') {
-      fallbackSlots[slotKey] = {
-        action: (localConfig.adSensePublisherId && slot.adSlotId) ? 'adsense' : 'placeholder',
-        type: 'adsense',
-        publisherId: localConfig.adSensePublisherId,
-        adSlotId: slot.adSlotId,
-        desktopDimensions: slot.desktopDimensions,
-        mobileDimensions: slot.mobileDimensions,
-        reason: 'local_fallback_adsense'
-      };
-    } else {
-      fallbackSlots[slotKey] = { action: 'none', reason: 'unknown' };
+  const requestPromise = (async () => {
+    try {
+      const params = new URLSearchParams();
+      if (category) params.set('category', category);
+      if (articleId) params.set('articleId', articleId);
+      const qs = params.toString();
+      const url = `/api/ads/active${qs ? `?${qs}` : ''}`;
+
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.slots) {
+          activeAdsCache.set(cacheKey, { timestamp: Date.now(), data });
+          return data;
+        }
+      }
+    } catch (err) {
+      console.warn('[MonetizationService] Active ads fetch failed, using local evaluator fallback:', err);
     }
+
+    // Resilient fallback: evaluate locally if network or server proxy is temporarily down
+    const localConfig = getAdSettings();
+    const fallbackSlots = {};
+    Object.keys(DEFAULT_ADS_CONFIG.slots).forEach(slotKey => {
+      const slot = localConfig.slots?.[slotKey];
+      const ev = evaluateAdSlot(slot, { category, articleId });
+      if (!ev.shouldRender) {
+        fallbackSlots[slotKey] = { action: 'none', reason: ev.reason };
+      } else if (ev.effectiveType === 'sponsor') {
+        fallbackSlots[slotKey] = {
+          action: slot.sponsorBannerUrl ? 'sponsor' : 'placeholder',
+          type: 'sponsor',
+          bannerUrl: slot.sponsorBannerUrl || '',
+          targetUrl: slot.sponsorTargetUrl || '#',
+          sponsorName: slot.sponsorName || 'Featured Partner',
+          desktopDimensions: slot.desktopDimensions,
+          mobileDimensions: slot.mobileDimensions,
+          reason: 'local_fallback_active'
+        };
+      } else if (ev.effectiveType === 'adsense') {
+        fallbackSlots[slotKey] = {
+          action: (localConfig.adSensePublisherId && slot.adSlotId) ? 'adsense' : 'placeholder',
+          type: 'adsense',
+          publisherId: localConfig.adSensePublisherId,
+          adSlotId: slot.adSlotId,
+          desktopDimensions: slot.desktopDimensions,
+          mobileDimensions: slot.mobileDimensions,
+          reason: 'local_fallback_adsense'
+        };
+      } else {
+        fallbackSlots[slotKey] = { action: 'none', reason: 'unknown' };
+      }
+    });
+
+    return {
+      success: true,
+      serverTime: new Date().toISOString(),
+      context: { category, articleId },
+      slots: fallbackSlots
+    };
+  })().finally(() => {
+    inFlightAdsRequests.delete(cacheKey);
   });
 
-  const fallbackData = {
-    success: true,
-    serverTime: new Date().toISOString(),
-    context: { category, articleId },
-    slots: fallbackSlots
-  };
-  return fallbackData;
+  inFlightAdsRequests.set(cacheKey, requestPromise);
+  return requestPromise;
 }
 
 /**
@@ -461,6 +472,7 @@ export function saveAdSettingsLocal(newConfig) {
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
     activeAdsCache.clear();
+    inFlightAdsRequests.clear();
     window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: merged }));
     return merged;
   } catch (err) {

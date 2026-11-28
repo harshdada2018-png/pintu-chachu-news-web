@@ -4,6 +4,7 @@ import TextToSpeech from './TextToSpeech';
 import VideoEmbedPlayer from './VideoEmbedPlayer';
 import MarkdownRenderer from '../../utils/markdownRenderer';
 import PartnerUnit from '../common/PartnerUnit';
+import ArticleLink from '../common/ArticleLink';
 import { startViewSession, sendHeartbeat, endViewSession, toggleArticleLike, fetchArticleLikes } from '../../services/analyticsService';
 import { translateArticle, SUPPORTED_LANGUAGES } from '../../services/translationService';
 import { stopAudioSpeech, clearArticleAudioCache } from '../../services/speechEngine';
@@ -255,15 +256,19 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
   };
 
   const handleBookmarkToggle = () => {
-    if (!article || !article.id) return;
+    if (!article || article.id === undefined || article.id === null || article.id === '') return;
     const targetArticle = activeArticle || article;
     const res = toggleArticleOffline(targetArticle);
     setIsBookmarked(res.isSaved);
     if (onShowToast) {
-      onShowToast(res.isSaved 
-        ? `${t('saved', currentLanguage)}: ${t('savedBookmarks', currentLanguage)} (Offline Ready)` 
-        : t('remove', currentLanguage)
-      );
+      if (res.error && !res.isSaved) {
+        onShowToast(`Bookmark save failed: ${res.error}`);
+      } else {
+        onShowToast(res.isSaved
+          ? `${t('saved', currentLanguage)}: ${t('savedBookmarks', currentLanguage)} (Offline Ready)`
+          : t('remove', currentLanguage)
+        );
+      }
     }
   };
 
@@ -495,6 +500,7 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
           </button>
 
           <button
+            type="button"
             onClick={handleBookmarkToggle}
             className="btn"
             style={{ 
@@ -1421,7 +1427,17 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
                       WebkitLineClamp: 2,
                       WebkitBoxOrient: 'vertical'
                     }}>
-                      {story.title}
+                      <ArticleLink
+                        article={story}
+                        onSelect={(s) => {
+                          if (onSelectArticle) {
+                            onSelectArticle(s);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }
+                        }}
+                      >
+                        {story.title}
+                      </ArticleLink>
                     </h4>
                   </div>
 
@@ -1524,6 +1540,7 @@ export default function ArticleReader({ article, articles = [], onBack, onSelect
             <Share2 size={15} /> {t('share', currentLanguage)}
           </button>
           <button
+            type="button"
             onClick={handleBookmarkToggle}
             className="btn"
             style={{

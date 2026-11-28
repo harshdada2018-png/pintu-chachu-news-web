@@ -11,13 +11,14 @@ import {
   getTwoStagePlaybackRate 
 } from '../../services/geminiAudioEngine';
 import { 
-  speakTextWithNaturalVoice, 
+  speakWithBrowserSpeechOnly, 
+  setFallbackPlaybackRate,
+  setAudioPlaybackRate,
+  isAudioSupportedLanguage,
   pauseAudioSpeech, 
   resumeAudioSpeech, 
-  stopAudioSpeech, 
-  hasBrowserVoiceForLanguage 
+  stopAudioSpeech 
 } from '../../services/speechEngine';
-
 const AVAILABLE_SPEEDS = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
 function formatTime(seconds) {
@@ -62,6 +63,16 @@ export default function TextToSpeech({
   const handleToggleSpeech = async (e) => {
     if (e) e.stopPropagation();
 
+    if (isLoading) {
+      stopTwoStageAudio();
+      stopAudioSpeech();
+      setIsPlaying(false);
+      setIsLoading(false);
+      setCurrentTime(0);
+      setClipStatus('idle');
+      return;
+    }
+
     if (isPlaying) {
       if (isUsingBrowserFallback.current) {
         pauseAudioSpeech();
@@ -69,14 +80,6 @@ export default function TextToSpeech({
         pauseTwoStageAudio();
       }
       setIsPlaying(false);
-      return;
-    }
-
-    if (isLoading) {
-      stopTwoStageAudio();
-      stopAudioSpeech();
-      setIsPlaying(false);
-      setIsLoading(false);
       return;
     }
 
@@ -106,10 +109,10 @@ export default function TextToSpeech({
       isUsingBrowserFallback.current = true;
       setClipStatus('browser');
 
-      speakTextWithNaturalVoice({
+      speakWithBrowserSpeechOnly({
         text: textToSpeak,
         langCode: currentLanguage,
-        articleId,
+        rate: currentSpeed,
         onStart: () => setIsLoading(true),
         onPlay: () => {
           setIsLoading(false);
@@ -148,6 +151,9 @@ export default function TextToSpeech({
       onClipChange: (stage) => {
         setClipStatus(stage);
       },
+      onClipLoading: (loading) => {
+        setIsLoading(Boolean(loading));
+      },
       onTimeUpdate: (cur, dur, stage) => {
         setCurrentTime(cur);
         if (dur > 0) setDuration(dur);
@@ -161,8 +167,8 @@ export default function TextToSpeech({
       onError: () => {
         triggerBrowserFallback(fullArticleText);
       },
-      onFallbackToBrowser: (stage) => {
-        triggerBrowserFallback(textToRead);
+      onFallbackToBrowser: () => {
+        triggerBrowserFallback(fullArticleText);
       }
     });
 
@@ -198,12 +204,14 @@ export default function TextToSpeech({
     const nextSpeed = AVAILABLE_SPEEDS[nextIndex];
     setCurrentSpeed(nextSpeed);
     setTwoStagePlaybackRate(nextSpeed);
+    setAudioPlaybackRate(nextSpeed);
+    setFallbackPlaybackRate(nextSpeed);
   };
 
   const isExpanded = isPlaying || isLoading || currentTime > 0;
 
-  // Strict Rule: Hide Listen button completely in Assamese ('as')
-  if (currentLanguage === 'as') {
+  // Restrict audio feature strictly to Hindi ('hi') and English ('en')
+  if (!isAudioSupportedLanguage(currentLanguage)) {
     return null;
   }
 
@@ -230,61 +238,63 @@ export default function TextToSpeech({
 
       {/* Collapsed State Label */}
       {!isExpanded ? (
-        <div
+        <button
+          type="button"
           onClick={handleToggleSpeech}
-          style={{ fontSize: '0.875rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-main)', whiteSpace: 'nowrap', cursor: 'pointer' }}
+          className="audio-pill-label-btn"
+          aria-label={t('listenToStory', currentLanguage)}
         >
           <span>{t('listenToStory', currentLanguage)}</span>
           <Volume2 size={15} color="var(--accent-crimson)" />
-        </div>
+        </button>
       ) : (
         /* Rollout Expanded Interactive Audio Timeline Bar */
         <div className="audio-player-content" style={{ flex: 1, gap: '0.85rem' }} onClick={(e) => e.stopPropagation()}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1, minWidth: '180px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-main)' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Volume2 size={14} color="var(--accent-crimson)" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-main)', gap: '0.5rem' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <Volume2 size={14} color="var(--accent-crimson)" style={{ flexShrink: 0 }} />
                 {isLoading ? (
                   t('generatingVoice', currentLanguage)
                 ) : clipStatus === 'chime' ? (
                   <span style={{ color: 'var(--accent-crimson)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                     <Bell size={12} /> {t('upNextBody', currentLanguage)}
                   </span>
-                ) : clipStatus === 'clip_1' ? (
+                ) : clipStatus === 'full_story' ? (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                    <Sparkles size={12} color="var(--accent-crimson)" /> {t('part1Audio', currentLanguage)}
+                    <Sparkles size={12} color="var(--accent-crimson)" /> {t('playingAudio', currentLanguage)}
                   </span>
-                ) : clipStatus === 'clip_2' ? (
-                  t('part2Audio', currentLanguage)
                 ) : isPlaying ? (
                   t('playingAudio', currentLanguage)
                 ) : (
                   t('audioPaused', currentLanguage)
                 )}
               </span>
-              <span style={{ color: 'var(--text-subtle)', fontFamily: 'monospace' }}>
-                {formatTime(currentTime)} / {formatTime(duration)}
+              <span style={{ color: 'var(--text-subtle)', fontFamily: 'monospace', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                {formatTime(currentTime)} / {duration > 0 ? formatTime(duration) : '--:--'}
               </span>
             </div>
 
             {/* Interactive Progress Bar Scrubber */}
             <input 
               type="range"
+              className="audio-scrubber-range"
               min="0"
-              max={duration || 100}
+              max={duration > 0 ? duration : 1}
               step="0.1"
               value={currentTime}
+              disabled={isUsingBrowserFallback.current}
               onChange={handleSeek}
               onClick={(e) => e.stopPropagation()}
               style={{
                 width: '100%',
-                height: '5px',
-                borderRadius: '3px',
+                minHeight: '28px',
+                padding: '10px 0',
                 accentColor: 'var(--accent-crimson)',
-                cursor: 'pointer',
-                background: 'var(--border-medium)'
+                cursor: isUsingBrowserFallback.current ? 'default' : 'pointer',
+                background: 'transparent'
               }}
-              title="Seek playback"
+              title={isUsingBrowserFallback.current ? 'Browser speech progress' : 'Seek playback'}
             />
           </div>
 

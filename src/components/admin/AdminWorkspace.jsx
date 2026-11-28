@@ -5,9 +5,10 @@ import {
   Radio, Search, Flame, Sparkles, X, RefreshCw, RotateCcw, Check, ExternalLink, ShieldAlert,
   Type, Sliders, Globe, Languages, MapPin, Palette, Monitor, Smartphone, BarChart3,
   Clock, ShieldCheck, History, Image as ImageIcon, FileText, Scale,
-  Terminal
+  Terminal, Volume2
 } from 'lucide-react';
 import ArticleRevisionModal from './ArticleRevisionModal';
+import ArticleAudioGeneratorPanel from '../shared/ArticleAudioGeneratorPanel';
 import MediaLibraryDesk from './MediaLibraryDesk';
 import LiveUpdatesModal from './LiveUpdatesModal';
 import GrievanceDesk from './GrievanceDesk';
@@ -1015,6 +1016,16 @@ function StoryEditorModal({ article, categories, onClose, onSave, onOpenRevision
             />
           </div>
 
+          {/* Task 44.6 Subtopic C: Inline Sequential Audio Generator inside Story Editor */}
+          {article?.id && !isReporter && (
+            <div style={{ marginTop: '0.5rem' }}>
+              <ArticleAudioGeneratorPanel
+                article={{ ...article, ...formData, id: article.id }}
+                compact
+              />
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem', borderTop: '1px solid var(--border-light)', paddingTop: '1rem' }}>
             <button type="button" onClick={onClose} className="btn btn-outline" style={{ padding: '0.6rem 1.25rem' }}>
               Cancel
@@ -1184,6 +1195,10 @@ export default function AdminWorkspace({
   // Live Blog Micro-Updates Desk Modal State (Task 23 Subtopic B)
   const [isLiveUpdatesModalOpen, setIsLiveUpdatesModalOpen] = useState(false);
   const [liveUpdatesModalArticle, setLiveUpdatesModalArticle] = useState(null);
+
+  // Manual Article Audio Generator Modal State (Task 44.6 Subtopic C)
+  const [isAudioModalOpen, setIsAudioModalOpen] = useState(false);
+  const [audioModalArticle, setAudioModalArticle] = useState(null);
 
   const [localSocialLinks, setLocalSocialLinks] = useState(() => {
     return socialLinks || {
@@ -1597,6 +1612,62 @@ export default function AdminWorkspace({
             setArticles(prev => prev.map(a => a.id === liveUpdatesModalArticle.id ? { ...a, live_updates: newUpdates } : a));
           }}
         />
+      )}
+
+      {/* Manual 1-by-1 Article Audio Generator Modal (Task 44.6 Subtopic C) */}
+      {isAudioModalOpen && audioModalArticle && (
+        <div
+          className="admin-modal-overlay"
+          style={{ zIndex: 10020 }}
+          onClick={() => { setIsAudioModalOpen(false); setAudioModalArticle(null); }}
+        >
+          <div
+            className="admin-modal-dialog"
+            style={{ maxWidth: '680px', width: '95%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '0.85rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.65rem' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: '800', color: '#0E2A47', textTransform: 'uppercase' }}>
+                  Sequential Audio Generator
+                </div>
+                <h3 style={{ margin: '0.15rem 0 0 0', fontSize: '1rem', fontWeight: '900', color: 'var(--text-main)', overflowWrap: 'anywhere' }}>
+                  {audioModalArticle.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setIsAudioModalOpen(false); setAudioModalArticle(null); }}
+                aria-label="Close audio generator modal"
+                style={{
+                  minWidth: '36px',
+                  minHeight: '36px',
+                  background: 'none',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: 'var(--text-subtle)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <ArticleAudioGeneratorPanel
+              article={audioModalArticle}
+              compact
+              onAudioGenerated={(res) => {
+                if (onShowToast && res?.success) {
+                  onShowToast(`HI & EN WebM audio generated & cached in D1 shards for "${audioModalArticle.title}".`);
+                }
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {/* Admin Masthead Header */}
@@ -2324,6 +2395,34 @@ export default function AdminWorkspace({
                               >
                                 <Edit3 size={14} /> Edit Story
                               </button>
+
+                              {/* Manual Generate Audio (HI + EN) Button (Task 44.6 Subtopic C) */}
+                              {!isReporter && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAudioModalArticle(art);
+                                    setIsAudioModalOpen(true);
+                                  }}
+                                  className="btn btn-outline"
+                                  style={{
+                                    minHeight: '36px',
+                                    padding: '0.4rem 0.75rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: '800',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    borderColor: '#0E2A47',
+                                    color: '#0E2A47',
+                                    background: '#F8FAFC'
+                                  }}
+                                  title="Generate Hindi & English WebM Audio (1-by-1)"
+                                >
+                                  <Volume2 size={14} /> Audio (HI+EN)
+                                </button>
+                              )}
 
                               {/* Revisions & Rollback Button (Task 21) */}
                               <button

@@ -3,6 +3,7 @@ import { ArrowRight, Clock, Volume2, Pause, Play, Radio, Newspaper, BookOpen, Ch
 import { t, translateCategoryName } from '../../services/uiTranslations';
 import { calculateReadingTime } from '../../utils/readingTime';
 import { formatPublishedTime } from '../../utils/dateFormatter';
+import ArticleLink from '../common/ArticleLink';
 
 /**
  * PublicSpark Newsroom Library — Dynamic Category Shelves Engine (Task 39 Subtopic B)
@@ -200,7 +201,7 @@ export default function CategoryShelvesSection({
                   </div>
 
                   <h4 className="library-single-title">
-                    {leadStory.title}
+                    <ArticleLink article={leadStory} onSelect={onSelectArticle}>{leadStory.title}</ArticleLink>
                   </h4>
 
                   {leadStory.summary && (
@@ -252,7 +253,9 @@ export default function CategoryShelvesSection({
                   </div>
                   <div className="library-split-lead-body">
                     <span className="story-category-tag">{shelfName}</span>
-                    <h4 className="library-split-lead-title">{leadStory.title}</h4>
+                    <h4 className="library-split-lead-title">
+                      <ArticleLink article={leadStory} onSelect={onSelectArticle}>{leadStory.title}</ArticleLink>
+                    </h4>
                     {leadStory.summary && (
                       <p className="library-split-lead-summary">{leadStory.summary}</p>
                     )}
@@ -293,7 +296,9 @@ export default function CategoryShelvesSection({
                       </div>
                       <div className="library-side-content">
                         <span className="story-category-tag">{shelfName}</span>
-                        <h5 className="library-side-title">{art.title}</h5>
+                        <h5 className="library-side-title">
+                          <ArticleLink article={art} onSelect={onSelectArticle}>{art.title}</ArticleLink>
+                        </h5>
                         <div className="story-meta" style={{ fontSize: '0.7rem' }}>
                           <span>{art.author?.name || 'PublicSpark Desk'}</span>
                           <span>•</span>
@@ -351,7 +356,9 @@ export default function CategoryShelvesSection({
                           </span>
                         )}
                       </div>
-                      <h4 className="story-card-title">{art.title}</h4>
+                      <h4 className="story-card-title">
+                        <ArticleLink article={art} onSelect={onSelectArticle}>{art.title}</ArticleLink>
+                      </h4>
                       <div className="story-meta" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginTop: 'auto' }}>
                         <span>{art.author?.name || 'Staff Reporter'}</span>
                         <span>•</span>

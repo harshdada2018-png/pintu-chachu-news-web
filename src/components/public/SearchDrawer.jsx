@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X, Clock, ArrowRight, Newspaper, Flame, Tag, Check } from 'lucide-react';
 import { t, translateCategoryName } from '../../services/uiTranslations';
 import { calculateReadingTime } from '../../utils/readingTime';
+import ArticleLink from '../common/ArticleLink';
 
 /**
  * PublicSpark Newsroom — Left-Side Animated Search Drawer (Task 39 Subtopic A)
@@ -254,7 +255,7 @@ export default function SearchDrawer({
                       )}
                     </div>
                     <h3 className="search-drawer-result-headline">
-                      {art.title}
+                      <ArticleLink article={art} onSelect={handleArticleClick}>{art.title}</ArticleLink>
                     </h3>
                     <div className="search-drawer-result-meta">
                       <span>{art.author?.name || 'PublicSpark Desk'}</span>

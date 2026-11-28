@@ -329,6 +329,16 @@ export default function StorageSettings() {
   useEffect(() => {
     fetchBackups();
     fetchStorageStats();
+
+    const syncClientStats = () => {
+      setClientStats(getClientStorageStats());
+    };
+    window.addEventListener('ps_offline_bookmarks_changed', syncClientStats);
+    window.addEventListener('storage', syncClientStats);
+    return () => {
+      window.removeEventListener('ps_offline_bookmarks_changed', syncClientStats);
+      window.removeEventListener('storage', syncClientStats);
+    };
   }, []);
 
   const handlePurgeClientCache = () => {

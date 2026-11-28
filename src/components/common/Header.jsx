@@ -51,15 +51,44 @@ export default function Header({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSticky, setIsSticky] = useState(false);
 
-  // Sticky header on scroll detection (triggers as soon as masthead-top scrolls away)
+  // GPU-friendly rAF sticky header detection with hysteresis (zero layout bounce/jitter)
   useEffect(() => {
-    const handleScroll = () => {
-      setIsSticky(window.scrollY > 45);
+    let rafId = null;
+    const syncSticky = () => {
+      rafId = null;
+      const y = window.scrollY;
+      setIsSticky((prev) => {
+        if (!prev && y >= 145) return true;
+        if (prev && y <= 90) return false;
+        return prev;
+      });
     };
-    handleScroll(); // Execute once on mount so page refreshes while scrolled stay sticky
+    const handleScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(syncSticky);
+    };
+    syncSticky();
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+    };
   }, []);
+
+  // Lock background scroll & close full-screen All Categories drawer on Escape key
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setIsMobileMenuOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobileMenuOpen]);
 
   const handleNextTicker = useCallback(() => {
     setIsFading(true);
@@ -343,126 +372,156 @@ export default function Header({
         </div>
       </div>
 
-      {/* Classic Newspaper Main Masthead (Desktop Only - Fixed at top: 0 when scrolled like BBC) */}
-      <div 
-        className="masthead-main-wrapper hide-on-mobile"
-        style={{ minHeight: isSticky ? '118px' : 'auto', transition: 'min-height 0.25s cubic-bezier(0.16, 1, 0.3, 1)' }}
-      >
-        <div 
-          className={`masthead-main ${isSticky ? 'is-sticky' : ''}`}
-        >
-          <div 
-            className="container" 
-            style={{ 
-              position: 'relative', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center', 
-              justifyContent: 'center',
-              minHeight: isSticky ? '46px' : 'auto',
-              transition: 'min-height 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+      {/* Classic Newspaper Main Masthead (100% Static Flow Height — Zero Scroll Reflow/Jitter) */}
+      <div className="masthead-main-wrapper hide-on-mobile">
+        <div className="masthead-main">
+          <div
+            className="container"
+            style={{
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
           >
-            {/* Left Quick Actions (Snappy fade and slide like BBC ≡ Q) */}
-            <div 
-              style={{ 
-                position: 'absolute', 
-                left: '1.25rem', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '0.4rem',
-                zIndex: 2,
-                opacity: isSticky ? 1 : 0,
-                transform: isSticky ? 'translateX(0)' : 'translateX(-8px)',
-                pointerEvents: isSticky ? 'auto' : 'none',
-                transition: 'opacity 0.2s ease, transform 0.2s ease'
-              }}
-            >
-              <button
-                onClick={() => setIsMobileMenuOpen(true)}
-                title="Browse Sections & Desks"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-main)',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.35rem 0.55rem',
-                  borderRadius: 'var(--radius-sm)',
-                  fontWeight: '700',
-                  fontSize: '0.8rem',
-                  transition: 'background 0.2s ease'
-                }}
-                className="btn-hover-subtle"
-              >
-                <Menu size={18} />
-                <span>{t('allCategories', currentLanguage) || 'Sections'}</span>
-              </button>
-              <button
-                onClick={() => onOpenSearchDrawer ? onOpenSearchDrawer() : onNavigate('search')}
-                title={t('search', currentLanguage)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-main)',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '0.35rem 0.5rem',
-                  borderRadius: 'var(--radius-sm)',
-                  transition: 'background 0.2s ease'
-                }}
-                className="btn-hover-subtle"
-              >
-                <Search size={16} />
-              </button>
-            </div>
-
-            {/* Centered Logo (Snappy scaling over 0.25s) */}
-            <a 
-              href="#" 
-              onClick={(e) => { e.preventDefault(); onNavigate('home'); }} 
+            {/* Centered Masthead Logo */}
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); onNavigate('home'); }}
               style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
               title="PublicSpark Home"
             >
-              <img 
-                src="/logo.png" 
-                alt="PUBLIC SPARK News Logo" 
-                style={{ 
-                  height: isSticky ? '44px' : '75px', 
-                  width: 'auto', 
+              <img
+                src="/logo.png"
+                alt="PUBLIC SPARK News Logo"
+                style={{
+                  height: '75px',
+                  width: 'auto',
                   maxWidth: '90vw',
                   objectFit: 'contain',
                   mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
                   background: theme === 'dark' ? '#FFFFFF' : 'transparent',
-                  padding: theme === 'dark' ? (isSticky ? '3px 10px' : '4px 14px') : '0',
-                  borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0',
-                  transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
-                }} 
+                  padding: theme === 'dark' ? '4px 14px' : '0',
+                  borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0'
+                }}
               />
             </a>
 
-            {/* Hindi Tagline (Snappy fade and collapse) */}
-            <div 
-              className="masthead-tagline" 
-              style={{ 
-                marginTop: isSticky ? '0' : '0.35rem', 
-                textAlign: 'center', 
-                fontSize: '0.75rem', 
-                letterSpacing: '0.18em', 
+            {/* Tagline (Fixed flow height — never collapses during scroll) */}
+            <div
+              className="masthead-tagline"
+              style={{
+                marginTop: '0.35rem',
+                textAlign: 'center',
+                fontSize: '0.75rem',
+                letterSpacing: '0.18em',
                 color: 'var(--text-subtle)',
-                opacity: isSticky ? 0 : 1,
-                maxHeight: isSticky ? '0px' : '24px',
-                overflow: 'hidden',
-                pointerEvents: isSticky ? 'none' : 'auto',
-                transition: 'opacity 0.2s ease, maxHeight 0.25s ease, margin 0.2s ease'
+                minHeight: '20px'
               }}
             >
               {t('tagline', currentLanguage)}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Decoupled GPU-Composited Compact Sticky Bar (Desktop Only — Glides via transform only) */}
+      <div
+        className={`masthead-compact-bar hide-on-mobile ${isSticky ? 'is-visible' : ''}`}
+        aria-hidden={!isSticky}
+      >
+        <div
+          className="container"
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            height: '100%'
+          }}
+        >
+          {/* Left Quick Actions (All Categories + Search) */}
+          <div
+            style={{
+              position: 'absolute',
+              left: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              zIndex: 2
+            }}
+          >
+            <button
+              type="button"
+              tabIndex={isSticky ? 0 : -1}
+              onClick={() => setIsMobileMenuOpen(true)}
+              title="Browse Sections & Desks"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-main)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                padding: '0.35rem 0.55rem',
+                minHeight: '36px',
+                borderRadius: 'var(--radius-sm)',
+                fontWeight: '700',
+                fontSize: '0.8rem'
+              }}
+              className="btn-hover-subtle"
+            >
+              <Menu size={18} />
+              <span>{t('allCategories', currentLanguage) || 'Sections'}</span>
+            </button>
+            <button
+              type="button"
+              tabIndex={isSticky ? 0 : -1}
+              onClick={() => onOpenSearchDrawer ? onOpenSearchDrawer() : onNavigate('search')}
+              title={t('search', currentLanguage)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-main)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0.35rem 0.5rem',
+                minHeight: '36px',
+                minWidth: '36px',
+                borderRadius: 'var(--radius-sm)'
+              }}
+              className="btn-hover-subtle"
+            >
+              <Search size={16} />
+            </button>
+          </div>
+
+          <a
+            href="#"
+            tabIndex={isSticky ? 0 : -1}
+            onClick={(e) => { e.preventDefault(); onNavigate('home'); }}
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
+            title="PublicSpark Home"
+          >
+            <img
+              src="/logo.png"
+              alt="PUBLIC SPARK News Logo"
+              style={{
+                height: '38px',
+                width: 'auto',
+                objectFit: 'contain',
+                mixBlendMode: theme === 'dark' ? 'normal' : 'multiply',
+                background: theme === 'dark' ? '#FFFFFF' : 'transparent',
+                padding: theme === 'dark' ? '2px 8px' : '0',
+                borderRadius: theme === 'dark' ? 'var(--radius-sm)' : '0'
+              }}
+            />
+          </a>
         </div>
       </div>
 
@@ -560,135 +619,162 @@ export default function Header({
         </div>
       </nav>
 
-      {/* Mobile Drawer Overlay */}
+      {/* Full-Screen Left-Aligned Categories & Navigation Drawer */}
       {isMobileMenuOpen && (
         <div 
           className="mobile-drawer-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="All Categories Navigation"
           onClick={() => setIsMobileMenuOpen(false)}
         >
           <div 
             className="mobile-drawer-sheet"
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <img src="/logo.png" alt="PublicSpark" style={{ height: '24px', width: 'auto' }} />
-                <span style={{ fontWeight: '800', fontSize: '1rem', fontFamily: 'var(--font-serif)' }}>PUBLIC SPARK</span>
-              </div>
-              <button 
-                onClick={() => setIsMobileMenuOpen(false)} 
-                style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', padding: '0.25rem' }}
-                aria-label="Close menu"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Staff Access & Workspaces in Mobile Drawer */}
-            <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.5rem' }}>
-                Newsroom Access
-              </label>
-              {currentRole === 'visitor' ? (
-                <button
-                  onClick={() => { setIsMobileMenuOpen(false); onOpenStaffLogin(); }}
-                  className="btn btn-outline"
-                  style={{ width: '100%', justifyContent: 'flex-start', padding: '0.6rem 0.75rem', fontSize: '0.85rem', borderColor: 'var(--accent-crimson)', color: 'var(--accent-crimson)' }}
-                >
-                  <Lock size={15} /> Staff Access Login
-                </button>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(185, 28, 28, 0.08)', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <ShieldCheck size={14} color="var(--accent-crimson)" />
-                      <span style={{ fontWeight: 800, fontSize: '0.8rem', color: 'var(--accent-crimson)', textTransform: 'uppercase' }}>
-                        {currentRole}
-                      </span>
-                      {staffName && <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>({staffName})</span>}
-                    </div>
-                    <button
-                      onClick={() => { setIsMobileMenuOpen(false); onStaffLogout(); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', padding: '4px' }}
-                    >
-                      <LogOut size={14} />
-                    </button>
-                  </div>
-                  {currentRole === 'reporter' && (
-                    <button
-                      onClick={() => { onNavigate('reporter'); setIsMobileMenuOpen(false); }}
-                      className="btn btn-primary"
-                      style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
-                    >
-                      <PenTool size={15} /> {t('reporterDesk', currentLanguage)}
-                    </button>
-                  )}
-                  {currentRole === 'editor' && (
-                    <button
-                      onClick={() => { onNavigate('editor'); setIsMobileMenuOpen(false); }}
-                      className="btn btn-primary"
-                      style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
-                    >
-                      <CheckCircle size={15} /> {t('editorDesk', currentLanguage)}
-                    </button>
-                  )}
-                  {(currentRole === 'admin' || currentRole === 'developer') && (
-                    <button
-                      onClick={() => { onNavigate('admin'); setIsMobileMenuOpen(false); }}
-                      className="btn btn-primary"
-                      style={{ justifyContent: 'flex-start', padding: '0.5rem 0.75rem', fontSize: '0.825rem' }}
-                    >
-                      <Settings size={15} /> {t('newsroomMgmt', currentLanguage)}
-                    </button>
-                  )}
+            <div className="mobile-drawer-inner">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid var(--border-light)', paddingBottom: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
+                  <img src="/logo.png" alt="PublicSpark" style={{ height: '28px', width: 'auto' }} />
+                  <span style={{ fontWeight: '900', fontSize: '1.1rem', fontFamily: 'var(--font-serif)', letterSpacing: '-0.01em' }}>PUBLIC SPARK</span>
                 </div>
-              )}
-            </div>
-
-            {/* Mobile Categories */}
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.5rem' }}>
-                {t('topStories', currentLanguage)} & Sections
-              </label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                <button
-                  onClick={() => { onSelectCategory('all'); onNavigate('home'); setIsMobileMenuOpen(false); }}
-                  className={`btn ${activeCategory === 'all' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ justifyContent: 'flex-start', width: '100%', padding: '0.45rem 0.75rem', fontSize: '0.825rem' }}
-                >
-                  {t('topStories', currentLanguage)}
-                </button>
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    if (onOpenSavedDrawer) {
-                      onOpenSavedDrawer();
-                    } else {
-                      onSelectCategory('bookmarks');
-                      onNavigate('home');
-                    }
+                <button 
+                  type="button"
+                  onClick={() => setIsMobileMenuOpen(false)} 
+                  style={{
+                    minWidth: '44px',
+                    minHeight: '44px',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-medium)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-main)',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
                   }}
-                  className={`btn ${activeCategory === 'bookmarks' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ justifyContent: 'flex-start', width: '100%', padding: '0.45rem 0.75rem', fontSize: '0.825rem', borderColor: activeCategory === 'bookmarks' ? 'var(--accent-crimson)' : 'var(--border-medium)', color: activeCategory === 'bookmarks' ? '#fff' : 'var(--text-main)' }}
+                  aria-label="Close menu"
                 >
-                  <Bookmark size={15} /> {t('savedBookmarks', currentLanguage)}
+                  <X size={20} />
                 </button>
-                {populatedCategories.map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => { onSelectCategory(cat.slug); onNavigate('home'); setIsMobileMenuOpen(false); }}
-                    className={`btn ${activeCategory === cat.slug ? 'btn-primary' : 'btn-outline'}`}
-                    style={{ justifyContent: 'flex-start', width: '100%', padding: '0.45rem 0.75rem', fontSize: '0.825rem' }}
-                  >
-                    {translateCategoryName(cat.name, currentLanguage)}
-                  </button>
-                ))}
               </div>
-            </div>
 
-            {/* Bottom Drawer Meta */}
-            <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-              <div>{currentDate}</div>
+              {/* Staff Access & Workspaces */}
+              <div style={{ maxWidth: '380px', width: '100%' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.5rem' }}>
+                  Newsroom Access
+                </label>
+                {currentRole === 'visitor' ? (
+                  <button
+                    type="button"
+                    onClick={() => { setIsMobileMenuOpen(false); onOpenStaffLogin(); }}
+                    className="btn btn-outline"
+                    style={{ minHeight: '44px', width: '100%', justifyContent: 'flex-start', padding: '0.6rem 0.9rem', fontSize: '0.88rem', borderColor: 'var(--accent-crimson)', color: 'var(--accent-crimson)' }}
+                  >
+                    <Lock size={15} /> Staff Access Login
+                  </button>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                    <div style={{ padding: '0.55rem 0.85rem', background: 'rgba(185, 28, 28, 0.08)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                        <ShieldCheck size={14} color="var(--accent-crimson)" />
+                        <span style={{ fontWeight: 800, fontSize: '0.8rem', color: 'var(--accent-crimson)', textTransform: 'uppercase' }}>
+                          {currentRole}
+                        </span>
+                        {staffName && <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>({staffName})</span>}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setIsMobileMenuOpen(false); onStaffLogout(); }}
+                        style={{ minWidth: '36px', minHeight: '36px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        aria-label="Staff Logout"
+                      >
+                        <LogOut size={15} />
+                      </button>
+                    </div>
+                    {currentRole === 'reporter' && (
+                      <button
+                        type="button"
+                        onClick={() => { onNavigate('reporter'); setIsMobileMenuOpen(false); }}
+                        className="btn btn-primary"
+                        style={{ minHeight: '44px', justifyContent: 'flex-start', padding: '0.55rem 0.85rem', fontSize: '0.85rem' }}
+                      >
+                        <PenTool size={15} /> {t('reporterDesk', currentLanguage)}
+                      </button>
+                    )}
+                    {currentRole === 'editor' && (
+                      <button
+                        type="button"
+                        onClick={() => { onNavigate('editor'); setIsMobileMenuOpen(false); }}
+                        className="btn btn-primary"
+                        style={{ minHeight: '44px', justifyContent: 'flex-start', padding: '0.55rem 0.85rem', fontSize: '0.85rem' }}
+                      >
+                        <CheckCircle size={15} /> {t('editorDesk', currentLanguage)}
+                      </button>
+                    )}
+                    {(currentRole === 'admin' || currentRole === 'developer') && (
+                      <button
+                        type="button"
+                        onClick={() => { onNavigate('admin'); setIsMobileMenuOpen(false); }}
+                        className="btn btn-primary"
+                        style={{ minHeight: '44px', justifyContent: 'flex-start', padding: '0.55rem 0.85rem', fontSize: '0.85rem' }}
+                      >
+                        <Settings size={15} /> {t('newsroomMgmt', currentLanguage)}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* All Categories & Sections Grid */}
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.65rem' }}>
+                  {t('topStories', currentLanguage)} & Sections
+                </label>
+                <div className="mobile-drawer-sections-grid">
+                  <button
+                    type="button"
+                    onClick={() => { onSelectCategory('all'); onNavigate('home'); setIsMobileMenuOpen(false); }}
+                    className={`btn ${activeCategory === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ minHeight: '44px', justifyContent: 'flex-start', width: '100%', padding: '0.55rem 0.9rem', fontSize: '0.875rem' }}
+                  >
+                    {t('topStories', currentLanguage)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      if (onOpenSavedDrawer) {
+                        onOpenSavedDrawer();
+                      } else {
+                        onSelectCategory('bookmarks');
+                        onNavigate('home');
+                      }
+                    }}
+                    className={`btn ${activeCategory === 'bookmarks' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ minHeight: '44px', justifyContent: 'flex-start', width: '100%', padding: '0.55rem 0.9rem', fontSize: '0.875rem', borderColor: activeCategory === 'bookmarks' ? 'var(--accent-crimson)' : 'var(--border-medium)', color: activeCategory === 'bookmarks' ? '#fff' : 'var(--text-main)' }}
+                  >
+                    <Bookmark size={15} /> {t('savedBookmarks', currentLanguage)}
+                  </button>
+                  {populatedCategories.map((cat) => (
+                    <button
+                      type="button"
+                      key={cat.id}
+                      onClick={() => { onSelectCategory(cat.slug); onNavigate('home'); setIsMobileMenuOpen(false); }}
+                      className={`btn ${activeCategory === cat.slug ? 'btn-primary' : 'btn-outline'}`}
+                      style={{ minHeight: '44px', justifyContent: 'flex-start', width: '100%', padding: '0.55rem 0.9rem', fontSize: '0.875rem' }}
+                    >
+                      {translateCategoryName(cat.name, currentLanguage)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bottom Drawer Meta */}
+              <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '0.85rem', fontSize: '0.8rem', color: 'var(--text-subtle)' }}>
+                <div>{currentDate}</div>
+              </div>
             </div>
           </div>
         </div>

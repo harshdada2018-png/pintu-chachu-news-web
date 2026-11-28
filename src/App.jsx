@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Header from './components/common/Header';
 import LoadingSplash from './components/common/LoadingSplash';
 import ToastNotice from './components/common/ToastNotice';
+import ArticleLink from './components/common/ArticleLink';
 import ArticleReader from './components/public/ArticleReader';
 import ReporterWorkspace from './components/reporter/ReporterWorkspace';
 import EditorWorkspace from './components/editor/EditorWorkspace';
@@ -21,14 +22,15 @@ import { fetchAdSettings } from './services/monetizationService';
 import { DEFAULT_NEWSROOM_CATEGORIES } from './services/taxonomyService';
 import { getCachedNews, saveNewsToCache, getCachedCategories, saveCategoriesToCache } from './services/cacheService';
 import { translateArticle, translateHeadlinesOnly, SUPPORTED_LANGUAGES, purgeCorruptedTranslationCache } from './services/translationService';
-import { speakTextWithNaturalVoice, stopAudioSpeech } from './services/speechEngine';
+import { speakWithBrowserSpeechOnly, stopAudioSpeech, isAudioSupportedLanguage } from './services/speechEngine';
+import { playTwoStageAudio, stopTwoStageAudio } from './services/geminiAudioEngine';
 import { DEFAULT_REGIONAL_FONTS } from './components/admin/VisualFontPicker';
 import { DEFAULT_THEME_PALETTE } from './components/admin/ColorPaletteCustomizer';
 import { t, translateCategoryName } from './services/uiTranslations';
 import { getWhatsAppShareUrl } from './services/shareService';
 import { getOfflineArticles, removeArticleOffline, syncLegacyBookmarks, getOfflineStorageMetrics } from './services/bookmarkStorageService';
 import { calculateReadingTime } from './utils/readingTime';
-import { formatPublishedTime } from './utils/dateFormatter';
+import { formatPublishedTime, resolveStableArticleIso } from './utils/dateFormatter';
 import { Clock, Eye, Sparkles, TrendingUp, Flame, ShieldCheck, Volume2, Pause, Play, Heart, Bookmark, Send, Share2, BarChart3, Vote, X, VolumeX, ThumbsUp, ThumbsDown, HelpCircle, Newspaper, Check, Radio, Lock } from 'lucide-react';
 
 const WhatsAppIcon = ({ size = 18, color = '#ffffff' }) => (
@@ -57,6 +59,12 @@ const XTwitterIcon = ({ size = 18, color = '#ffffff' }) => (
   </svg>
 );
 
+function formatSeoDocumentTitle(rawTitle) {
+  const clean = String(rawTitle || 'PUBLIC SPARK').replace(/\s+/g, ' ').trim();
+  if (clean.length <= 52) return `${clean} - PUBLIC SPARK`;
+  return `${clean.slice(0, 49).trimEnd()}... - PUBLIC SPARK`;
+}
+
 function parseRouteFromUrl() {
   try {
     const pathname = window.location.pathname;
@@ -74,12 +82,16 @@ function parseRouteFromUrl() {
       const id = params.get('article');
       if (id) return { view: 'article', idOrSlug: id };
     }
+    if (pathname === '/' || pathname === '') return { view: 'home' };
     if (pathname === '/search') return { view: 'search' };
+    if (pathname === '/saved') return { view: 'home' };
+    if (pathname === '/desk') return { view: 'login' };
     if (pathname === '/reporter') return { view: 'reporter' };
     if (pathname === '/editor') return { view: 'editor' };
     if (pathname === '/admin') return { view: 'admin' };
     if (pathname === '/developer' || pathname === '/rescue') return { view: 'developer' };
     if (pathname === '/staff' || pathname === '/login') return { view: 'login' };
+    return { view: 'notfound', missingPath: pathname };
   } catch (e) {}
   return { view: 'home' };
 }
@@ -87,6 +99,7 @@ function parseRouteFromUrl() {
 export default function App() {
   const [theme, setTheme] = useState('light');
   const [isLoading, setIsLoading] = useState(false);
+  const [articlesResolved, setArticlesResolved] = useState(false);
 
   // Failsafe Watchdog: Ensure loading screen NEVER stays for more than 1.5 seconds
   useEffect(() => {
@@ -158,12 +171,23 @@ export default function App() {
     document.title = `${targetView.toUpperCase()} Workspace - PUBLIC SPARK`;
     setToastMessage(`Welcome, ${name}! Logged in as ${role.toUpperCase()}.`);
     setIsToastOpen(true);
+    // Hydrate full staff article feed (drafts, pending, scheduled) post-login
+    fetch('/api/articles?scope=all', { headers: getAuthHeaders() })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const TEST_IDS = new Set(['art-1', 'art-2', 'art-3', 'art-4']);
+          setBaseArticles(data.filter(a => !TEST_IDS.has(String(a.id))));
+        }
+      })
+      .catch(() => {});
   };
 
   const handleStaffLogout = () => {
     clearStaffSession();
     setCurrentRole('visitor');
     setStaffName('');
+    setBaseArticles(prev => prev.filter(a => a.status === 'published' || !a.status));
     setActiveView('home');
     window.history.pushState({}, '', '/');
     document.title = 'PUBLIC SPARK - Breaking News & Live Updates';
@@ -216,8 +240,28 @@ export default function App() {
   // Left-Side Animated Search Drawer State (Task 39 Subtopic A)
   const [isSearchDrawerOpen, setIsSearchDrawerOpen] = useState(false);
 
-  // Multi-Language State (Default: Hindi 'hi')
-  const [currentLanguage, setCurrentLanguage] = useState('hi');
+  // Multi-Language State (Default: Hindi 'hi', initialized cleanly from whitelisted ?lang= param)
+  const [currentLanguage, setCurrentLanguage] = useState(() => {
+    try {
+      const qLang = new URLSearchParams(window.location.search).get('lang');
+      if (qLang) {
+        const matched = SUPPORTED_LANGUAGES.find(l => l.code.toLowerCase() === qLang.trim().toLowerCase());
+        if (matched) return matched.code;
+      }
+    } catch (_e) {}
+    return 'hi';
+  });
+  const handleLanguageChange = (newLang) => {
+    const matched = SUPPORTED_LANGUAGES.find(l => l.code.toLowerCase() === String(newLang || '').toLowerCase());
+    const safeLang = matched ? matched.code : 'hi';
+    setCurrentLanguage(safeLang);
+    try {
+      const u = new URL(window.location.href);
+      if (safeLang === 'hi') u.searchParams.delete('lang');
+      else u.searchParams.set('lang', safeLang);
+      window.history.replaceState(window.history.state || {}, '', `${u.pathname}${u.search}`);
+    } catch (_e) {}
+  };
   const [isTranslating, setIsTranslating] = useState(false);
 
   // Floating Audio Player State
@@ -609,7 +653,8 @@ export default function App() {
       })
       .catch(err => console.warn('[Backend Sync] Categories offline fallback:', err.message));
 
-    fetch('/api/articles?scope=all', {
+    const articlesEndpoint = getSessionToken() ? '/api/articles?scope=all' : '/api/articles';
+    fetch(articlesEndpoint, {
       headers: getAuthHeaders()
     })
       .then(res => res.json())
@@ -640,7 +685,8 @@ export default function App() {
           });
         }
       })
-      .catch(err => console.warn('[Backend Sync] Articles offline fallback:', err.message));
+      .catch(err => console.warn('[Backend Sync] Articles offline fallback:', err.message))
+      .finally(() => setArticlesResolved(true));
 
     // Task 33 Subtopic C: Purge any legacy poisoned translation caches
     purgeCorruptedTranslationCache();
@@ -792,8 +838,9 @@ export default function App() {
     setSelectedArticle(masterArticle);
     setActiveView('article');
     const cleanSlug = masterArticle.slug || masterArticle.id;
-    window.history.pushState({ articleId: masterArticle.id, slug: cleanSlug }, '', `/article/${cleanSlug}`);
-    document.title = `${masterArticle.title} - PUBLIC SPARK`;
+    const langSuffix = currentLanguage && currentLanguage !== 'hi' ? `?lang=${encodeURIComponent(currentLanguage)}` : '';
+    window.history.pushState({ articleId: masterArticle.id, slug: cleanSlug }, '', `/article/${cleanSlug}${langSuffix}`);
+    document.title = formatSeoDocumentTitle(masterArticle.title);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -807,7 +854,8 @@ export default function App() {
     setActiveView(view);
     if (view === 'home') {
       setSelectedArticle(null);
-      window.history.pushState({}, '', '/');
+      const langSuffix = currentLanguage && currentLanguage !== 'hi' ? `?lang=${encodeURIComponent(currentLanguage)}` : '';
+      window.history.pushState({}, '', `/${langSuffix}`);
       document.title = 'PUBLIC SPARK - Breaking News & Live Updates';
     } else {
       window.history.pushState({}, '', `/${view}`);
@@ -851,7 +899,7 @@ export default function App() {
         if (found) {
           setSelectedArticle(found);
           setActiveView('article');
-          document.title = `${found.title} - PUBLIC SPARK`;
+          document.title = formatSeoDocumentTitle(found.title);
           return;
         }
       }
@@ -878,7 +926,7 @@ export default function App() {
       if (found) {
         setSelectedArticle(found);
         setActiveView('article');
-        document.title = `${found.title} - PUBLIC SPARK`;
+        document.title = formatSeoDocumentTitle(found.title);
       }
     }
   }, [baseArticles, selectedArticle]);
@@ -898,7 +946,11 @@ export default function App() {
         el.setAttribute('content', content);
       };
 
-      const isPrivateWorkspace = isStaffLoginOpen || ['reporter', 'editor', 'admin', 'developer', 'login', 'desk'].includes(activeView);
+      const isNotFoundState = activeView === 'notfound' || (activeView === 'article' && !selectedArticle && articlesResolved);
+      const isPrivateWorkspace = isNotFoundState || isStaffLoginOpen || ['reporter', 'editor', 'admin', 'developer', 'login', 'desk'].includes(activeView);
+      if (isNotFoundState) {
+        document.title = 'Page Not Found (404) - PUBLIC SPARK';
+      }
       setMetaTag(
         'name',
         'robots',
@@ -909,7 +961,7 @@ export default function App() {
       const defaultDesc = 'PUBLIC SPARK - Independent Digital Newsroom. Unbiased journalism, verified fact-checks, multi-language coverage across India.';
       const defaultImg = `${origin}/logo.png`;
 
-      let canonicalUrl = `${origin}/`;
+      let canonicalBaseUrl = `${origin}/`;
       let pageDesc = defaultDesc;
       let ogTitle = 'PUBLIC SPARK - Independent Digital Newsroom';
       let ogImg = defaultImg;
@@ -918,7 +970,7 @@ export default function App() {
 
       if (activeView === 'article' && selectedArticle) {
         const slugOrId = selectedArticle.slug || selectedArticle.id;
-        canonicalUrl = `${origin}/article/${slugOrId}`;
+        canonicalBaseUrl = `${origin}/article/${encodeURIComponent(slugOrId)}`;
         ogTitle = selectedArticle.title || ogTitle;
         pageDesc = String(selectedArticle.summary || selectedArticle.content || defaultDesc)
           .replace(/<[^>]+>/g, '')
@@ -936,27 +988,53 @@ export default function App() {
           ldScript.type = 'application/ld+json';
           document.head.appendChild(ldScript);
         }
+        const stablePublishedIso = resolveStableArticleIso(selectedArticle);
+        const stableModifiedIso = selectedArticle.updatedAt && !Number.isNaN(Date.parse(selectedArticle.updatedAt))
+          ? new Date(selectedArticle.updatedAt).toISOString()
+          : (selectedArticle.updated_at && !Number.isNaN(Date.parse(selectedArticle.updated_at))
+            ? new Date(selectedArticle.updated_at).toISOString()
+            : stablePublishedIso);
+        const selfCanonical = currentLanguage && currentLanguage !== 'hi'
+          ? `${canonicalBaseUrl}?lang=${encodeURIComponent(currentLanguage)}`
+          : canonicalBaseUrl;
+        document.title = formatSeoDocumentTitle(selectedArticle.title);
         ldScript.textContent = JSON.stringify({
           '@context': 'https://schema.org',
-          '@type': 'NewsArticle',
-          mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
-          headline: String(selectedArticle.title || '').slice(0, 110),
-          description: pageDesc,
-          image: [ogImg],
-          datePublished: selectedArticle.createdAt || new Date().toISOString(),
-          dateModified: selectedArticle.updatedAt || selectedArticle.createdAt || new Date().toISOString(),
-          author: { '@type': 'Person', name: selectedArticle.author || 'PublicSpark Desk' },
-          publisher: {
-            '@type': 'NewsMediaOrganization',
-            name: 'PUBLIC SPARK',
-            logo: { '@type': 'ImageObject', url: defaultImg }
-          }
+          '@graph': [
+            {
+              '@type': 'NewsArticle',
+              mainEntityOfPage: { '@type': 'WebPage', '@id': selfCanonical },
+              headline: String(selectedArticle.title || '').slice(0, 110),
+              description: pageDesc,
+              image: [ogImg],
+              datePublished: stablePublishedIso,
+              dateModified: stableModifiedIso,
+              author: { '@type': 'Person', name: selectedArticle.author?.name || selectedArticle.author || 'PublicSpark Desk' },
+              publisher: {
+                '@type': 'NewsMediaOrganization',
+                name: 'PUBLIC SPARK',
+                logo: { '@type': 'ImageObject', url: defaultImg, width: 492, height: 210 }
+              }
+            },
+            {
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: `${origin}/` },
+                { '@type': 'ListItem', position: 2, name: String(selectedArticle.category || 'News'), item: `${origin}/` },
+                { '@type': 'ListItem', position: 3, name: String(selectedArticle.title || 'Story').slice(0, 110), item: selfCanonical }
+              ]
+            }
+          ]
         });
       } else {
-        if (activeView === 'saved') canonicalUrl = `${origin}/saved`;
-        else if (activeView === 'search') canonicalUrl = `${origin}/search`;
+        if (activeView === 'saved') canonicalBaseUrl = `${origin}/saved`;
+        else if (activeView === 'search') canonicalBaseUrl = `${origin}/search`;
         if (ldScript) ldScript.remove();
       }
+
+      const canonicalUrl = currentLanguage && currentLanguage !== 'hi'
+        ? `${canonicalBaseUrl}?lang=${encodeURIComponent(currentLanguage)}`
+        : canonicalBaseUrl;
 
       let canonicalEl = document.querySelector('link[rel="canonical"]');
       if (!canonicalEl) {
@@ -965,6 +1043,23 @@ export default function App() {
         document.head.appendChild(canonicalEl);
       }
       canonicalEl.setAttribute('href', canonicalUrl);
+
+      document.querySelectorAll('link[data-ps-hreflang="true"]').forEach(el => el.remove());
+      if (!isPrivateWorkspace) {
+        const appendHreflang = (langCode, href) => {
+          const linkEl = document.createElement('link');
+          linkEl.setAttribute('rel', 'alternate');
+          linkEl.setAttribute('hreflang', langCode);
+          linkEl.setAttribute('href', href);
+          linkEl.setAttribute('data-ps-hreflang', 'true');
+          document.head.appendChild(linkEl);
+        };
+        appendHreflang('x-default', canonicalBaseUrl);
+        SUPPORTED_LANGUAGES.forEach(l => {
+          const href = l.code === 'hi' ? canonicalBaseUrl : `${canonicalBaseUrl}?lang=${encodeURIComponent(l.code)}`;
+          appendHreflang(l.code, href);
+        });
+      }
 
       setMetaTag('name', 'description', pageDesc);
       setMetaTag('property', 'og:title', ogTitle);
@@ -977,31 +1072,81 @@ export default function App() {
     } catch (_e) {
       // Non-blocking SEO head sync
     }
-  }, [activeView, selectedArticle, currentLanguage, isStaffLoginOpen]);
+  }, [activeView, selectedArticle, currentLanguage, isStaffLoginOpen, articlesResolved]);
 
-  // 1-Click Quick Audio Reading Trigger for Homepage Cards
-  const handleQuickAudioRead = (e, article) => {
-    e.stopPropagation();
+  const isAudioAllowed = isAudioSupportedLanguage(currentLanguage);
 
-    if (playingArticleId === article.id) {
+  // Stop active mini-player cleanly if reader switches to a non-audio language
+  useEffect(() => {
+    if (!isAudioAllowed && playingArticleId) {
+      stopTwoStageAudio();
       stopAudioSpeech();
       setPlayingArticleId(null);
       setPlayingArticle(null);
-    } else {
-      stopAudioSpeech();
-      const textToRead = `${article.title}. ${article.summary || article.content}`;
-      setPlayingArticleId(article.id);
-      setPlayingArticle(article);
-
-      speakTextWithNaturalVoice({
-        text: textToRead,
-        langCode: currentLanguage,
-        articleId: article.id,
-        onStart: () => { setPlayingArticleId(article.id); setPlayingArticle(article); },
-        onPlay: () => { setPlayingArticleId(article.id); setPlayingArticle(article); },
-        onEnd: () => { setPlayingArticleId(null); setPlayingArticle(null); }
-      });
     }
+  }, [isAudioAllowed, playingArticleId]);
+
+  // 1-Click Unified 1-Call Audio Trigger for Homepage Cards / Shelves / Drawers
+  const handleQuickAudioRead = async (e, article) => {
+    e.stopPropagation();
+
+    if (!isAudioAllowed) {
+      stopTwoStageAudio();
+      stopAudioSpeech();
+      setPlayingArticleId(null);
+      setPlayingArticle(null);
+      return;
+    }
+
+    if (playingArticleId === article.id) {
+      stopTwoStageAudio();
+      stopAudioSpeech();
+      setPlayingArticleId(null);
+      setPlayingArticle(null);
+      return;
+    }
+
+    stopTwoStageAudio();
+    stopAudioSpeech();
+
+    const masterArticle = baseArticles.find(a => String(a.id) === String(article.id)) || article;
+    const origLang = (masterArticle.originalLanguage || 'hi').toLowerCase();
+    const targetLang = String(currentLanguage || 'hi').toLowerCase();
+    let audioStory = masterArticle;
+
+    if (targetLang !== origLang) {
+      try {
+        audioStory = await translateArticle(masterArticle, targetLang, { includeContent: true });
+      } catch (_err) {}
+    }
+
+    setPlayingArticleId(article.id);
+    setPlayingArticle(audioStory);
+
+    const hl = Array.isArray(audioStory.highlights) && audioStory.highlights.length > 0
+      ? audioStory.highlights
+      : (audioStory.summary ? [audioStory.summary] : []);
+    const fullText = [audioStory.title, ...hl, audioStory.content || ''].filter(Boolean).join('. ');
+
+    playTwoStageAudio({
+      articleId: article.id,
+      lang: targetLang,
+      title: audioStory.title || '',
+      highlights: hl,
+      body: audioStory.content || '',
+      onStart: () => { setPlayingArticleId(article.id); setPlayingArticle(audioStory); },
+      onPlay: () => { setPlayingArticleId(article.id); setPlayingArticle(audioStory); },
+      onEnd: () => { setPlayingArticleId(null); setPlayingArticle(null); },
+      onFallbackToBrowser: () => {
+        speakWithBrowserSpeechOnly({
+          text: fullText,
+          langCode: targetLang,
+          onStart: () => { setPlayingArticleId(article.id); setPlayingArticle(audioStory); },
+          onPlay: () => { setPlayingArticleId(article.id); setPlayingArticle(audioStory); },
+          onEnd: () => { setPlayingArticleId(null); setPlayingArticle(null); }
+        });
+      }
+    });
   };
 
   // Reporter publishes or submits an article (Publish dabate hi Hindi live)
@@ -1174,7 +1319,7 @@ export default function App() {
         activeView={activeView}
         onNavigate={handleNavigate}
         currentLanguage={currentLanguage}
-        onLanguageChange={setCurrentLanguage}
+        onLanguageChange={handleLanguageChange}
         isTranslating={isTranslating}
         categories={categories}
         articles={publishedArticles}
@@ -1220,14 +1365,16 @@ export default function App() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0.6rem 0' }}>
                           <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                            <button 
-                              onClick={(e) => handleQuickAudioRead(e, art)}
-                              className="btn btn-outline"
-                              style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                            >
-                              {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                              {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
-                            </button>
+                            {isAudioAllowed && (
+                              <button 
+                                onClick={(e) => handleQuickAudioRead(e, art)}
+                                className="btn btn-outline"
+                                style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                              >
+                                {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
+                                {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
+                              </button>
+                            )}
                             <button 
                               onClick={(e) => handleRemoveBookmark(e, art)}
                               className="btn"
@@ -1238,7 +1385,9 @@ export default function App() {
                             </button>
                           </div>
                         </div>
-                        <h3 className="story-card-title" style={{ fontSize: '1.1rem', fontWeight: '800', lineHeight: '1.35', marginBottom: '0.5rem' }}>{art.title}</h3>
+                        <h3 className="story-card-title" style={{ fontSize: '1.1rem', fontWeight: '800', lineHeight: '1.35', marginBottom: '0.5rem' }}>
+                          <ArticleLink article={art} onSelect={handleSelectArticle}>{art.title}</ArticleLink>
+                        </h3>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', marginBottom: '0.75rem' }}>
                           {art.excerpt}
                         </p>
@@ -1310,15 +1459,17 @@ export default function App() {
 
                         {/* 1-Click Audio Reader & WhatsApp Smart Share Triggers */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <button 
-                            onClick={(e) => handleQuickAudioRead(e, heroArticle)}
-                            className="btn btn-outline"
-                            style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                            title={t('listenToStory', currentLanguage)}
-                          >
-                            {playingArticleId === heroArticle.id ? <Pause size={12} color="var(--accent-crimson)" /> : <Volume2 size={12} color="var(--accent-crimson)" />}
-                            <span className="hide-on-mobile">{playingArticleId === heroArticle.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}</span>
-                          </button>
+                          {isAudioAllowed && (
+                            <button 
+                              onClick={(e) => handleQuickAudioRead(e, heroArticle)}
+                              className="btn btn-outline"
+                              style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                              title={t('listenToStory', currentLanguage)}
+                            >
+                              {playingArticleId === heroArticle.id ? <Pause size={12} color="var(--accent-crimson)" /> : <Volume2 size={12} color="var(--accent-crimson)" />}
+                              <span className="hide-on-mobile">{playingArticleId === heroArticle.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}</span>
+                            </button>
+                          )}
 
                           <a
                             href={getWhatsAppShareUrl(heroArticle, currentLanguage)}
@@ -1347,7 +1498,9 @@ export default function App() {
                         </div>
                       </div>
 
-                      <h2 className="story-card-title">{heroArticle.title}</h2>
+                      <h2 className="story-card-title">
+                        <ArticleLink article={heroArticle} onSelect={handleSelectArticle}>{heroArticle.title}</ArticleLink>
+                      </h2>
                       {(heroArticle.summary || heroArticle.sub_title || heroArticle.excerpt) && (
                         <p className="story-excerpt" style={{ margin: '0.25rem 0 0.5rem 0', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                           {heroArticle.summary || heroArticle.sub_title || heroArticle.excerpt}
@@ -1404,14 +1557,16 @@ export default function App() {
                                   )}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                  <button 
-                                    onClick={(e) => handleQuickAudioRead(e, art)}
-                                    className="btn btn-outline"
-                                    style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                                  >
-                                    {playingArticleId === art.id ? <Pause size={11} /> : <Volume2 size={11} />}
-                                    <span className="hide-on-mobile">{playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}</span>
-                                  </button>
+                                  {isAudioAllowed && (
+                                    <button 
+                                      onClick={(e) => handleQuickAudioRead(e, art)}
+                                      className="btn btn-outline"
+                                      style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                    >
+                                      {playingArticleId === art.id ? <Pause size={11} /> : <Volume2 size={11} />}
+                                      <span className="hide-on-mobile">{playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}</span>
+                                    </button>
+                                  )}
                                   <a
                                     href={getWhatsAppShareUrl(art, currentLanguage)}
                                     target="_blank"
@@ -1436,7 +1591,9 @@ export default function App() {
                                   </a>
                                 </div>
                               </div>
-                              <h3 className="story-card-title">{art.title}</h3>
+                              <h3 className="story-card-title">
+                                <ArticleLink article={art} onSelect={handleSelectArticle}>{art.title}</ArticleLink>
+                              </h3>
                               <div className="story-meta" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.35rem', fontSize: '0.75rem' }}>
                                 <span>{formatPublishedTime(art.published_at, currentLanguage)}</span>
                                 <span>• <Clock size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /> {art.reading_time_mins || calculateReadingTime(art.content || '', currentLanguage)?.minutes || 1} {t('minsRead', currentLanguage)}</span>
@@ -1475,8 +1632,8 @@ export default function App() {
                           <div className="opinion-header">
                             <Sparkles size={14} /> {t('editorsSpotlight', currentLanguage)}
                           </div>
-                          <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.15rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.35', cursor: 'pointer', marginBottom: '0.6rem' }} onClick={() => handleSelectArticle(publishedArticles[3])}>
-                            {publishedArticles[3].title}
+                          <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.15rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.35', cursor: 'pointer', marginBottom: '0.6rem' }}>
+                            <ArticleLink article={publishedArticles[3]} onSelect={handleSelectArticle}>{publishedArticles[3].title}</ArticleLink>
                           </h3>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: '600' }}>
                             {t('byAuthor', currentLanguage)} {publishedArticles[3]?.author?.name || t('editorialDesk', currentLanguage) || 'संपादकीय डेस्क'}
@@ -1494,7 +1651,9 @@ export default function App() {
                             <div key={art.id} className="trending-item" onClick={() => handleSelectArticle(art)} style={{ cursor: 'pointer' }}>
                               <span className="trending-rank">0{idx + 1}</span>
                               <div>
-                                <div style={{ fontSize: '0.85rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.3' }}>{art.title}</div>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 'var(--font-weight-heading, 800)', lineHeight: '1.3' }}>
+                                  <ArticleLink article={art} onSelect={handleSelectArticle}>{art.title}</ArticleLink>
+                                </div>
                                 <div style={{ fontSize: '0.725rem', color: 'var(--text-subtle)', marginTop: '0.2rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                                   <span>{translateCategoryName(art.category, currentLanguage)}</span>
                                   <span>•</span>
@@ -1675,17 +1834,21 @@ export default function App() {
                                       <Play size={10} fill="#fff" /> Video
                                     </span>
                                   )}
-                                  <button 
-                                    onClick={(e) => handleQuickAudioRead(e, art)}
-                                    className="btn btn-outline"
-                                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                                  >
-                                    {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                                    {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
-                                  </button>
+                                  {isAudioAllowed && (
+                                    <button 
+                                      onClick={(e) => handleQuickAudioRead(e, art)}
+                                      className="btn btn-outline"
+                                      style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                                    >
+                                      {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
+                                      {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
-                              <h3 className="story-card-title">{art.title}</h3>
+                              <h3 className="story-card-title">
+                                <ArticleLink article={art} onSelect={handleSelectArticle}>{art.title}</ArticleLink>
+                              </h3>
                               <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <span>{art.author?.name || 'Staff Reporter'}</span>
                                 <span>•</span>
@@ -1737,7 +1900,7 @@ export default function App() {
                             <div>
                               <span className="story-category-tag">{translateCategoryName(art.category, currentLanguage)}</span>
                               <h4 style={{ fontFamily: 'var(--font-serif)', fontSize: '1rem', fontWeight: '800', lineHeight: '1.35', marginTop: '0.35rem', color: 'var(--text-main)' }}>
-                                {art.title}
+                                <ArticleLink article={art} onSelect={handleSelectArticle}>{art.title}</ArticleLink>
                               </h4>
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '0.35rem' }}>
                                 {art.author?.name || 'PublicSpark Desk'} • {formatPublishedTime(art.published_at, currentLanguage)}
@@ -1758,7 +1921,7 @@ export default function App() {
                     currentLanguage={currentLanguage}
                     onSelectArticle={handleSelectArticle}
                     onSelectCategory={setActiveCategory}
-                    onQuickAudioRead={handleQuickAudioRead}
+                    onQuickAudioRead={isAudioAllowed ? handleQuickAudioRead : null}
                     playingArticleId={playingArticleId}
                   />
                 )}
@@ -1811,17 +1974,21 @@ export default function App() {
                                     <Play size={10} fill="#fff" /> Video
                                   </span>
                                 )}
-                                <button 
-                                  onClick={(e) => handleQuickAudioRead(e, art)}
-                                  className="btn btn-outline"
-                                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                                >
-                                  {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
-                                  {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
-                                </button>
+                                {isAudioAllowed && (
+                                  <button 
+                                    onClick={(e) => handleQuickAudioRead(e, art)}
+                                    className="btn btn-outline"
+                                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                                  >
+                                    {playingArticleId === art.id ? <Pause size={12} /> : <Volume2 size={12} />}
+                                    {playingArticleId === art.id ? t('playing', currentLanguage) : t('listen', currentLanguage)}
+                                  </button>
+                                )}
                               </div>
                             </div>
-                            <h3 className="story-card-title">{art.title}</h3>
+                            <h3 className="story-card-title" style={{ fontSize: '1.1rem', lineHeight: '1.35', marginBottom: '0.5rem' }}>
+                              <ArticleLink article={art} onSelect={handleSelectArticle}>{art.title}</ArticleLink>
+                            </h3>
                             <div className="story-meta" style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
                               <span>{art.author?.name || 'Staff Reporter'}</span>
                               <span>•</span>
@@ -1841,7 +2008,7 @@ export default function App() {
         )}
 
         {/* ARTICLE DETAIL READER VIEW */}
-        {activeView === 'article' && (
+        {activeView === 'article' && selectedArticle && (
           <ArticleReader 
             article={selectedArticle}
             articles={baseArticles}
@@ -1851,6 +2018,37 @@ export default function App() {
             onShowToast={(msg) => { setToastMessage(msg); setIsToastOpen(true); }}
             onOpenGrievance={handleOpenGrievance}
           />
+        )}
+
+        {/* 404 NOT FOUND VIEW (Prevents Soft-404 Homepage Mirroring on Invalid URLs / Slugs) */}
+        {(activeView === 'notfound' || (activeView === 'article' && !selectedArticle && articlesResolved)) && (
+          <div className="container" style={{ padding: '4rem 1.25rem', maxWidth: '680px', margin: '0 auto', textAlign: 'center' }}>
+            <div style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-medium)',
+              borderTop: '4px solid var(--accent-crimson)',
+              borderRadius: '4px',
+              padding: '2.5rem 1.5rem'
+            }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: '800', letterSpacing: '0.1em', color: 'var(--accent-crimson)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                HTTP 404 • Not Found
+              </div>
+              <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', fontWeight: '900', color: 'var(--text-main)', margin: '0 0 0.75rem 0' }}>
+                यह समाचार या पृष्ठ उपलब्ध नहीं है
+              </h1>
+              <p style={{ fontSize: '0.95rem', color: 'var(--text-muted)', lineHeight: '1.6', margin: '0 auto 1.5rem auto', maxWidth: '480px' }}>
+                The requested article or page could not be found. It may have been removed or the URL may be incorrect.
+              </p>
+              <button
+                type="button"
+                onClick={() => handleNavigate('home')}
+                className="btn btn-primary"
+                style={{ minHeight: '44px', padding: '0.65rem 1.5rem', fontWeight: '800', fontSize: '0.92rem' }}
+              >
+                मुख्य पृष्ठ पर लौटें (Back to Frontpage)
+              </button>
+            </div>
+          </div>
         )}
 
         {/* SEARCH PAGE VIEW */}
@@ -1881,8 +2079,10 @@ export default function App() {
         {activeView === 'editor' && (
           <EditorWorkspace 
             pendingArticles={pendingArticles}
+            publishedArticles={baseArticles}
             onApproveArticle={handleApproveArticle}
             onRejectArticle={handleRejectArticle}
+            onShowToast={(msg) => { setToastMessage(msg); setIsToastOpen(true); }}
           />
         )}
 
@@ -2266,7 +2466,7 @@ export default function App() {
             </div>
 
             <div style={{ overflow: 'hidden' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7rem', fontWeight: '800', color: 'var(--accent-indigo)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.7rem', fontWeight: '800', color: 'var(--accent-crimson)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 <Volume2 size={12} /> {t('nowReadingAudio', currentLanguage)}
               </div>
               <div style={{ fontSize: '0.875rem', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-main)' }}>
@@ -2277,24 +2477,29 @@ export default function App() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
             <button
+              type="button"
               onClick={() => {
+                stopTwoStageAudio();
                 stopAudioSpeech();
                 setPlayingArticleId(null);
                 setPlayingArticle(null);
               }}
               className="btn btn-primary"
-              style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem', borderRadius: '20px' }}
+              style={{ padding: '0.35rem 0.8rem', fontSize: '0.75rem', borderRadius: '20px', minHeight: '36px' }}
             >
               {t('stopAudio', currentLanguage)}
             </button>
             <button
+              type="button"
               onClick={() => {
+                stopTwoStageAudio();
                 stopAudioSpeech();
                 setPlayingArticleId(null);
                 setPlayingArticle(null);
               }}
-              style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '0.2rem' }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', padding: '0.2rem', minWidth: '36px', minHeight: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
               title="Close Audio Bar"
+              aria-label="Close Audio Bar"
             >
               <X size={18} />
             </button>

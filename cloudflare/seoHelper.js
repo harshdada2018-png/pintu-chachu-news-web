@@ -12,11 +12,31 @@ export function escapeXml(str) {
     .replace(/'/g, '&apos;');
 }
 
-export function toIsoDate(val, fallbackIso) {
-  const fallback = fallbackIso || new Date().toISOString();
-  if (!val) return fallback;
-  const parsed = new Date(val);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed.toISOString();
+export function resolveArticleIso(art, fallbackIso = '2026-01-01T00:00:00.000Z') {
+  const candidates = [art?.createdAt, art?.created_at, art?.publishDateISO, art?.publishedAt, art?.published_at];
+  for (const raw of candidates) {
+    if (!raw || typeof raw !== 'string') continue;
+    if (raw.includes('-') || raw.includes('T') || raw.includes(':')) {
+      const ms = Date.parse(raw);
+      if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+    }
+  }
+  const idStr = String(art?.id || '');
+  const epochMatch = idStr.match(/(1[5-9]\d{11})/);
+  if (epochMatch) {
+    const baseMs = Number(epochMatch[1]);
+    const suffixMatch = idStr.match(/-(\d{1,3})$/);
+    const offsetHours = suffixMatch ? Number(suffixMatch[1]) : 0;
+    const ms = Math.min(baseMs, Date.now()) - offsetHours * 3600 * 1000;
+    if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+  }
+  return fallbackIso;
+}
+
+export function toIsoDate(val, fallbackIso = '2026-01-01T00:00:00.000Z') {
+  if (!val) return fallbackIso;
+  const parsed = Date.parse(val);
+  return Number.isNaN(parsed) ? fallbackIso : new Date(parsed).toISOString();
 }
 
 export async function fetchPublishedArticlesFromD1(db, limit = 100) {
@@ -49,7 +69,7 @@ export function buildSitemapXml(articles, origin, onlyRecent48h = false) {
 `;
 
   for (const art of articles) {
-    const pubDate = toIsoDate(art.createdAt || art.published_at || art.created_at, nowIso);
+    const pubDate = resolveArticleIso(art);
     if (onlyRecent48h && new Date(pubDate).getTime() < cutoffMs) continue;
 
     const lastMod = toIsoDate(art.updatedAt || art.updated_at, pubDate);
@@ -95,7 +115,7 @@ export function buildRssXml(articles, origin) {
   for (const art of items) {
     const slugOrId = art.slug || art.id;
     const link = `${origin}/article/${encodeURIComponent(slugOrId)}`;
-    const pubDate = new Date(art.createdAt || art.published_at || Date.now()).toUTCString();
+    const pubDate = new Date(resolveArticleIso(art)).toUTCString();
     const desc = escapeXml(String(art.summary || art.content || '').replace(/<[^>]+>/g, '').slice(0, 480));
     const title = escapeXml(art.title || 'Untitled');
     const category = escapeXml(art.category || 'News');

@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import { CheckCircle, Flame, Sparkles, XCircle, Clock, Eye, Edit3, ShieldAlert, Languages, Video, Play, X, AlertCircle, ShieldCheck, FileText, ExternalLink } from 'lucide-react';
+import { CheckCircle, Flame, Sparkles, XCircle, Clock, Edit3, Languages, Video, Play, X, ShieldCheck, FileText, ExternalLink, Volume2 } from 'lucide-react';
 import { SUPPORTED_LANGUAGES } from '../../services/translationService';
+import ArticleAudioGeneratorPanel from '../shared/ArticleAudioGeneratorPanel';
 
-export default function EditorWorkspace({ pendingArticles, onApproveArticle, onRejectArticle }) {
-  const [selectedArticle, setSelectedArticle] = useState(pendingArticles[0] || null);
+export default function EditorWorkspace({ pendingArticles, publishedArticles = [], onApproveArticle, onRejectArticle, onShowToast }) {
+  const [sidebarTab, setSidebarTab] = useState(pendingArticles.length > 0 ? 'pending' : 'published');
+  const [selectedArticle, setSelectedArticle] = useState(
+    pendingArticles[0] || publishedArticles[0] || null
+  );
   const [editedTitle, setEditedTitle] = useState(selectedArticle?.title || '');
   const [editedLanguage, setEditedLanguage] = useState(selectedArticle?.originalLanguage || 'hi');
   const [isBreaking, setIsBreaking] = useState(false);
@@ -13,6 +17,11 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
   const [rejectionReason, setRejectionReason] = useState('');
   const [factCheckRating, setFactCheckRating] = useState('Verified');
   const [factCheckDesk, setFactCheckDesk] = useState('PublicSpark Fact Desk');
+
+  const isSelectedPublished = Boolean(
+    selectedArticle && !pendingArticles.some((p) => p.id === selectedArticle.id)
+  );
+  const visibleList = sidebarTab === 'pending' ? pendingArticles : publishedArticles;
 
   // Select article to review
   const handleSelectArticle = (art) => {
@@ -54,11 +63,11 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
   };
 
   return (
-    <div className="container" style={{ padding: '2rem 1.25rem' }}>
+    <div className="container" style={{ padding: 'clamp(0.75rem, 2.5vw, 2rem) clamp(0.65rem, 2vw, 1.25rem)', boxSizing: 'border-box' }}>
       {/* Editor Header */}
-      <div className="workspace-header" style={{ padding: '1.25rem', borderRadius: 'var(--radius-md)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
+      <div className="workspace-header" style={{ padding: 'clamp(0.85rem, 2vw, 1.25rem)', borderRadius: 'var(--radius-md)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ minWidth: 0 }}>
             <h2 className="workspace-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <CheckCircle color="var(--accent-emerald)" /> Editorial Desk
             </h2>
@@ -73,12 +82,51 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
       </div>
 
       <div className="workspace-grid">
-        {/* Submissions Queue List */}
+        {/* Submissions & Audio Queue List */}
         <div className="workspace-sidebar">
-          <h4 style={{ fontSize: '0.85rem', fontWeight: '900', textTransform: 'uppercase', color: 'var(--text-subtle)', marginBottom: '0.75rem', letterSpacing: '0.05em' }}>
-            Pending Review ({pendingArticles.length})
-          </h4>
-          {pendingArticles.length === 0 ? (
+          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem' }}>
+            <button
+              type="button"
+              onClick={() => setSidebarTab('pending')}
+              style={{
+                flex: 1,
+                minHeight: '36px',
+                padding: '0.4rem 0.5rem',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                borderRadius: 'var(--radius-sm)',
+                border: `1px solid ${sidebarTab === 'pending' ? 'var(--accent-crimson)' : 'var(--border-medium)'}`,
+                background: sidebarTab === 'pending' ? 'var(--accent-crimson)' : 'var(--bg-surface)',
+                color: sidebarTab === 'pending' ? '#FFFFFF' : 'var(--text-main)',
+                cursor: 'pointer'
+              }}
+            >
+              Pending ({pendingArticles.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSidebarTab('published')}
+              style={{
+                flex: 1,
+                minHeight: '36px',
+                padding: '0.4rem 0.5rem',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                borderRadius: 'var(--radius-sm)',
+                border: `1px solid ${sidebarTab === 'published' ? '#0E2A47' : 'var(--border-medium)'}`,
+                background: sidebarTab === 'published' ? '#0E2A47' : 'var(--bg-surface)',
+                color: sidebarTab === 'published' ? '#FFFFFF' : 'var(--text-main)',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.3rem'
+              }}
+            >
+              <Volume2 size={13} /> Published ({publishedArticles.length})
+            </button>
+          </div>
+          {visibleList.length === 0 ? (
             <div style={{ 
               fontSize: '0.85rem', 
               color: 'var(--text-subtle)', 
@@ -89,11 +137,17 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
               border: '1px solid var(--border-light)' 
             }}>
               <CheckCircle size={24} color="var(--accent-emerald)" style={{ margin: '0 auto 0.5rem auto' }} />
-              <div style={{ fontWeight: '700', color: 'var(--text-main)', marginBottom: '0.2rem' }}>Review Queue Clear</div>
-              <div>All reporter submissions have been reviewed and dispatched.</div>
+              <div style={{ fontWeight: '700', color: 'var(--text-main)', marginBottom: '0.2rem' }}>
+                {sidebarTab === 'pending' ? 'Review Queue Clear' : 'No Published Stories Yet'}
+              </div>
+              <div>
+                {sidebarTab === 'pending'
+                  ? 'All reporter submissions have been reviewed. Switch to Published tab to pre-generate HI/EN audio.'
+                  : 'Published stories will appear here for sequential audio generation.'}
+              </div>
             </div>
           ) : (
-            pendingArticles.map((art) => (
+            visibleList.map((art) => (
               <div 
                 key={art.id} 
                 onClick={() => handleSelectArticle(art)}
@@ -129,14 +183,15 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
         </div>
 
         {/* Selected Article Inspection & Action Panel */}
-        <div>
+        <div style={{ minWidth: 0 }}>
           {selectedArticle ? (
-            <div style={{ background: 'var(--bg-surface)', padding: '1.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
+            <div style={{ background: 'var(--bg-surface)', padding: 'clamp(0.9rem, 2.5vw, 1.75rem)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', minWidth: 0 }}>
               {/* Category & Status */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <span className="story-category-tag">{selectedArticle.category}</span>
-                <span className="badge badge-live">
-                  <Clock size={12} /> Pending Approval
+                <span className="badge badge-live" style={isSelectedPublished ? { background: '#DCFCE7', color: '#166534', borderColor: '#86EFAC' } : undefined}>
+                  {isSelectedPublished ? <CheckCircle size={12} /> : <Clock size={12} />}
+                  {isSelectedPublished ? 'Published Live Story' : 'Pending Approval'}
                 </span>
               </div>
 
@@ -325,23 +380,43 @@ export default function EditorWorkspace({ pendingArticles, onApproveArticle, onR
                 </div>
               </div>
 
+              {/* Task 44.6 Subtopic C: Sequential 1-by-1 Article Audio Generator (HI + EN) */}
+              <ArticleAudioGeneratorPanel
+                article={{
+                  ...selectedArticle,
+                  title: editedTitle || selectedArticle.title,
+                  originalLanguage: editedLanguage || selectedArticle.originalLanguage
+                }}
+                onAudioGenerated={(res) => {
+                  if (onShowToast && res?.success) {
+                    onShowToast(`Audio generated and cached in D1 shards (HI & EN) for "${editedTitle || selectedArticle.title}".`);
+                  }
+                }}
+              />
+
               {/* Action Approval Buttons */}
-              <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem', flexWrap: 'wrap' }}>
-                <button 
-                  onClick={handleApprove} 
-                  className="btn btn-primary" 
-                  style={{ padding: '0.7rem 1.4rem', backgroundColor: 'var(--accent-emerald)' }}
-                >
-                  <CheckCircle size={16} /> Approve & Publish Story Immediately
-                </button>
-                <button 
-                  onClick={() => setIsRejectModalOpen(true)} 
-                  className="btn btn-outline" 
-                  style={{ padding: '0.7rem 1.2rem', color: 'var(--accent-crimson)', borderColor: 'var(--accent-crimson)' }}
-                >
-                  <XCircle size={16} /> Request Changes / Reject
-                </button>
-              </div>
+              {!isSelectedPublished ? (
+                <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid var(--border-light)', paddingTop: '1.25rem', flexWrap: 'wrap' }}>
+                  <button 
+                    onClick={handleApprove} 
+                    className="btn btn-primary" 
+                    style={{ minHeight: '44px', padding: '0.7rem 1.4rem', backgroundColor: 'var(--accent-emerald)' }}
+                  >
+                    <CheckCircle size={16} /> Approve & Publish Story Immediately
+                  </button>
+                  <button 
+                    onClick={() => setIsRejectModalOpen(true)} 
+                    className="btn btn-outline" 
+                    style={{ minHeight: '44px', padding: '0.7rem 1.2rem', color: 'var(--accent-crimson)', borderColor: 'var(--accent-crimson)' }}
+                  >
+                    <XCircle size={16} /> Request Changes / Reject
+                  </button>
+                </div>
+              ) : (
+                <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '1rem', fontSize: '0.82rem', color: 'var(--text-subtle)', fontWeight: '600' }}>
+                  This story is already live on the portal. Generated Hindi &amp; English WebM audio is immediately ready for readers in the Article Reader &amp; Home Listen bar.
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ background: 'var(--bg-surface)', padding: '3.5rem 2rem', borderRadius: 'var(--radius-md)', textAlign: 'center', border: '1px solid var(--border-light)' }}>

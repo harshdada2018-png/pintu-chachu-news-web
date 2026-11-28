@@ -3,6 +3,7 @@
  * High-performance In-Memory + Safe Local Storage caching engine.
  * Eliminates quota errors, main-thread freezing, and playback bugs.
  */
+import { getAuthHeaders } from './authClient.js';
 
 const AUDIO_CACHE_PREFIX = 'ps_audio_cache_v1_';
 const POS_CACHE_PREFIX = 'ps_audio_pos_v1_';
@@ -248,6 +249,12 @@ export function resumeCloudAudio() {
 export function stopCloudAudio() {
   if (currentActiveAudio) {
     try {
+      currentActiveAudio.onloadedmetadata = null;
+      currentActiveAudio.oncanplay = null;
+      currentActiveAudio.onplaying = null;
+      currentActiveAudio.ontimeupdate = null;
+      currentActiveAudio.onended = null;
+      currentActiveAudio.onerror = null;
       currentActiveAudio.pause();
       currentActiveAudio.currentTime = 0;
       currentActiveAudio.removeAttribute('src');
@@ -258,22 +265,24 @@ export function stopCloudAudio() {
 }
 
 /**
- * Calls backend proxy (/api/tts) to synthesize audio securely using Google Cloud / Sarvam AI.
+ * Calls backend proxy (/api/tts) to synthesize full article audio without 300-char title truncation.
  */
 export async function fetchBackendTtsAudio({ articleId, text, langCode = 'hi' }) {
   if (!BACKEND_TTS_URL) return null;
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15000);
+    const timer = setTimeout(() => controller.abort(), 35000);
 
+    const trimmedBody = String(text || '').slice(0, 3200);
     const response = await fetch(BACKEND_TTS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         article_id: String(articleId || ''),
         articleId: String(articleId || ''),
-        text: text.slice(0, 3000),
-        title: text.slice(0, 300),
+        clip_type: 'full_story',
+        body: trimmedBody,
+        text: trimmedBody,
         lang: langCode,
         langCode
       }),
@@ -404,5 +413,216 @@ export async function playCloudAudioWithCache({ articleId, text, langCode, onSta
     currentActiveAudio = null;
     if (onError) onError(err);
     else if (onEnd) onEnd();
+  }
+}
+
+/**
+ * Staff Audio Generation & Render Worker Orchestration (Task 44.6 Subtopic C)
+ */
+export async function warmRenderAudioWorker() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 65000);
+    const res = await fetch('/api/tts/warm-worker', {
+      method: 'GET',
+      headers: { ...getAuthHeaders() },
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, ...data };
+  } catch (err) {
+    return { ok: false, renderConfigured: false, error: err.message };
+  }
+}
+
+export async function fetchArticleAudioStatus(articleId) {
+  if (!articleId) return null;
+  try {
+    const res = await fetch(`/api/tts/article-status/${encodeURIComponent(String(articleId))}`, {
+      method: 'GET',
+      headers: { ...getAuthHeaders() }
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function triggerArticleAudioStep({ articleId, step, lang, forceRegenerate = false, overrides = null }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 70000);
+  try {
+    const res = await fetch('/api/tts/generate-article-audio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({
+        articleId: String(articleId),
+        step,
+        lang,
+        forceRegenerate: Boolean(forceRegenerate),
+        ...(overrides ? { overrides } : {})
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      const err = new Error(data.error || `Audio step failed (${res.status})`);
+      err.status = res.status;
+      err.quotaExhausted = Boolean(data.quotaExhausted || res.status === 429);
+      throw err;
+    }
+    return data;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
+async function syncPendingArticleDraftBeforeAudio(article) {
+  if (!article || !article.id || !article.content) return false;
+  try {
+    const payload = {
+      ...article,
+      status: article.status || 'draft'
+    };
+    const res = await fetch('/api/articles/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(payload)
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function runSequentialArticleAudioPipeline({
+  articleId,
+  article = null,
+  forceRegenerate = false,
+  onStepUpdate
+}) {
+  const overrides = article
+    ? { title: article.title, originalLanguage: article.originalLanguage }
+    : null;
+  const steps = [
+    {
+      id: 'warm',
+      label: 'Step 1: Wake & Verify Audio Compression Worker',
+      status: 'pending',
+      detail: 'Render FFmpeg libopus (32 kbps WebM) / local worker check'
+    },
+    {
+      id: 'translate_hi',
+      label: 'Step 2: Hindi (HI) Translation -> Backend Cache',
+      status: 'pending',
+      detail: 'Saves Hindi headline, summary & body in backend D1 cache'
+    },
+    {
+      id: 'audio_hi',
+      label: 'Step 3: Hindi (HI) Audio -> WebM Compress -> D1 (HI)',
+      status: 'pending',
+      detail: 'Synthesizes HI voice, compresses via FFmpeg & stores in DB_AUDIO_HI'
+    },
+    {
+      id: 'translate_en',
+      label: 'Step 4: English (EN) Translation -> Backend Cache',
+      status: 'pending',
+      detail: 'Saves English headline, summary & body in backend D1 cache'
+    },
+    {
+      id: 'audio_en',
+      label: 'Step 5: English (EN) Audio -> WebM Compress -> D1 (EN)',
+      status: 'pending',
+      detail: 'Synthesizes EN voice, compresses via FFmpeg & stores in DB_AUDIO_EN'
+    }
+  ];
+
+  const notify = (stepId, patch) => {
+    const idx = steps.findIndex((s) => s.id === stepId);
+    if (idx !== -1) {
+      steps[idx] = { ...steps[idx], ...patch };
+    }
+    if (onStepUpdate) {
+      onStepUpdate({ steps, currentStepId: stepId });
+    }
+  };
+
+  let activeStepId = 'warm';
+  try {
+    // 1. Warm Render worker
+    notify('warm', { status: 'running', detail: 'Checking Render FFmpeg worker health...' });
+    const workerRes = await warmRenderAudioWorker();
+    notify('warm', {
+      status: 'done',
+      detail: workerRes.renderConfigured
+        ? (workerRes.ffmpegReady ? 'Render FFmpeg Worker Warm & Ready (WebM Opus)' : 'Render Worker Awake (Edge fallback active if offline)')
+        : 'Using Edge / Local Node Direct Compression Mode'
+    });
+
+    // 2. Translate & cache Hindi
+    activeStepId = 'translate_hi';
+    notify('translate_hi', { status: 'running', detail: 'Translating & saving Hindi (HI) text in backend cache...' });
+    let trHi;
+    try {
+      trHi = await triggerArticleAudioStep({ articleId, step: 'translate', lang: 'hi', forceRegenerate, overrides });
+    } catch (firstErr) {
+      if (firstErr.status === 404 && article) {
+        const synced = await syncPendingArticleDraftBeforeAudio(article);
+        if (synced) {
+          trHi = await triggerArticleAudioStep({ articleId, step: 'translate', lang: 'hi', forceRegenerate, overrides });
+        } else {
+          throw firstErr;
+        }
+      } else {
+        throw firstErr;
+      }
+    }
+    notify('translate_hi', {
+      status: 'done',
+      detail: trHi.isCached ? 'Hindi (HI) translation verified in backend cache.' : 'Hindi (HI) translation saved to backend cache.'
+    });
+
+    // 3. Synthesize & compress Hindi Audio -> DB_AUDIO_HI
+    activeStepId = 'audio_hi';
+    notify('audio_hi', { status: 'running', detail: 'Synthesizing HI speech -> FFmpeg WebM compression -> D1 HI shard...' });
+    const audioHi = await triggerArticleAudioStep({ articleId, step: 'audio', lang: 'hi', forceRegenerate, overrides });
+    const hiKb = `${(Number(audioHi.size_bytes || 0) / 1024).toFixed(1)} KB`;
+    notify('audio_hi', {
+      status: 'done',
+      detail: `${audioHi.isCached ? 'Already Cached' : 'Saved'} (${hiKb} ${String(audioHi.mime_type || '').includes('webm') ? 'WebM' : 'Audio'} · ${audioHi.shard || 'DB_AUDIO_HI'})`
+    });
+
+    // 4. Translate & cache English
+    activeStepId = 'translate_en';
+    notify('translate_en', { status: 'running', detail: 'Translating & saving English (EN) text in backend cache...' });
+    const trEn = await triggerArticleAudioStep({ articleId, step: 'translate', lang: 'en', forceRegenerate, overrides });
+    notify('translate_en', {
+      status: 'done',
+      detail: trEn.isCached ? 'English (EN) translation verified in backend cache.' : 'English (EN) translation saved to backend cache.'
+    });
+
+    // 5. Synthesize & compress English Audio -> DB_AUDIO_EN
+    activeStepId = 'audio_en';
+    notify('audio_en', { status: 'running', detail: 'Synthesizing EN speech -> FFmpeg WebM compression -> D1 EN shard...' });
+    const audioEn = await triggerArticleAudioStep({ articleId, step: 'audio', lang: 'en', forceRegenerate, overrides });
+    const enKb = `${(Number(audioEn.size_bytes || 0) / 1024).toFixed(1)} KB`;
+    notify('audio_en', {
+      status: 'done',
+      detail: `${audioEn.isCached ? 'Already Cached' : 'Saved'} (${enKb} ${String(audioEn.mime_type || '').includes('webm') ? 'WebM' : 'Audio'} · ${audioEn.shard || 'DB_AUDIO_EN'})`
+    });
+
+    return { success: true, worker: workerRes, trHi, hi: audioHi, trEn, en: audioEn };
+  } catch (err) {
+    notify(activeStepId, {
+      status: 'error',
+      detail: err.quotaExhausted
+        ? `Gemini API quota exhausted (429): ${err.message}`
+        : (err.message || 'Step failed')
+    });
+    return { success: false, failedStep: activeStepId, error: err.message || 'Audio pipeline failed' };
   }
 }

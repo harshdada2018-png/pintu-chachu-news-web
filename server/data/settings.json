@@ -231,16 +231,16 @@
       }
     }
   },
-  "lastBackupAt": "2026-11-24T21:25:48.633Z",
-  "lastBackupFileName": "publicspark-backup-20261124212548-bfce.zip",
-  "lastBackupSize": "140.4 KB",
+  "lastBackupAt": "2026-11-27T20:31:55.975Z",
+  "lastBackupFileName": "publicspark-backup-20261127203155-2a05.zip",
+  "lastBackupSize": "615.2 KB",
   "backupDeliveryEmail": "harsh2018vardhanmishra@gmail.com",
   "backupScheduleFrequency": "daily",
   "backupAutoEmailEnabled": true,
   "backupMaxRetained": 3,
   "lastBackupEmailSentAt": "2026-11-24T21:25:53.033Z",
   "lastBackupEmailRecipient": "harsh2018vardhanmishra@gmail.com",
-  "lastBackupDateIST": "2026-11-25",
+  "lastBackupDateIST": "2026-11-28",
   "monetization": {
     "slots": {}
   }
