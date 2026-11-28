@@ -1323,6 +1323,7 @@ export default function App() {
         isTranslating={isTranslating}
         categories={categories}
         articles={publishedArticles}
+        onSelectArticle={handleSelectArticle}
         onOpenSavedDrawer={() => setIsSavedDrawerOpen(true)}
         onOpenSearchDrawer={() => setIsSearchDrawerOpen(true)}
         onOpenStaffLogin={handleOpenStaffLogin}

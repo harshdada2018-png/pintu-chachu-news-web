@@ -3970,7 +3970,7 @@ const server = http.createServer(async (req, res) => {
         let finalName = webmName;
         let finalMime = 'audio/webm';
         try {
-          finalBuf = await compressBufferToWebmOpus(rawAudioBuffer, 'audio/l16;rate=24000', 32);
+          finalBuf = await compressBufferToWebmOpus(rawAudioBuffer, 'audio/l16;rate=24000', 16);
         } catch (_ffErr) {
           finalBuf = compressAudioBufferToMp3(rawAudioBuffer, 48);
           finalName = `audio_${sanitizedId}_${targetLang}_full_story_v2.mp3`;
@@ -4164,8 +4164,8 @@ const server = http.createServer(async (req, res) => {
           let finalMime = 'audio/webm';
 
           try {
-            finalAudioBuffer = await compressBufferToWebmOpus(rawAudioBuffer, 'audio/l16;rate=24000', 32);
-            console.log(`[TTS WebM Opus Compression Success] ${validClipType} (${rawAudioBuffer.length} raw bytes -> ${finalAudioBuffer.length} WebM bytes, 32kbps mono)`);
+            finalAudioBuffer = await compressBufferToWebmOpus(rawAudioBuffer, 'audio/l16;rate=24000', 16);
+            console.log(`[TTS WebM Opus Compression Success] ${validClipType} (${rawAudioBuffer.length} raw bytes -> ${finalAudioBuffer.length} WebM bytes, 16kbps mono)`);
           } catch (webmErr) {
             try {
               targetPath = audioFilePathMp3;

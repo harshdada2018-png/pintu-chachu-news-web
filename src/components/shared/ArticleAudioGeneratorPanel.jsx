@@ -213,7 +213,7 @@ export default function ArticleAudioGeneratorPanel({
             </h4>
             <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle, #475569)', marginTop: '0.15rem' }}>
               {statusData?.renderConfigured
-                ? 'Render FFmpeg 32 kbps WebM Opus Compression Active'
+                ? 'Render FFmpeg 16 kbps WebM Opus Compression Active'
                 : 'Edge / Local Node Sequential Pipeline Ready'}
             </div>
           </div>

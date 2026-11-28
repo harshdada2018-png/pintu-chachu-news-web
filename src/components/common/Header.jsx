@@ -25,13 +25,14 @@ export default function Header({
   onOpenStaffLogin,
   onStaffLogout,
   staffName = '',
-  onOpenSearchDrawer
+  onOpenSearchDrawer,
+  onSelectArticle
 }) {
   const breakingItems = useMemo(() => {
-    const fromArticles = (articles || []).filter(a => a.is_breaking).map(a => a.title);
+    const fromArticles = (articles || []).filter(a => a.is_breaking);
     if (fromArticles.length > 0) return fromArticles;
     // Fallback to top published headlines (Rule 6 compliant - real stories only)
-    return (articles || []).filter(a => a.status === 'published').slice(0, 3).map(a => a.title);
+    return (articles || []).filter(a => a.status === 'published').slice(0, 3);
   }, [articles]);
 
   // Public category filter: Only display categories with >= 1 published article (prevents AdSense empty category rejection)
@@ -91,12 +92,17 @@ export default function Header({
   }, [isMobileMenuOpen]);
 
   const handleNextTicker = useCallback(() => {
+    if (breakingItems.length === 0) return;
     setIsFading(true);
     setTimeout(() => {
       setTickerIndex((prev) => (prev + 1) % breakingItems.length);
       setIsFading(false);
     }, 350);
   }, [breakingItems.length]);
+
+  const activeTickerArticle = breakingItems.length > 0
+    ? breakingItems[tickerIndex % breakingItems.length]
+    : null;
 
   useEffect(() => {
     if (!isTickerPlaying) return;
@@ -532,9 +538,18 @@ export default function Header({
           <span className="pulse-dot"></span>
           {t('breaking', currentLanguage)}
         </div>
-        <div className={`ticker-content ${isFading ? 'fade-out' : ''}`}>
-          {breakingItems[tickerIndex % breakingItems.length]}
-        </div>
+        {activeTickerArticle ? (
+          <button
+            type="button"
+            onClick={() => onSelectArticle && onSelectArticle(activeTickerArticle)}
+            className={`ticker-content ticker-link-btn ${isFading ? 'fade-out' : ''}`}
+            title={activeTickerArticle.title}
+          >
+            {activeTickerArticle.title}
+          </button>
+        ) : (
+          <div className={`ticker-content ${isFading ? 'fade-out' : ''}`} />
+        )}
         <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
           <button 
             onClick={() => setIsTickerPlaying(!isTickerPlaying)}

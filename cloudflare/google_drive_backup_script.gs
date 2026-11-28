@@ -11,15 +11,20 @@
  *   2. Paste this entire file and fill BACKUP_API_URL & CRON_BACKUP_SECRET below.
  *   3. (Recommended for overwrite without Trash) Left sidebar -> Services (+) -> Add "Drive API".
  *   4. Run testBackupNow() once to grant Drive permission.
- *   5. Left sidebar -> Triggers (Clock icon) -> Add Trigger:
+ *   5. Left sidebar -> Triggers (Clock icon) -> Add Trigger #1 (Backup):
  *      - Function: runFiveDayBackup
  *      - Event source: Time-driven
  *      - Type: Day timer (runs daily, script enforces strict 5-day cooldown via PropertiesService)
+ *   6. Add Trigger #2 (Render Audio Worker 10-Min Keep-Alive):
+ *      - Function: keepRenderWarm
+ *      - Event source: Time-driven
+ *      - Type: Minutes timer -> Every 10 minutes (~144 pings/day, keeps Render Free awake 24x7)
  */
 
 const CONFIG = {
   BACKUP_API_URL: 'https://pintu-chachu-news-web.pages.dev/api/cron/export-backup',
   CRON_BACKUP_SECRET: 'PASTE_YOUR_CRON_BACKUP_SECRET_HERE',
+  RENDER_HEALTH_URL: 'https://publicspark-audio-worker.onrender.com/health',
   DRIVE_FOLDER_NAME: 'PublicSpark_Backups',
   OUTER_ZIP_NAME: 'PublicSpark_5Day_Backup.zip',
   DAYS_INTERVAL: 5
@@ -118,4 +123,21 @@ function executeDriveBackup() {
 
   const created = folder.createFile(outerZipBlob);
   Logger.log('Created Google Drive backup: ' + created.getId());
+}
+
+/**
+ * Keeps the Render Free Audio Worker warm 24x7 (Trigger: Every 10 minutes = 144 calls/day).
+ */
+function keepRenderWarm() {
+  if (!CONFIG.RENDER_HEALTH_URL) return;
+  try {
+    const res = UrlFetchApp.fetch(CONFIG.RENDER_HEALTH_URL, {
+      method: 'get',
+      muteHttpExceptions: true
+    });
+    Logger.log('Render keep-alive HTTP ' + res.getResponseCode());
+  } catch (err) {
+    // Silent catch avoids daily Apps Script warning emails on transient network blips
+    Logger.log('Render keep-alive blip ignored: ' + err.message);
+  }
 }

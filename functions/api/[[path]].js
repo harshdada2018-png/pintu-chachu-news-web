@@ -512,7 +512,7 @@ function trimTtsSpeechText(text, maxChars = 3200) {
   return clean;
 }
 
-async function callRenderAudioWorker(text, env, bitrateKbps = 32) {
+async function callRenderAudioWorker(text, env, bitrateKbps = 16) {
   const baseUrl = String(env?.RENDER_AUDIO_URL || '').trim().replace(/\/+$/, '');
   const secret = String(env?.RENDER_AUDIO_SECRET || '').trim();
   if (!baseUrl || !secret) return null;
@@ -664,7 +664,7 @@ async function synthesizeAndCacheAudioEdge({ env, articleId, lang, clipType = 'f
   let audioPayload = null;
   if (env?.RENDER_AUDIO_URL && env?.RENDER_AUDIO_SECRET) {
     try {
-      audioPayload = await callRenderAudioWorker(trimmedSpeech, env, 32);
+      audioPayload = await callRenderAudioWorker(trimmedSpeech, env, 16);
     } catch (renderErr) {
       if (renderErr?.isQuota) throw renderErr;
     }
