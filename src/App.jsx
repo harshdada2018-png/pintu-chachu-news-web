@@ -2415,8 +2415,31 @@ export default function App() {
             fontSize: '0.8rem', 
             color: 'var(--text-subtle)' 
           }}>
-            <div>
-              © 2026 PublicSpark Newsroom Platform. सर्वाधिकार सुरक्षित • Built with precision for human journalism.
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <span>
+                © 2026 PublicSpark Newsroom Platform. सर्वाधिकार सुरक्षित • Built with precision for human journalism.
+              </span>
+              <a
+                href="https://domainexpanders.in"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-nav-link"
+                style={{
+                  fontSize: '0.78rem',
+                  color: 'var(--text-muted)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  minHeight: '32px',
+                  textDecoration: 'none',
+                  width: 'fit-content'
+                }}
+              >
+                <span>Designed &amp; Developed by</span>
+                <strong style={{ color: 'var(--text-main)', fontWeight: 700, letterSpacing: '0.02em', textDecoration: 'underline', textUnderlineOffset: '3px' }}>
+                  Domain Expanders
+                </strong>
+              </a>
             </div>
             <div>
               <button

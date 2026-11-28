@@ -65,7 +65,7 @@ function executeDriveBackup() {
   }
 
   const s = payload.summary || {};
-  const istTime = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM yyyy, hh:mm:ss a IST');
+  const istTime = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'dd MMM yyyy, hh:mm:ss a') + ' IST';
 
   // File 1: Summary Report
   const summaryLines = [
